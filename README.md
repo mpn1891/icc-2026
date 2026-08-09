@@ -55,9 +55,12 @@ Five things about that sequence, roughly in the order they will trip you up:
 3. **`seed` is once per machine, not once per session.** Run it against an already-seeded
    stack and it refuses rather than overwriting anything. You only repeat it after
    `python tasks.py nuke`.
-4. **Cloning a second copy next to a stack that is already running?** Change
-   `COMPOSE_PROJECT_NAME` in the new `.env` before you `seed`, or the two checkouts fight over
-   the same containers and volumes.
+4. **Two checkouts cannot run at the same time.** `container_name` and the network name are
+   pinned in `docker-compose.yml`, and the host ports come from `.env`, so a second stack
+   collides on all three no matter what you set. Run `python tasks.py down` in the first
+   checkout before bringing up a second. Do still give the second one its own
+   `COMPOSE_PROJECT_NAME` — that is what keeps their *volumes* apart, so a `nuke` or
+   `down -v` over there cannot reach your gateway state over here.
 5. **Both trial clocks are 2 hours and independent.** `up` starts Chariot's for you. If the
    stack has been sitting overnight, expect `health` to have opinions.
 
