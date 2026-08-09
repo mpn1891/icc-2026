@@ -8,10 +8,11 @@
   ],
   "attributes": {
     "lastModification": {
-      "actor": "unknown",
-      "timestamp": "2026-08-08T10:01:18Z"
+      "actor": "admin",
+      "timestamp": "2026-08-09T19:35:44Z"
     },
     "uuid": "367e147b-6150-41e0-8a2d-02d56cc673c4",
-    "lastModificationSignature": "5d1e7395ac6fddcba7ae7e0bc606f62c1a62d21579f1c8394899a3b0c04fbc18"
+    "lastModificationSignature": "045b12c42d9d72fc3bf499a1dbf0a292f6312ee5e6f28528eb8d72c493fbbafd",
+    "enabled": false
   }
 }

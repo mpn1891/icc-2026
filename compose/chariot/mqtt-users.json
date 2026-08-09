@@ -11,7 +11,7 @@
     "username": "ign-transmission",
     "password": "ign-transmission",
     "acl": {
-      "subscribeTopics": ["spBv1.0/+/NCMD/#", "spBv1.0/+/DCMD/#", "icc26/#"],
+      "subscribeTopics": ["spBv1.0/#", "icc26/#"],
       "publishTopics": ["spBv1.0/#", "icc26/#"]
     }
   },
