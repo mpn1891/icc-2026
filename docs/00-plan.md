@@ -209,8 +209,7 @@ icc-2026/
 ├── .env.example                    # committed; .env is gitignored
 ├── docker-compose.yml              # all services, always-on
 ├── docker-compose.seed.yml         # step-1 only: named volume, no config bind mounts
-├── tasks.py                        # the runner, all platforms (up/down/seed/export/scan/reset-trial)
-├── tasks.cmd                       # 2-line Windows forwarder to tasks.py
+├── tasks.py                        # the runner, all platforms (up/down/seed/scan/reset-trial)
 ├── Makefile                        # 2-line Linux/macOS forwarder to tasks.py
 ├── compose/
 │   ├── ignition/

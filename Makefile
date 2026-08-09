@@ -12,7 +12,7 @@ PY   ?= python3
 ARGS ?=
 
 TASKS := help init verify-modules hash-modules seed up down restart ps logs nuke \
-         scan export-config trial reset-trial chariot-trial health
+         scan trial reset-trial chariot-trial health
 
 .DEFAULT_GOAL := help
 .PHONY: $(TASKS)

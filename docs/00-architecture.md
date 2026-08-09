@@ -323,15 +323,18 @@ demo tables, not something to enable blindly across a real database.
 
 ### The task runner
 
-`tasks.py` is the one implementation, on every platform. Everything else is a two-line
-forwarder: `tasks.cmd` on Windows, `Makefile` on Linux/macOS. Neither contains logic.
+`tasks.py` is the one implementation, on every platform. The only other entry point is
+`Makefile`, a two-line forwarder for Linux/macOS muscle memory. It contains no logic.
+
+There was a `tasks.cmd` Windows forwarder too, so you could type `tasks up`. It was deleted:
+`python tasks.py up` works everywhere, and one documented invocation beats three.
 
 It was not always that way. The runner started as `tasks.ps1` with a hand-written `Makefile`
 mirroring it, and the mirror drifted — by the end of step 1 it had lost the `.modl` version
 check, the COMMISSIONING detection, and the wait for Chariot's async admin seeding. That is to
 say: the Linux path faithfully reproduced every bug this document exists to record. Two
 implementations of the same knowledge is one too many. If you add a task, it goes in
-`tasks.py`; if you find yourself adding logic to `Makefile` or `tasks.cmd`, stop.
+`tasks.py`; if you find yourself adding logic to `Makefile`, stop.
 
 Python rather than PowerShell 7 because the pattern services are already Python
 (`asyncua`, `paho-mqtt`, FastAPI), so it is not a new dependency. Standard library only —

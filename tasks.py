@@ -567,7 +567,15 @@ def task_export_identity(container="icc26-ignition-seed"):
             warn("%s absent in the seed gateway - skipped" % src_rel)
 
 
-def task_export_config(container="icc26-ignition"):
+def task_export_config(container="icc26-ignition-seed"):
+    """Copy a vanilla gateway's config-as-code out into the repo. Seed-internal.
+
+    Deliberately NOT a CLI task. It wipes ignition/config and ignition/projects
+    before copying, and the normal stack bind-mounts both of those directories --
+    so pointing it at icc26-ignition deletes the very files it is about to copy
+    and leaves you with nothing. Only ever call it against the seed container,
+    which runs without those mounts.
+    """
     step("Exporting config-as-code from %s" % container)
 
     for sub in ("config", "projects"):
@@ -961,7 +969,6 @@ Running
 
 Gateway / broker
   scan             Tell the gateway to re-read config + projects from disk
-  export-config    Copy data/config + data/projects out of the container
   trial            Show BOTH trial clocks (Ignition and Chariot)
   reset-trial      Reset the Ignition trial (only works once expired)
   chariot-trial    Start Chariot's trial so its MQTT listener opens
@@ -992,7 +999,6 @@ def main(argv):
         "logs": lambda: task_logs(rest),
         "nuke": task_nuke,
         "scan": task_scan,
-        "export-config": task_export_config,
         "trial": task_trial,
         "reset-trial": task_reset_trial,
         "chariot-trial": task_chariot_trial,

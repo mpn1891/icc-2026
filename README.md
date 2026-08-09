@@ -30,26 +30,45 @@ up and talk to each other. No pattern work yet. Full plan in [`docs/00-plan.md`]
   [`compose/ignition/MODULES.md`](compose/ignition/MODULES.md). `seed` and `up` both refuse to
   run without them.
 
-## Quickstart
+## Bringing it up
 
-Identical on Windows, macOS and Linux, and identical whether you are the first person to build
-the stack or the fifth to clone it:
+The minimum path to a running stack. Identical on Windows, macOS and Linux, and identical
+whether you are the first person to build it or the fifth to clone it:
 
 ```bash
-git clone <this repo> && cd icc-2026
-# drop the .modl files into compose/ignition/modules/
-python tasks.py init     # creates .env, checks for the Cirrus modules
-python tasks.py seed     # ONE-TIME per machine — pauses for a browser step, see note below
+git clone https://github.com/mpn1891/icc-2026.git && cd icc-2026
+# drop the three .modl files into compose/ignition/modules/
+python tasks.py init     # creates .env from .env.example
+python tasks.py seed     # ONE-TIME per machine — pauses for a browser step
 python tasks.py up
-python tasks.py health
+python tasks.py health   # this going green is the success criterion
 ```
 
-`seed` blocks partway through and prints a URL: Ignition parks in commissioning until someone
-accepts the Cirrus module certificates in a browser. That is a one-time manual step per machine
-and cannot be automated away — accept, then `seed` continues on its own.
+Five things about that sequence, roughly in the order they will trip you up:
 
-Two optional forwarders exist for muscle memory — `tasks up` on Windows, `make up` on
-Linux/macOS. Both are two lines that call `tasks.py`; all the logic is in one place.
+1. **The `.modl` files are not optional and are not in the repo.** `init` only warns, but
+   `seed` and `up` both hard-fail with a pointer to
+   [`compose/ignition/MODULES.md`](compose/ignition/MODULES.md).
+2. **`seed` blocks partway through and prints a URL.** Ignition parks in commissioning until
+   someone accepts the Cirrus module certificates in a browser. One-time per machine, cannot
+   be automated away — accept it and `seed` carries on by itself.
+3. **`seed` is once per machine, not once per session.** Run it against an already-seeded
+   stack and it refuses rather than overwriting anything. You only repeat it after
+   `python tasks.py nuke`.
+4. **Cloning a second copy next to a stack that is already running?** Change
+   `COMPOSE_PROJECT_NAME` in the new `.env` before you `seed`, or the two checkouts fight over
+   the same containers and volumes.
+5. **Both trial clocks are 2 hours and independent.** `up` starts Chariot's for you. If the
+   stack has been sitting overnight, expect `health` to have opinions.
+
+After that, day to day is just:
+
+```bash
+python tasks.py up
+python tasks.py down     # stops the stack, keeps volumes
+```
+
+`make up` also works on Linux/macOS — a two-line forwarder to `tasks.py`, no logic of its own.
 
 > **Windows:** use `python tasks.py`, not a `.ps1`. PowerShell's execution policy blocks
 > unsigned local scripts by default, and nothing here is worth making people run
@@ -171,7 +190,6 @@ services/         pattern simulators (steps 2–8, not started)
 docs/             plan, architecture, and per-pattern talk tracks
 tests/            `python tests/test_tasks.py` — task-runner guardrails, no Docker needed
 tasks.py          the task runner — one implementation, every platform
-tasks.cmd         2-line Windows forwarder    (tasks up)
 Makefile          2-line Linux/macOS forwarder (make up)
 ```
 
