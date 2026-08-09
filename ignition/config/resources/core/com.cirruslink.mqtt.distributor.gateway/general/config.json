@@ -1,0 +1,14 @@
+{
+  "allowAnonymousConnections": false,
+  "customProperties": "{}",
+  "enableDistributor": false,
+  "enableSecureWebsocket": false,
+  "enableTcp": true,
+  "enableTls": false,
+  "enableWebsocket": true,
+  "enforceUniqueLwtTopic": false,
+  "port": 1883,
+  "securePort": 8883,
+  "secureWebsocketPort": 9443,
+  "websocketPort": 8090
+}

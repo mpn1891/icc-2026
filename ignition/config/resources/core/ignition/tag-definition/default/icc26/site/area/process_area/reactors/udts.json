@@ -1,0 +1,33 @@
+[
+  {
+    "name": "reactor1",
+    "tagType": "UdtInstance",
+    "typeId": "bioreactor",
+    "tags": [
+      {
+        "name": "asset_data",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "name": "agitator_vibration",
+            "parameters": {
+              "channel_index": {
+                "dataType": "Integer",
+                "value": 0
+              },
+              "gw_serial": {
+                "dataType": "String",
+                "value": "12345678"
+              },
+              "resolution": {
+                "dataType": "Integer",
+                "value": 512
+              }
+            },
+            "tagType": "AtomicTag"
+          }
+        ]
+      }
+    ]
+  }
+]

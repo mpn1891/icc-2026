@@ -1,0 +1,72 @@
+{
+  "profile": {
+    "readOnly": false,
+    "type": "com.inductiveautomation.OpcUaServerType"
+  },
+  "settings": {
+    "advanced": {
+      "acknowledgeTimeout": 5000,
+      "browseOrigin": "OBJECTS_FOLDER",
+      "connectTimeout": 5000,
+      "deprecatedDataTypeDictionarySupport": false,
+      "maxArrayLength": 2147483647,
+      "maxMessageSize": 33554432,
+      "maxNotificationsPerPublish": 65535,
+      "maxPendingPublishRequests": 2,
+      "maxPerOperation": 8192,
+      "maxReferencesPerNode": 8192,
+      "maxStringLength": 2147483647,
+      "requestTimeout": 60000,
+      "sessionTimeout": 120000,
+      "timestampSource": "OPC_PREFER_SOURCE"
+    },
+    "authentication": {
+      "authenticationType": "USERNAME",
+      "password": {
+        "data": {
+          "ciphertext": "gL-NdUO5vOgyJg",
+          "encrypted_key": "5Qf3AIcsDXukEgCQZj4fM62f0DcMHhu_T-YnVP-uAlXADNVOonv07g",
+          "iv": "xAqC0PQXdhwq5xId",
+          "protected": "eyJhbGciOiJBMjU2S1ciLCJlbmMiOiJBMjU2R0NNIiwiaWF0IjoxNzg2MTE3MDEzLCJ6aXAiOiJERUYifQ",
+          "tag": "b279OW86j-aKZm2VamU-ag"
+        },
+        "type": "Embedded"
+      },
+      "username": "opcuauser"
+    },
+    "configVersion": 2,
+    "endpoint": {
+      "discoveryUrl": "opc.tcp://localhost:62541/discovery",
+      "endpointUrl": "opc.tcp://localhost:62541",
+      "hostOverride": "",
+      "securityMode": "SignAndEncrypt",
+      "securityPolicy": "Basic256Sha256"
+    },
+    "failover": {
+      "discoveryUrl": "",
+      "enabled": false,
+      "endpointUrl": "",
+      "hostOverride": "",
+      "threshold": 3
+    },
+    "keepAlive": {
+      "failuresAllowed": 1,
+      "interval": 15000,
+      "timeout": 10000
+    },
+    "security": {
+      "certificateValidationEnabled": true,
+      "keyStoreAlias": "client",
+      "keyStoreAliasPassword": {
+        "data": {
+          "ciphertext": "vaWh9OyZcz6Ycg",
+          "encrypted_key": "H6-zpwR3_e-HpQ7dZm-fQIFSlvbNMgiokLO-YG2rvNCZnSN7j4BlLw",
+          "iv": "tnoN03xjTqsqcF30",
+          "protected": "eyJhbGciOiJBMjU2S1ciLCJlbmMiOiJBMjU2R0NNIiwiaWF0IjoxNzg2MTE3MDEzLCJ6aXAiOiJERUYifQ",
+          "tag": "MsC6SQSYdO-mA2mYdUSi3g"
+        },
+        "type": "Embedded"
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "defaultNamespace": "Sparkplug B",
+  "orderIndex": 0,
+  "regex": false,
+  "replacement": "_",
+  "source": "."
+}

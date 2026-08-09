@@ -1,0 +1,13 @@
+{
+  "ACLs": "RW #",
+  "password": {
+    "data": {
+      "ciphertext": "LoKSoLJFWHbPmA",
+      "encrypted_key": "reefVMbI-vCGSxtevk4zg4hJiwcRVKEvwVqqAnZ_PJJBCCdhO1kSgA",
+      "iv": "7ak7gUBSsFNWr6d_",
+      "protected": "eyJhbGciOiJBMjU2S1ciLCJlbmMiOiJBMjU2R0NNIiwiaWF0IjoxNzg2MTE3MDEyLCJ6aXAiOiJERUYifQ",
+      "tag": "3Kp9v-iFHH_E6i41ooDp5A"
+    },
+    "type": "Embedded"
+  }
+}

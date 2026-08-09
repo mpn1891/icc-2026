@@ -1,0 +1,33 @@
+{
+  "clientIdentifierType": "UUID",
+  "dataFormatTypeWrapper": "Sparkplug_B_v1_0_Protobuf",
+  "hostnameVerification": true,
+  "keepAlive": 30,
+  "password": {
+    "data": {
+      "ciphertext": "lunIAc-Cb3H5hgRo_BBYTuTV",
+      "encrypted_key": "ZuommSotgSqTjMLGmZbY2jetj6kkmGsHiub9lVNyAfl-IwiVQtvH3g",
+      "iv": "WUIdmoBd5p-vWkG0",
+      "protected": "eyJhbGciOiJBMjU2S1ciLCJlbmMiOiJBMjU2R0NNIiwiaWF0IjoxNzg2MTIzODQ4LCJ6aXAiOiJERUYifQ",
+      "tag": "6-xrZm80_iRf4qeiNrdZmA"
+    },
+    "type": "Embedded"
+  },
+  "reconnectDelay": 1000,
+  "rpcHostnameVerification": true,
+  "rpcPassword": {
+    "data": {
+      "ciphertext": "C2VZtPjObdHV9SHWgguTK4a0",
+      "encrypted_key": "YguAfEboQFgybUkM9U260GxLYXgY-NdgVD6adLcAHzfqiwxCafQkWw",
+      "iv": "t74t8tLRUYUPLbn0",
+      "protected": "eyJhbGciOiJBMjU2S1ciLCJlbmMiOiJBMjU2R0NNIiwiaWF0IjoxNzg2MTg5ODc0LCJ6aXAiOiJERUYifQ",
+      "tag": "eaiGGju0X4oESCuUU1PY4g"
+    },
+    "type": "Embedded"
+  },
+  "rpcUsername": "ign-transmission",
+  "serverSet": "Default",
+  "subscribeToLegacyStateTopic": true,
+  "url": "tcp://chariot:1883",
+  "username": "ign-transmission"
+}
