@@ -39,6 +39,11 @@
     ]
   },
   {
+    "name": "git_test",
+    "tagType": "UdtType",
+    "typeId": null
+  },
+  {
     "name": "vibration_sensor",
     "parameters": {
       "channel_index": {
