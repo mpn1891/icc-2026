@@ -8,5 +8,5 @@
   "legacyStateHostnameVerification": true,
   "serverSet": "Default Set",
   "url": "tcp://chariot:1883",
-  "username": "admin"
+  "username": ""
 }

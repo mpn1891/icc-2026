@@ -1,18 +1,19 @@
 # Status & handoff
 
-> **Written 2026-08-09**, at the end of the session that executed Part 1 Phases A and B of
-> [`00-master-plan.md`](00-master-plan.md). Conference is ~5 weeks out.
+> **Rewritten 2026-08-09**, at the end of the session that cut Phase C down and executed
+> Phase D. Conference is ~5 weeks out.
 >
-> **Resume at Part 1 Phase C.** Nothing is committed yet — the repo still has 0 commits.
+> **Resume with the clone test:** [`00-clone-test.md`](00-clone-test.md). It is written to be
+> handed to a fresh session with no other context.
 
 ## Read these first, in this order
 
-1. [`00-master-plan.md`](00-master-plan.md) — the approved plan. Still the authority on *what*
-   to build. Phases A and B are now done; treat their sections as history, not instructions.
-2. This file — what actually happened, including findings that contradict the plan.
-3. [`../00-architecture.md`](../00-architecture.md) — settled architectural truth (baked
-   modules, two-pass seed, manual commissioning, Chariot trial API). Updated this session with
-   the seed state machine and the config-reload reality.
+1. This file — where things actually stand.
+2. [`00-clone-test.md`](00-clone-test.md) — the next task, self-contained.
+3. [`00-master-plan.md`](00-master-plan.md) — the approved plan, still the authority on Part 2.
+   **Phases A, B and D are done; Phase C was cut down and no longer matches what is written
+   there.** Treat those sections as history.
+4. [`../00-architecture.md`](../00-architecture.md) — settled architectural truth.
 
 Where this file and the master plan disagree, **this file is newer**.
 
@@ -22,173 +23,210 @@ Where this file and the master plan disagree, **this file is newer**.
 
 ### Done — Part 1 Phase A (`tasks.py` lifecycle + guardrails)
 
-- **A1** `main()` propagates handler results (`False` → exit 1, else 0). `task_health`,
-  `task_scan`, `task_trial` return real booleans. `up` exits non-zero when the stack comes up
-  unhealthy — deliberate, so the Phase E tests can be scripted.
-- **A2** `verify-modules` hard-gates `seed` and `up` with a `compose/ignition/MODULES.md`
-  pointer. `init` stays warn-only (it is what you run *before* fetching the modules).
-- **A3** Seed is now a state machine over two axes — does `<project>_ign-data` exist, and is
-  `ignition/config` populated. Full seed / clone seed / already-seeded / half-initialized. New
-  `task_export_identity()` copies only the three gitignored identity paths and never touches
-  committed config. Helpers: `compose_project()`, `data_volume()`, `volume_exists()`.
-- **A4** `up` gates on volume existence; the config-populated check is now secondary.
-- **A5** README, `ignition/README.md` and `docs/00-architecture.md` describe the real
-  clone → drop `.modl` → `init` → `seed` → `up` flow. All "directories are empty until seed"
-  claims removed.
+- **A1** `main()` propagates handler results (`False` → exit 1, else 0). `up` exits non-zero
+  when the stack comes up unhealthy — deliberate, so Phase E can be scripted.
+- **A2** `verify-modules` hard-gates `seed` and `up`. `init` stays warn-only.
+- **A3** Seed is a state machine over two axes — does `<project>_ign-data` exist, and is
+  `ignition/config` populated. `task_export_identity()` copies only the gitignored identity
+  paths.
+- **A4** `up` gates on volume existence.
+- **A5** README and architecture docs describe the real clone → `.modl` → `init` → `seed` → `up`
+  flow.
 
 ### Done — Part 1 Phase B (config/compose edits)
 
-All seven items (B1–B7) landed. Notable specifics:
+All seven items landed. `systemName` is `ICC26-Ignition` with `hostname: icc26-ignition` pinned
+in both compose files. Sparkplug IDs are `ICC26-Site1-USP` / `USP-EDGE-01`. Chariot pinned to
+3.0.1. Healthchecks on ignition (`/StatusPing`) and chariot (root, no `curl -f`).
 
-- `systemName` is `ICC26-Ignition`, with `hostname: icc26-ignition` pinned in **both** compose
-  files so the entrypoint stops deriving it from the container ID.
-- Sparkplug IDs are `ICC26-Site1-USP` / `USP-EDGE-01`.
-- Chariot pinned to **3.0.1** (read from `/Chariot/version.properties` in the running
-  container). `CHARIOT_MQTTS_PORT` defaults to 18883 in both `.env.example` and compose.
-- Healthchecks added for ignition (`/StatusPing`) and chariot (root, **without** `curl -f` —
-  it is an authenticated UI and a 401 is still a live broker). `curl` confirmed present in both
-  images. Caveat recorded in-file: `/StatusPing` reports RUNNING during commissioning, so
-  healthy ≠ commissioned.
+### Phase C — cut down, mostly not done
 
-### Not started
+**C1 (Secret Provider) and C2 (Embedded → Referenced) were cut.** See finding 3 below for why.
+Nothing was built for either, and the four Cirrus/OPC config files still hold `Embedded`
+ciphertext. That is now the intended state, not a blocker.
 
-- **Part 1 Phase C** (empirical, gateway UI) — resume here.
-- **Part 1 Phase D** (first commit + GitHub remote) and **Phase E** (round-trip, fresh-clone
-  acid test, guardrail negatives).
-- **All of Part 2** — the eight per-pattern spec docs and every pattern build.
+Consequences to clean up when convenient:
 
----
+- `docker-compose.yml` passes `MQTT_ENGINE_PASSWORD`, `MQTT_TRANSMISSION_PASSWORD`,
+  `MQTT_DISTRIBUTOR_PASSWORD` and `ICC26_DB_PASSWORD` into the Ignition container for a Secret
+  Provider that will never exist. **Dead weight — remove them.** `.env.example` documents them
+  in the same terms and needs the same treatment.
 
-## Resume here: Phase C
+Still outstanding:
 
-Phase C is UI-then-commit work against the running stack. **Never hand-author an unknown
-gateway schema** — create it in the UI once, read the files `git status` reveals, commit those.
+- **C3** Postgres JDBC datasource `ICC26` → `jdbc:postgresql://postgres:5432/icc26`, user
+  `icc26`. Password can just be Embedded now. Patterns 6/7 need it and the README already
+  claims it exists.
+- **C4** `python tasks.py hash-modules` → paste sha256s into `modules.manifest.json`. Not
+  urgent: `verify-modules` skips the hash check when the field is blank (`tasks.py:439`).
+- **C5** Ignition 8.3 API key, so `scan` and `reset-trial` work. Gateway UI → Platform →
+  Security → API Keys → `IGNITION_API_TOKEN` in `.env`; over plain HTTP also disable *Require
+  secure connections for API Keys*.
 
-The master plan lists C1–C4. This session added a fifth. Suggested order:
+**MQTT Engine was fixed by hand this session and now connects.** `url` is `tcp://chariot:1883`,
+the password block is gone, and `username` is `""` — so it connects anonymously. That works
+only because `allowAnonymous` is currently true; see finding 5.
 
-1. **C1 — Secret Provider.** Gateway UI → create an environment-variable-backed provider named
-   `env`. The four variables are already being passed into the container (`MQTT_ENGINE_PASSWORD`,
-   `MQTT_TRANSMISSION_PASSWORD`, `MQTT_DISTRIBUTOR_PASSWORD`, `ICC26_DB_PASSWORD`) — see
-   `docker-compose.yml`. If 8.3.8 has no env-var provider type, fall back to a file-based
-   provider over a bind-mounted secrets file and record the deviation.
-   Note `/usr/local/bin/ignition/ignition-secrets-tool.sh` exists in the image and was not
-   investigated — it may be relevant.
-2. **C2 — Convert Embedded secrets to Referenced.** Four files currently hold
-   `"type": "Embedded"` JWE ciphertext, encrypted with a gitignored gateway-local key. **This
-   is the single biggest blocker to sharing**: a teammate's clone gets ciphertext their gateway
-   cannot decrypt, and MQTT auth fails silently while `tasks.py health` still prints green
-   (health checks Chariot's listener, not Ignition's connection to it).
-   - `.../com.cirruslink.mqtt.engine.gateway/server/Chariot SCADA/config.json` — also fix
-     `url` from `tcp://localhost:1883` → `tcp://chariot:1883`, and try username `ign-engine`
-     (currently `admin`). If the `ign-engine` ACL breaks Engine, keep `admin` and note it.
-   - `.../com.cirruslink.mqtt.transmission.gateway/server/chariot_broker/config.json` —
-     `password` **and** `rpcPassword`.
-   - `.../com.cirruslink.mqtt.distributor.gateway/user/admin/config.json`.
-   - `.../ignition/opc-connection/Ignition OPC UA Server/config.json` — **not in the master
-     plan.** Decide whether to convert it; Pattern 3 uses OPC UA.
+### Done — Part 1 Phase D (first commit + remote)
 
-   Exit check: `grep -r '"type": "Embedded"' ignition/config` returns nothing, both modules
-   show connected in the gateway UI and in Chariot's client list.
-3. **C3 — Postgres JDBC datasource** `ICC26` → `jdbc:postgresql://postgres:5432/icc26`, user
-   `icc26`, password as a Referenced secret (`ICC26_DB_PASSWORD`, already `icc26` in the init
-   SQL). Verify Valid. Patterns 6/7 need it and the README already claims it exists.
-4. **C5 (new) — Ignition 8.3 API key**, so `tasks.py scan` works. See the finding below.
-   Gateway UI → Platform → Security → API Keys; put the value in `.env` as `IGNITION_API_TOKEN`
-   (the plumbing is already written); over plain HTTP also disable *Require secure connections
-   for API Keys*. Then confirm `python tasks.py scan` exits 0.
-5. **C4 — Module hashes.** `python tasks.py hash-modules` → paste sha256s into
-   `compose/ignition/modules.manifest.json` → `verify-modules` green.
+Five commits on `main`, pushed to <https://github.com/mpn1891/icc-2026>. 946 tracked files.
+Split as planned: tooling/infra first, Ignition config+projects second.
 
-After C, go to Phase D (commit + push), then run E1 and E2 back-to-back — one `nuke`, one
-browser commissioning round-trip, and the clone test then proves A, B and C together.
+Not done: **teammates have not been added as collaborators**, and repo visibility was never
+confirmed. `gh` is not installed on this machine, so D3 was completed by hand.
+
+### Next — Part 1 Phase E
+
+[`00-clone-test.md`](00-clone-test.md). E2 + E3, plus the part of E1 that can be proven without
+destroying the working stack. **E1 proper is deliberately deferred** — do not `nuke` the main
+checkout to test something the clone test already answers more realistically.
 
 ---
 
 ## Findings that are NOT in the master plan
 
-These were discovered empirically this session. They change how the tooling and the teammate
-workflow behave.
-
 ### 1. `tasks.py scan` has never worked, and there is no file watcher
 
-Two independent problems, both verified directly:
+Unchanged from the previous session, still true:
 
-- `POST /data/api/v1/scan/{config,projects}` returns **401** to the admin password. Ignition
-  8.3 guards those routes with an API key sent as `X-Ignition-API-Token`, not Basic auth, and
-  refuses keys over plain HTTP unless *Require secure connections for API Keys* is disabled.
-- **The gateway does not watch `data/config`.** Tested: edited `systemName` on disk on a
-  running gateway, waited, got zero log activity and no effect until restart. Any workflow
-  assuming a watcher is wrong.
+- `POST /data/api/v1/scan/{config,projects}` returns **401** to the admin password. It needs an
+  API key as `X-Ignition-API-Token` (C5).
+- **The gateway does not watch `data/config`.** Verified: edited `systemName` on disk on a
+  running gateway, zero effect until restart.
 
-Nobody caught this because `main()` used to return 0 unconditionally.
+**Until C5 is done, apply a pulled config change with `python tasks.py restart ignition`.**
 
-**Until C5 is done, the only way to apply a pulled config change is
-`python tasks.py restart ignition`.** `tasks.py` already sends the token when
-`IGNITION_API_TOKEN` is set, and otherwise fails with a 401 that explains itself. README,
-`ignition/README.md` and `docs/00-architecture.md` have been corrected to say this.
+### 2. The trial route — solved
 
-### 2. `tasks.py trial` cannot read the Ignition clock
+`GET /data/api/v1/license-status` returns 404 because **it is the wrong path**, not because of
+auth. The real routes, read out of `LicensingRoutes` in the gateway jar and confirmed live:
 
-`GET /data/api/v1/license-status` returns **404** on 8.3.8 — wrong path for this build, not an
-auth problem. The Chariot half works. So the Ignition trial clock is currently readable only
-from the gateway UI, which is half your stage-time visibility. **Unresolved; needs its own
-investigation.** `reset-trial` posts to the same path and is presumably broken the same way.
+- `GET /data/api/v1/trial` — **works on plain basic auth**, returns `licenseMode`, `trialState`,
+  `trialSecondsLeft`, `expired`.
+- `POST /data/api/v1/trial` — resets. Requires WRITE, so it needs C5's API key.
 
-### 3. Deviations from the master plan as written
+**`tasks.py` has not been fixed yet.** `task_trial()` and `task_reset_trial()` still point at
+`license-status`. This is a small, self-contained fix and it restores half your stage-time
+visibility with no API key needed.
 
-- **`POSTGRES_DEMO_PASSWORD` was deleted** from `.env.example`, which the plan did not list.
-  `ICC26_DB_PASSWORD` now covers that secret; keeping both would recreate the two-sources-of-
-  truth problem B4 exists to remove.
-- **A third `Edge Nodes` directory exists** that the plan's two gitignore patterns do not
-  cover: `.../tag-definition/MQTT Engine/Engine Info/Edge Nodes/`. It holds only a
-  `unary-resource.json` folder definition with no per-node children, so it is **deliberately
-  still tracked**. The patterns are anchored paths, which is what makes that work — verified
-  with `git check-ignore -v`. Do not "fix" this by broadening them.
-- `README.md:30`'s dead modules link was fixed during A5 rather than B6; B6 then cleaned up the
-  remaining three.
+### 3. There is no environment-variable Secret Provider in 8.3.8 — and C1/C2 were cut
 
-### 4. Environment facts worth not rediscovering
+Ignition 8.3.8 ships exactly three provider types: `internal`, `file` (8.3.5+), `remote`
+(8.3.3+). There is **no env-var provider**. The plan assumed one existed.
 
-- Chariot version lives at `/Chariot/version.properties` inside the container (currently 3.0.1).
-  The image carries no version label and the tag was `latest`.
-- `curl` exists in **both** the Ignition and Chariot images. Chariot also has `wget` and `nc`.
-- `gwcmd.sh` has no config-reload/scan command. `ignition-util.sh` refuses to run standalone.
-- Git Bash mangles container paths in `docker exec` (`/Chariot/...` becomes
-  `C:/Program Files/Git/Chariot/...`). Prefix with `MSYS_NO_PATHCONV=1` and use `//Chariot/...`.
-- `docker exec <ctr> test -e <path>` gives false negatives — there is no `test` binary. Use
+The fallback would have been the `file` provider over a bind-mounted secrets directory. It was
+cut instead, on this basis: **this gateway has no encryption key files at all.** There is no
+`data/config/ignition/keys`, no `root.json`, no `kek.json` anywhere on the filesystem. Reading
+`SystemEncryptionServiceFactory`, that is what happens when `IGNITION_ROOT_KEY_PASSWORD` is
+unset — the gateway falls back to `DefaultSystemEncryptionService`, whose key is built into the
+jar rather than generated per machine.
+
+If that holds, committed `Embedded` ciphertext decrypts on any 8.3.8 gateway that also has no
+root key password, and C2 was solving a problem that does not exist.
+
+> **This is inferred from bytecode, not proven.** Checkpoint 5 of the clone test is the verdict.
+> If it fails, C1 and C2 come back onto the plan — and the failure mode is silent, because
+> `health` stays green while Ignition's MQTT auth fails.
+
+### 4. `allowAnonymous` is now `true`, deliberately and temporarily
+
+Set for the initial rollout so the team can develop without credential friction. The six ACL'd
+accounts in `mqtt-users.json` are still seeded and still work.
+
+Deleting the users instead was considered and rejected: `MQTT_USERS` applies on first run only,
+so re-adding them later would mean a `nuke` or hand-building six ACLs in the Chariot UI.
+Flipping the boolean back is one line plus `restart chariot`. `compose/chariot/README.md` has a
+"before the talk" reminder.
+
+### 5. Chariot still validates credentials that ARE supplied
+
+Anonymous access only helps clients that supply *no* credentials. Demonstrated the hard way:
+MQTT Engine, left on `username: admin` with no password, was rejected every 3 seconds —
+
+```
+CONNECT - Bad username and/or password. username true:admin, password false:*****
+```
+
+— and looped like that behind a green `health` check. Fixed this session by setting `username`
+to `""`, at which point it connected and stayed connected.
+
+Two things follow. **Anonymous did not paper over a bad credential, which is good news** — it
+means the clone test's checkpoint 5 is still a valid test of the secrets question. And **Engine
+is now riding on anonymous access**, so it is on the "before the talk" list: when
+`allowAnonymous` goes back to `false`, Engine needs `ign-engine` and its password, or it starts
+looping again. `compose/chariot/README.md` carries that reminder.
+
+### 6. MQTT Transmission connects, but fails to subscribe
+
+Transmission reaches Chariot fine as `ign-transmission` at `tcp://chariot:1883` — which also
+confirms its `Embedded` password is valid on the gateway that encrypted it. But immediately
+after:
+
+```
+E [c.c.m.t.g.TransmissionClient] Failed to subscribe to TARGET elements
+```
+
+Unexplained. Possibly the `ign-transmission` ACL, possibly transmitter config. **Not yet
+investigated.**
+
+### 7. `export-config` was a footgun and is gone from the CLI
+
+It `_rmtree`s `ignition/config` and `ignition/projects` before copying, and the normal stack
+bind-mounts both — so `python tasks.py export-config` deleted the files it was about to copy.
+The function survives because `seed` calls it legitimately against the seed container, which
+runs without those mounts; it now defaults to `icc26-ignition-seed`.
+
+`tasks.cmd` was also removed — `python tasks.py` works everywhere.
+
+### 8. Two checkouts cannot run at the same time
+
+`container_name` is pinned in `docker-compose.yml`, the network is pinned (`name: icc26`), and
+host ports come from `.env`. A second stack collides on all three regardless of
+`COMPOSE_PROJECT_NAME`. The project name separates **volumes only** — which is still exactly
+why you set it in a scratch clone.
+
+### 9. Environment facts worth not rediscovering
+
+- Chariot version lives at `/Chariot/version.properties` (3.0.1). No image label.
+- `curl` exists in both images. Chariot also has `wget` and `nc`.
+- The Ignition image ships a **JRE, not a JDK** — no `javac`, no `jshell`. `java Foo.java` fails
+  with "Module jdk.compiler not in boot Layer".
+- `ignition-secrets-tool.sh` only manages root/KEK keys. It cannot encrypt or decrypt a value.
+- Git Bash mangles container paths in `docker exec` (`/Chariot/...` →
+  `C:/Program Files/Git/Chariot/...`). Use `MSYS_NO_PATHCONV=1` and `//Chariot/...`, or
+  PowerShell.
+- `docker exec <ctr> test -e <path>` gives false negatives — no `test` binary. Use
   `sh -c '[ -e ... ]'`.
 
 ---
 
 ## Verification status — what is proven vs assumed
 
-**Proven this session:**
+**Proven:**
 
-- The A1–A4 state machine, via `tests/test_tasks.py` — 21 checks covering the four matrix
-  cells, both module gates, both `up` gates and the exit-code plumbing. Stubs only the
-  functions that shell out, so it needs no Docker and runs anywhere:
-  `python tests/test_tasks.py`. Re-run it after touching `tasks.py`.
-- Against the real environment: `seed` refuses correctly when already seeded (exit 1); `up`
-  refuses with an unseeded project name without invoking compose (exit 1); clone-path selection
-  resolves correctly for an unseeded project; `up` on the live stack exits 0 with health green;
-  all three identity source paths exist in the container; both new healthchecks pass; the
-  gitignore patterns match exactly the intended paths and nothing else.
+- The A1–A4 state machine, via `tests/test_tasks.py` — 21 checks, no Docker needed:
+  `python tests/test_tasks.py`. Re-run after touching `tasks.py`. Still passing.
+- `GET /data/api/v1/trial` returns 200 on basic auth; `POST` returns 401.
+- Chariot accepts anonymous connections and still rejects bad supplied credentials.
+- MQTT Transmission connects to Chariot; MQTT Engine does not.
+- The first-commit audit: 946 files, no `.env`, no `.modl`, no `local/`, no `valueStore.idb`,
+  no `.resources/`.
 
 **Assumed, not proven:**
 
-- **The clone-seed happy path has only ever been stub-tested.** No real gateway has taken that
-  branch. This is E1's job and it is the highest-risk unverified thing in Part 1.
-- Whether Ignition 8.3 regenerates the three identity paths gracefully when absent. The export
-  is cheap insurance either way; a missing source warns and continues.
+- **`Embedded` ciphertext is portable between gateways.** The entire basis for cutting C1/C2.
+  Inferred from bytecode. Clone test checkpoint 5.
+- **The clone-seed happy path.** Stub-tested only; no real gateway has taken that branch. Clone
+  test checkpoint 1, and the highest-risk unverified thing in Part 1.
+- Whether Ignition 8.3 regenerates the three identity paths gracefully when absent.
 
 ---
 
 ## Repo state
 
-- **0 commits, branch `main`, no remote.** 944 files would be added by a first commit.
-- Audited clean: no `.env`, no `.modl`, no `local/`, no `valueStore.idb`, no edge-node churn
-  trees. `.resources/` is correctly ignored — it caches Embedded ciphertext, so this matters.
-- Still uncommittable-as-is: the four Embedded secret files (C2).
+- **5 commits on `main`**, pushed to <https://github.com/mpn1891/icc-2026>. 946 tracked files.
+- Working tree clean as of this rewrite.
+- The four `Embedded` secret files are committed **on purpose** now — that is the C1/C2 cut.
 
 ## Working rules
 
@@ -198,13 +236,17 @@ investigation.** `reset-trial` posts to the same path and is presumably broken t
   `valueStore.idb`, `.modl` files, or `.env`.
 - **Unknown gateway schemas: UI first, then read `git status`, then commit.** Known formats
   (tags, project scripts, WebDev, Perspective views) can be authored as files.
-- **Changed `.env` secrets need `python tasks.py restart ignition`**, not `scan` — env vars are
-  read once at process start.
+- **Changed `.env` secrets need `python tasks.py restart ignition`**, not `scan`.
+- **`health` green does not mean MQTT works.** It checks Chariot's listener, not Ignition's
+  client connection to it. Engine has been failing behind a green `health` all day.
 
 ## Open questions for Matt
 
-1. Convert the fourth Embedded secret (`Ignition OPC UA Server`) in C2, or leave it?
-2. How hard to chase the `license-status` 404 — it is the Ignition trial clock, and the talk
-   depends on knowing how much time is left on stage.
-3. Keep `up` exiting non-zero when health fails? It is honest and makes E2 scriptable, but it
-   means a Chariot trial lapse turns `up` red.
+1. **Transmission's "Failed to subscribe to TARGET elements"** — how hard to chase before the
+   pattern work starts. It connects, so it may not block anything yet.
+2. **Keep `up` exiting non-zero when health fails?** Still open from last session. Honest and
+   makes E2 scriptable, but a trial lapse turns `up` red.
+3. **The OPC UA connection** (`ignition/opc-connection/Ignition OPC UA Server/config.json`)
+   holds two `Embedded` secrets, one of them paired with a keystore in gitignored `local/`. With
+   C2 cut it stays as-is, but if the clone test shows the loopback OPC UA connection faulted on
+   the clone, it needs its own decision. Pattern 3 uses OPC UA.
