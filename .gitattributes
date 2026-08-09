@@ -1,0 +1,16 @@
+# The team spans Windows and Linux, and this repo bind-mounts text files straight
+# into Linux containers. Ignition config files, shell scripts, and SQL must not
+# acquire CRLF on the way through a Windows checkout.
+* text=auto eol=lf
+
+# Batch files are the one place CRLF is correct -- cmd.exe mis-parses labels and
+# goto targets in LF-only files.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Never touch these.
+*.modl binary
+*.gwbk binary
+*.png binary
+*.jpg binary
+*.zip binary

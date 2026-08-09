@@ -1,0 +1,206 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ICC 2026 — data transaction & event patterns demo stack
+#
+#   python tasks.py seed     first run only, see docs/00-architecture.md § Seeding
+#   python tasks.py up
+#
+# No compose profiles. The whole stack runs all the time — during the talk you
+# move between patterns live, and a forgotten --profile flag is a failure mode
+# nobody needs on stage. Iterate on one service with:
+#   docker compose up -d <service>  /  docker compose restart <service>
+#
+# The MQTT Distributor fallback is an Ignition *module*, not a container, so it
+# is toggled inside the gateway rather than here.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: ${COMPOSE_PROJECT_NAME:-icc26}
+
+services:
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # PostgreSQL — Ignition's SQL connection target, demo data, and the CDC source
+  # ───────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-17-alpine}
+    container_name: icc26-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:-postgres}
+      POSTGRES_DB: postgres
+      TZ: ${TZ:-America/Chicago}
+    # wal_level=logical is required for pattern 5 (CDC). It is a server start
+    # parameter, so getting it wrong later means dropping the data volume — which
+    # is exactly why it is set on day one rather than when pattern 5 is built.
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=4
+      - -c
+      - max_wal_senders=4
+      - -c
+      - wal_sender_timeout=0
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs once, on an empty volume only.
+      - ./compose/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPERUSER:-postgres} -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [icc26]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Chariot MQTT Server — the event backbone
+  #
+  # Standalone on purpose. The talk's thesis is "seven mechanisms, one backbone";
+  # if the broker lived inside Ignition then Ignition would be both the backbone
+  # and half the clients, and restarting it would take the demo down with it.
+  # ───────────────────────────────────────────────────────────────────────────
+  chariot:
+    image: cirruslink/chariot:${CHARIOT_VERSION:-latest}
+    container_name: icc26-chariot
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "true"
+      ADMIN_PASSWORD: ${CHARIOT_ADMIN_PASSWORD:-password}
+      # Applied on first run only — Chariot persists users into its own store.
+      # See compose/chariot/README.md.
+      MQTT_USERS: /config/mqtt-users.json
+      # allowAnonymous is true *for now*, deliberately and temporarily. The six
+      # ACL'd accounts above still get seeded on first run and still work; this
+      # only means a client may also connect without credentials. It buys the
+      # team a rollout where nobody debugs a silent ACL rejection while writing
+      # their first pattern service.
+      #
+      # Turning it back off before the talk is this one boolean plus
+      # `python tasks.py restart chariot` -- SERVER_CONFIG is read at container
+      # start. Deleting the users instead would NOT have been reversible that
+      # cheaply: MQTT_USERS applies on first run only, so re-adding them later
+      # would mean a `nuke` or hand-building six ACLs in the Chariot UI.
+      # See compose/chariot/README.md.
+      SERVER_CONFIG: >-
+        {"port":1883,
+         "securePort":8883,
+         "enableNonSecure":true,
+         "enableSecure":true,
+         "allowAnonymous":true,
+         "bindAddress":"0.0.0.0",
+         "webSocketEnable":true,
+         "webSocketPort":8090}
+      TZ: ${TZ:-America/Chicago}
+    volumes:
+      - chariot-config:/config
+      - ./compose/chariot/mqtt-users.json:/config/mqtt-users.json:ro
+    ports:
+      - "${CHARIOT_MQTT_PORT:-1883}:1883"      # MQTT
+      - "${CHARIOT_MQTTS_PORT:-18883}:8883"    # MQTT over TLS (host side moved, see .env.example)
+      - "${CHARIOT_WS_PORT:-8090}:8090"        # MQTT over WebSocket — the firehose view
+      - "${CHARIOT_HTTP_PORT:-8081}:8080"      # web UI + REST
+      - "${CHARIOT_HTTPS_PORT:-8444}:8443"
+    # The web port answering proves nothing about the broker -- Chariot serves
+    # its UI happily while the MQTT listener stays shut for want of a trial.
+    # This is a liveness check only; `tasks.py health` checks the listener.
+    healthcheck:
+      # No -f on purpose. The root path answers 2xx today, but it is an
+      # authenticated UI and a 401 is still a perfectly alive Chariot. Without
+      # -f, curl fails only when nothing is listening -- which is the question.
+      test: ["CMD-SHELL", "curl -sS -o /dev/null http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks: [icc26]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Ignition 8.3 gateway
+  #
+  # data/config and data/projects are bind-mounted from this repo — that is the
+  # whole config-as-code story. Everything else under data/ is runtime state
+  # living in the named volume and is gitignored.
+  #
+  # This service will NOT come up correctly against a fresh ign-data volume.
+  # Run `python tasks.py seed` first. See docs/00-architecture.md § Seeding.
+  # ───────────────────────────────────────────────────────────────────────────
+  ignition:
+    build:
+      context: ./compose/ignition
+      args:
+        IGNITION_VERSION: ${IGNITION_VERSION:-8.3.8}
+    image: icc26/ignition:${IGNITION_VERSION:-8.3.8}
+    container_name: icc26-ignition
+    # Pinned because the 8.3 entrypoint derives the gateway's default system name
+    # from the hostname. Left to Docker it is the container ID, which lands in
+    # committed config and changes on every rebuild -- a permanent diff for
+    # everyone. Matches "systemName" in
+    # ignition/config/resources/core/ignition/system-properties/config.json.
+    hostname: icc26-ignition
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ACCEPT_IGNITION_EULA: "Y"
+      IGNITION_EDITION: ${IGNITION_EDITION:-standard}
+      GATEWAY_ADMIN_USERNAME: ${IGNITION_ADMIN_USERNAME:-admin}
+      GATEWAY_ADMIN_PASSWORD: ${IGNITION_ADMIN_PASSWORD:-password}
+      # NB: GATEWAY_MODULE_RELINK and the /modules bind-mount convention are
+      # 8.1-era. The 8.3 entrypoint handles neither. See the volumes below.
+      IGNITION_UID: ${IGNITION_UID:-2003}
+      IGNITION_GID: ${IGNITION_GID:-2003}
+      TZ: ${TZ:-America/Chicago}
+      # Read by the gateway's environment-backed Secret Provider, so committed
+      # config can reference a secret by name instead of embedding ciphertext
+      # only this machine can decrypt. Deliberately absent from the seed compose
+      # file: that pass runs vanilla config that references none of them.
+      # Changing one needs a container restart -- `tasks.py scan` will not do it.
+      MQTT_ENGINE_PASSWORD: ${MQTT_ENGINE_PASSWORD:-ign-engine}
+      MQTT_TRANSMISSION_PASSWORD: ${MQTT_TRANSMISSION_PASSWORD:-ign-transmission}
+      MQTT_DISTRIBUTOR_PASSWORD: ${MQTT_DISTRIBUTOR_PASSWORD:-password}
+      ICC26_DB_PASSWORD: ${ICC26_DB_PASSWORD:-icc26}
+    volumes:
+      - ign-data:/usr/local/bin/ignition/data
+      # ── config as code ──
+      - ./ignition/config:/usr/local/bin/ignition/data/config
+      - ./ignition/projects:/usr/local/bin/ignition/data/projects
+      # NOTE: the Cirrus modules are NOT mounted. They are baked into the image
+      # (compose/ignition/Dockerfile) because bind-mounting into a subpath of
+      # the data volume stops Docker seeding data/config and data/projects.
+    ports:
+      - "${IGNITION_HTTP_PORT:-8088}:8088"
+      - "${IGNITION_HTTPS_PORT:-8043}:8043"
+    # CAVEAT: /StatusPing reports {"state":"RUNNING"} while the gateway is parked
+    # in commissioning serving only the setup wizard -- healthy here does NOT mean
+    # commissioned. `tasks.py health` makes that distinction; this only catches a
+    # gateway that is down or wedged.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8088/StatusPing || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    stop_grace_period: 45s
+    networks: [icc26]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Pattern services land here in steps 2–8:
+  #   sim-vibration    (pattern 1)  services/sim-vibration
+  #   opcua-novaflex   (pattern 3)  services/opcua-novaflex
+  #   lims             (patterns 4, 6, 7)  services/lims  — implementation TBD
+  #   debezium         (pattern 5)  quay.io/debezium/server
+  # ───────────────────────────────────────────────────────────────────────────
+
+volumes:
+  pgdata:
+  ign-data:
+  chariot-config:
+
+networks:
+  icc26:
+    name: icc26

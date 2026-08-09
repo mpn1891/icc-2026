@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Secrets and machine-local files
+# ─────────────────────────────────────────────────────────────────────────────
+.env
+*.gwbk
+**/certificates/*
+**/keystore/
+docker-compose.override.yml
+
+# Ignition instance-local config (machine-specific, never shared)
+ignition/config/local/
+ignition/config/resources/local/
+
+# MQTT diagnostic tag trees, auto-generated per edge node the gateway has seen.
+# Not configuration: the modules rebuild them at runtime, and they are keyed to
+# whatever edge nodes that particular machine has connected to. Committing them
+# means every gateway churns another machine's leftovers into every diff.
+# NB: these are anchored paths, so "MQTT Engine/Engine Info/Edge Nodes/" -- a
+# static folder with no per-node children -- stays tracked, as it should.
+ignition/config/resources/core/ignition/tag-definition/MQTT Engine/Edge Nodes/
+ignition/config/resources/core/ignition/tag-definition/MQTT Transmission/Transmission Info/Transmitters/*/Edge Nodes/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ignition 8.3 runtime state
+#
+# We bind-mount live gateway directories into this repo, so the gateway writes
+# here continuously. Only data/config and data/projects are source; everything
+# below is runtime state and must never be committed.
+# Derived from Inductive Automation's 8.3 version-control guide.
+# ─────────────────────────────────────────────────────────────────────────────
+**/db/*
+**/metricsdb/*
+**/autobackup/*
+**/db_backup_sqlite.idb
+**/valueStore.idb
+**/jar-cache/*
+**/var/
+**/logs/
+*.log
+**/request*
+**/response*
+*.tmp
+*.bak
+**/.resources/
+**/projects/conversion-report.txt
+**/migration-log-*.md
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Third-party modules — licensed binaries, fetched per compose/ignition/MODULES.md
+# ─────────────────────────────────────────────────────────────────────────────
+compose/ignition/modules/*.modl
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Python
+# ─────────────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Editors / OS
+# ─────────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

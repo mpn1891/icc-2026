@@ -1,0 +1,62 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Seed pass — run ONCE, on a fresh clone or after `tasks.py nuke`.
+#
+#   python tasks.py seed
+#
+# Why this file exists
+# ────────────────────
+# Ignition 8.3 seeds data/ from the image on first launch of an empty volume.
+# Bind-mounting empty host directories over data/config and data/projects at that
+# moment blocks the seeding and the gateway comes up broken.
+#
+# So: boot once on the named volume alone with NO config bind mounts, let Ignition
+# lay down its baseline, then copy data/config and data/projects out to ./ignition/
+# and switch to docker-compose.yml, which mounts them back in.
+#
+# It uses the SAME ign-data volume as docker-compose.yml, so the main stack
+# inherits the initialized gateway rather than starting over.
+#
+# Note this file has no postgres or chariot — seeding only needs the gateway.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: ${COMPOSE_PROJECT_NAME:-icc26}
+
+services:
+  ignition:
+    build:
+      context: ./compose/ignition
+      args:
+        IGNITION_VERSION: ${IGNITION_VERSION:-8.3.8}
+    image: icc26/ignition:${IGNITION_VERSION:-8.3.8}
+    container_name: icc26-ignition-seed
+    # Same hostname as the real service on purpose: the seed pass is what writes
+    # the gateway's name into the volume, so a different one here would bake a
+    # mismatch in on every fresh seed. See docker-compose.yml.
+    hostname: icc26-ignition
+    environment:
+      ACCEPT_IGNITION_EULA: "Y"
+      IGNITION_EDITION: ${IGNITION_EDITION:-standard}
+      GATEWAY_ADMIN_USERNAME: ${IGNITION_ADMIN_USERNAME:-admin}
+      GATEWAY_ADMIN_PASSWORD: ${IGNITION_ADMIN_PASSWORD:-password}
+      IGNITION_UID: ${IGNITION_UID:-2003}
+      IGNITION_GID: ${IGNITION_GID:-2003}
+      TZ: ${TZ:-America/Chicago}
+    volumes:
+      # ONLY the data volume. Nothing may be bind-mounted into a subpath of it
+      # during the seed pass -- doing so makes the volume non-empty and Docker
+      # then skips seeding data/config and data/projects from the image
+      # entirely. The Cirrus modules are baked into the image instead; see
+      # compose/ignition/Dockerfile.
+      - ign-data:/usr/local/bin/ignition/data
+    ports:
+      - "${IGNITION_HTTP_PORT:-8088}:8088"
+      - "${IGNITION_HTTPS_PORT:-8043}:8043"
+    stop_grace_period: 45s
+    networks: [icc26]
+
+volumes:
+  ign-data:
+
+networks:
+  icc26:
+    name: icc26

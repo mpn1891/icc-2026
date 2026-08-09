@@ -1,0 +1,39 @@
+{
+  "$comment": "Pins the exact third-party module bits every team member must run. tasks.py verify-modules checks compose/ignition/modules/ against this. Fill in sha256 after the first download (tasks.py hash-modules prints them).",
+  "ignitionVersion": "8.3.8",
+  "cirrusLinkVersion": "5.0.4",
+  "notes": [
+    "All Cirrus Link module versions MUST match exactly. Cirrus documents class-loading instability when they do not.",
+    "The 5.x line is the one compatible with Ignition 8.3.x. Do not use 4.x.",
+    "These are licensed binaries and are gitignored. See compose/ignition/MODULES.md."
+  ],
+  "modules": [
+    {
+      "id": "mqtt-engine",
+      "name": "MQTT Engine",
+      "file": "MQTT-Engine-signed.modl",
+      "version": "5.0.4",
+      "sha256": "",
+      "required": true,
+      "purpose": "Northbound consumer. Sparkplug B ingest (pattern 2) and Custom Namespace ingest for plain-MQTT payloads (pattern 1)."
+    },
+    {
+      "id": "mqtt-transmission",
+      "name": "MQTT Transmission",
+      "file": "MQTT-Transmission-signed.modl",
+      "version": "5.0.4",
+      "sha256": "",
+      "required": true,
+      "purpose": "Sparkplug B edge node (pattern 2) and the publish path for patterns 3-7."
+    },
+    {
+      "id": "mqtt-distributor",
+      "name": "MQTT Distributor",
+      "file": "MQTT-Distributor-signed.modl",
+      "version": "5.0.4",
+      "sha256": "",
+      "required": false,
+      "purpose": "In-gateway MQTT broker. NOT the primary broker - Chariot is. Present as break-glass fallback if Chariot's independent trial timer bites on stage. Disabled by default."
+    }
+  ]
+}

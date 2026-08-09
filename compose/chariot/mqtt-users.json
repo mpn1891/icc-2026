@@ -1,0 +1,61 @@
+[
+  {
+    "username": "ign-engine",
+    "password": "ign-engine",
+    "acl": {
+      "subscribeTopics": ["icc26/#", "spBv1.0/#"],
+      "publishTopics": ["spBv1.0/+/NCMD/#", "spBv1.0/+/DCMD/#", "icc26/+/+/+/+/cmd/#"]
+    }
+  },
+  {
+    "username": "ign-transmission",
+    "password": "ign-transmission",
+    "acl": {
+      "subscribeTopics": ["spBv1.0/+/NCMD/#", "spBv1.0/+/DCMD/#", "icc26/#"],
+      "publishTopics": ["spBv1.0/#", "icc26/#"]
+    }
+  },
+  {
+    "username": "vib-gateway",
+    "password": "vib-gateway",
+    "acl": {
+      "subscribeTopics": ["icc26/site1/utilities/pumpskid1/+/cmd/#"],
+      "publishTopics": [
+        "icc26/site1/utilities/pumpskid1/+/telemetry",
+        "icc26/site1/utilities/pumpskid1/+/waveform",
+        "icc26/site1/utilities/pumpskid1/+/state",
+        "icc26/site1/utilities/pumpskid1/+/ack"
+      ]
+    }
+  },
+  {
+    "username": "analyzer-bridge",
+    "password": "analyzer-bridge",
+    "acl": {
+      "subscribeTopics": [],
+      "publishTopics": [
+        "icc26/site1/qc/analyzers/+/result",
+        "icc26/site1/qc/analyzers/+/state"
+      ]
+    }
+  },
+  {
+    "username": "lims-bridge",
+    "password": "lims-bridge",
+    "acl": {
+      "subscribeTopics": [],
+      "publishTopics": [
+        "icc26/site1/qc/lims/sample-result",
+        "icc26/site1/mes/batch/event"
+      ]
+    }
+  },
+  {
+    "username": "observer",
+    "password": "observer",
+    "acl": {
+      "subscribeTopics": ["icc26/#", "spBv1.0/#", "$SYS/#"],
+      "publishTopics": []
+    }
+  }
+]
