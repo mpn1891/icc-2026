@@ -199,13 +199,15 @@ def ignition_auth(env):
 # ── Chariot ──────────────────────────────────────────────────────────────────
 #
 # Chariot 3.x will NOT open its MQTT listener without an active license or a
-# running trial, and the trial does NOT auto-start in the container. A freshly
+# running trial, and neither one starts on its own in the container. A freshly
 # started Chariot answers on its web port while port 1883 refuses connections,
 # which looks exactly like a broken network config. It is not.
 #
-# The trial is started by POST /license?action=start-trial-timer. That endpoint
-# is undocumented -- it was found in the Chariot UI bundle -- so if it breaks on
-# a future image, start the trial from the web UI's License page instead.
+# Licensing is a BY-HAND step: web UI -> License -> start trial (or install a
+# key). Nothing in this file changes license state. The only route for it was
+# undocumented, and driving licensing from a script is not worth the stage risk.
+# What follows READS state, so `up`, `trial` and `health` can tell you to go
+# press the button.
 #
 # Calls run via `docker exec` against the container's own loopback because the
 # API is token-based (Basic auth is rejected at the edge).
@@ -275,7 +277,20 @@ def wait_for_chariot(timeout_sec=180):
     return False
 
 
-def start_chariot_trial(quiet=False):
+def chariot_license_hint():
+    env = dotenv()
+    print("       Start it by hand: http://localhost:%s -> License -> start trial"
+          % env_value(env, "CHARIOT_HTTP_PORT", "8081"))
+    print("       (or install a Cirrus Link demo key on the same page)")
+
+
+def check_chariot_listener(quiet=False):
+    """Is Chariot's MQTT listener open? Read-only -- waits for the API, reports.
+
+    Waiting matters even when the answer is bad news: Chariot's admin user is
+    seeded asynchronously, so an immediate check right after `up` reports a
+    dead API on a Chariot that is merely still starting.
+    """
     state = chariot_state()
     if state is None:
         if not wait_for_chariot():
@@ -290,25 +305,16 @@ def start_chariot_trial(quiet=False):
 
     if state["server_running"]:
         if not quiet:
-            ok("chariot   MQTT listener already running (%d min of trial left)"
-               % round(state["trial_secs"] / 60))
+            if state["trial_running"]:
+                ok("chariot   MQTT listener running (%d min of trial left)"
+                   % round(state["trial_secs"] / 60))
+            else:
+                ok("chariot   MQTT listener running (licensed)")
         return True
 
-    step("Starting Chariot trial (its MQTT listener will not open without one)")
-    if chariot_api("/license?action=start-trial-timer", method="POST") is None:
-        bad("chariot   could not start the trial via the API")
-        env = dotenv()
-        print("       Start it by hand: http://localhost:%s -> License -> start trial"
-              % env_value(env, "CHARIOT_HTTP_PORT", "8081"))
-        return False
-
-    time.sleep(3)
-    state = chariot_state()
-    if state and state["server_running"]:
-        ok("chariot   MQTT listener RUNNING (%d min of trial)"
-           % round(state["trial_secs"] / 60))
-        return True
-    bad("chariot   trial started but the listener is still down")
+    if not quiet:
+        bad("chariot   MQTT listener DOWN - no active license or trial")
+        chariot_license_hint()
     return False
 
 
@@ -698,9 +704,10 @@ def task_up():
 
     run_checked(COMPOSE + ["up", "-d"], "docker compose up failed")
 
-    # Chariot's MQTT listener stays closed until a trial or license is active.
-    # Do this before the health check so `up` yields a genuinely usable stack.
-    start_chariot_trial()
+    # Chariot's MQTT listener stays closed until a trial or license is active,
+    # and that is a manual step in its web UI. Check before the health check so
+    # the pointer to it is the first thing on screen, not buried below.
+    check_chariot_listener()
 
     started = wait_for_gateway(timeout_sec=300)
     print("")
@@ -781,7 +788,11 @@ def task_trial():
     both_clocks_read = True
 
     step("Ignition trial status")
-    status, text = http("http://localhost:%s/data/api/v1/license-status" % port,
+    # GET /data/api/v1/trial, not /license-status - the latter does not exist on 8.3.8 and
+    # 404s regardless of auth. Read out of LicensingRoutes in the gateway jar and confirmed
+    # live. Works on plain basic auth. Read-only on purpose: resetting the trial is a
+    # by-hand step in the gateway UI, and nothing here tries to do it for you.
+    status, text = http("http://localhost:%s/data/api/v1/trial" % port,
                         headers=ignition_auth(env), timeout=15)
     if status and 200 <= status < 300:
         try:
@@ -794,20 +805,21 @@ def task_trial():
             print("")
             mins = round(left / 60, 1)
             if left <= 0:
-                bad("Trial EXPIRED - run: python tasks.py reset-trial")
+                bad("Trial EXPIRED - reset it by hand: http://localhost:%s -> "
+                    "Config -> Licensing" % port)
             elif left < 900:
                 warn("%s minutes left" % mins)
             else:
                 ok("%s minutes left" % mins)
     else:
         both_clocks_read = False
-        bad("Could not read license status (%s)" % (status or "no response"))
+        bad("Could not read trial status (%s)" % (status or "no response"))
         if status == 404:
-            print("       404: this path does not exist on 8.3.8. The Ignition trial clock")
-            print("       is currently readable only from the gateway UI - unresolved, and")
-            print("       it is half of what you need to know before going on stage.")
+            print("       404 on /data/api/v1/trial is unexpected - it exists on 8.3.8 and")
+            print("       answers to basic auth. Check IGNITION_ADMIN_* in .env first.")
         else:
-            print("       These routes need an 8.3 API key - see `python tasks.py scan`.")
+            print("       GET /trial needs only basic auth, so this is a credential")
+            print("       problem. Check IGNITION_ADMIN_* in .env.")
 
     # Two independent clocks. Both must be alive when you walk on stage.
     step("Chariot trial status")
@@ -820,7 +832,8 @@ def task_trial():
     print("  license=%s  trialRunning=%s  listener=%s"
           % (state["license_state"], state["trial_running"], listener))
     if not state["server_running"]:
-        bad("MQTT listener DOWN - run: python tasks.py chariot-trial")
+        bad("MQTT listener DOWN - no active license or trial")
+        chariot_license_hint()
         both_clocks_read = False
     elif state["trial_running"] and mins < 15:
         warn("%s minutes left" % mins)
@@ -829,37 +842,6 @@ def task_trial():
     else:
         ok("Licensed (no trial clock)")
     return both_clocks_read
-
-
-def task_reset_trial():
-    assert_env()
-    env = dotenv()
-    port = env_value(env, "IGNITION_HTTP_PORT", "8088")
-    headers = ignition_auth(env)
-    headers["Content-Type"] = "application/json"
-
-    step("Resetting Ignition trial")
-    warn("This only succeeds once the trial has ALREADY expired - an active")
-    warn("trial returns 403. You cannot top it up before going on stage.")
-
-    body = json.dumps({
-        "licenseMode": "Trial",
-        "trialState": "AllInDemo",
-        "trialSecondsLeft": 7200,
-        "expired": False,
-        "emergency": False,
-        "emergencySecondsLeft": 0,
-        "development": False,
-        "developmentSecondsLeft": 0,
-    })
-
-    status, _ = http("http://localhost:%s/data/api/v1/license-status" % port,
-                     method="POST", headers=headers, body=body, timeout=20)
-    if status and 200 <= status < 300:
-        ok("Trial reset - 2 hours on the clock")
-    else:
-        bad("Reset failed (%s)" % (status or "no response"))
-        print("       403 means the trial has not expired yet. That is expected.")
 
 
 def task_health():
@@ -924,14 +906,17 @@ def task_health():
         healthy = False
     elif cs["server_running"]:
         mins = round(cs["trial_secs"] / 60)
-        if cs["trial_running"] and mins < 15:
+        if not cs["trial_running"]:
+            ok("chariot   MQTT listener RUNNING on :%s (licensed)"
+               % env_value(env, "CHARIOT_MQTT_PORT", "1883"))
+        elif mins < 15:
             warn("chariot   MQTT listener RUNNING but only %d min of trial left" % mins)
         else:
             ok("chariot   MQTT listener RUNNING on :%s (trial %d min)"
                % (env_value(env, "CHARIOT_MQTT_PORT", "1883"), mins))
     else:
         bad("chariot   MQTT listener DOWN - no active license or trial")
-        print("       Fix:  python tasks.py chariot-trial")
+        chariot_license_hint()
         healthy = False
 
     print("")
@@ -940,11 +925,6 @@ def task_health():
     else:
         warn("Some checks failed - see above")
     return healthy
-
-
-def task_chariot_trial():
-    assert_env()
-    start_chariot_trial()
 
 
 HELP = """\
@@ -970,8 +950,7 @@ Running
 Gateway / broker
   scan             Tell the gateway to re-read config + projects from disk
   trial            Show BOTH trial clocks (Ignition and Chariot)
-  reset-trial      Reset the Ignition trial (only works once expired)
-  chariot-trial    Start Chariot's trial so its MQTT listener opens
+                   Licensing itself is by hand, in each product's web UI
   health           Step-1 health check across all services
 
 Example
@@ -1000,8 +979,6 @@ def main(argv):
         "nuke": task_nuke,
         "scan": task_scan,
         "trial": task_trial,
-        "reset-trial": task_reset_trial,
-        "chariot-trial": task_chariot_trial,
         "health": task_health,
     }
 

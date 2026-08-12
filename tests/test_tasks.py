@@ -38,7 +38,7 @@ def reset(volume, config, modules=True, commissioned=True):
     stub("run", lambda a: calls.append("run:" + " ".join(a[-2:])))
     stub("task_export_config", lambda container=None: calls.append("EXPORT_FULL"))
     stub("task_export_identity", lambda container=None: calls.append("EXPORT_IDENTITY"))
-    stub("start_chariot_trial", lambda: calls.append("trial"))
+    stub("check_chariot_listener", lambda: calls.append("chariot-check"))
     stub("task_health", lambda: True)
 
 

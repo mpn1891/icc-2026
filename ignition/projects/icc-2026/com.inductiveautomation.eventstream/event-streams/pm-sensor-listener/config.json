@@ -3,8 +3,8 @@
   "source": {
     "type": "com.cirruslink.mqtt.engine.gateway.mqtt.source",
     "config": {
-      "topic": "EventStreams/#",
-      "qos": 0
+      "topic": "icc26/site1/upstream/vibration-gw/response/waveform",
+      "qos": 1
     }
   },
   "sourceEncoder": {

@@ -19,19 +19,21 @@ slide and because the asymmetries are the interesting part:
 |---|---|---|
 | `ign-engine` | Ignition MQTT Engine — northbound consumer | Subscribes broadly; publishes only commands |
 | `ign-transmission` | Ignition MQTT Transmission — Sparkplug edge node + publisher for patterns 3–7 | The only account with broad publish rights |
-| `vib-gateway` | Pattern 1 simulated local gateway | See asymmetry below |
+| `vib-gateway` | Pattern 1 simulated local gateway (unused while the gateway lives inside Ignition) | See asymmetry below |
 | `analyzer-bridge` | Pattern 3, reserved | Only if the Nova Flex demo ever publishes without routing through Ignition |
-| `lims-bridge` | Patterns 4, 5, 6 | All three share one topic — that is the point |
+| `lims-bridge` | Patterns 4, 5, 6 | Sample-result + batch-event topics — same ACL, two converging publishers |
 | `observer` | Read-only | Firehose view, `mosquitto_sub`, MQTT Explorer |
 
-**The `vib-gateway` asymmetry is worth pointing at on stage.** It may *subscribe* to
-`.../+/cmd/#` and *publish* to `telemetry`, `waveform`, `state`, `ack` — but it may not
-publish commands. A field device that can issue commands to its peers is a lateral-movement
-path, and the ACL is where you close it. This is also why `observer` has an empty
-`publishTopics` array: it is safe to hand out and safe to leave connected during the talk.
+**The `vib-gateway` asymmetry is worth pointing at on stage.** It may *subscribe* only to the
+fleet collect topic (`…/vibration-gw/cmd/collect`) and *publish* only to
+`…/vibration-gw/response/waveform` plus `…/+/+/telemetry` — but it may not publish commands.
+A field device that can issue commands to its peers is a lateral-movement path, and the ACL
+is where you close it. This is also why `observer` has an empty `publishTopics` array: it is
+safe to hand out and safe to leave connected during the talk.
 
-**`lims-bridge` can publish to exactly one sample-result topic**, which is what forces
-patterns 4, 5 and 6 to converge rather than drifting into three parallel namespaces.
+**`lims-bridge` publishes to the sample-result topic and the bioreactor batch-event topic**,
+which is what forces patterns 4, 5 and 6 to converge rather than drifting into three parallel
+namespaces.
 
 ## Server settings
 
@@ -59,5 +61,12 @@ Tuesday problem, not a stage problem.
 ## Trial timer
 
 Chariot runs a 2-hour trial that is **independent of Ignition's**. Two clocks to watch on
-stage — see `docs/demo-runbook.md`. A Chariot demo license key from Cirrus Link removes
+stage — a dual-trial checklist will live in `docs/demo-runbook.md` when that file is written
+(planned with presentation spec 08). A Chariot demo license key from Cirrus Link removes
 this entirely and is worth requesting before the conference.
+
+**The trial does not auto-start, and starting it is a manual step.** Until it is running,
+Chariot serves its web UI while port 1883 refuses every connection. Start it at
+`http://localhost:${CHARIOT_HTTP_PORT}` → **License** → start trial (or install the demo key
+on that same page). `tasks.py up`, `trial` and `health` all check the listener and print that
+URL when it is shut, but none of them change license state.

@@ -18,7 +18,9 @@ CREATE SCHEMA IF NOT EXISTS plant AUTHORIZATION icc26;
 CREATE TABLE plant.equipment (
     equipment_id  text PRIMARY KEY,          -- e.g. 'BR-201', 'vib-01'
     site          text NOT NULL,             -- 'site1'
-    area          text NOT NULL,             -- 'usp' | 'dsp' | 'qc' | 'utilities' | 'mes'
+    area          text NOT NULL,             -- 'upstream' | 'downstream' | 'qc' | 'utilities'
+                                             -- Places, not systems. There is no 'mes' area:
+                                             -- see docs/00-architecture.md § Topic namespace.
     line          text,                      -- 'pumpskid1'
     equipment_type text NOT NULL,            -- 'bioreactor' | 'analyzer' | 'vibration-sensor'
     description   text

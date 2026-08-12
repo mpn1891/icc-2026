@@ -19,12 +19,10 @@
     "username": "vib-gateway",
     "password": "vib-gateway",
     "acl": {
-      "subscribeTopics": ["icc26/site1/utilities/pumpskid1/+/cmd/#"],
+      "subscribeTopics": ["icc26/site1/upstream/vibration-gw/cmd/collect"],
       "publishTopics": [
-        "icc26/site1/utilities/pumpskid1/+/telemetry",
-        "icc26/site1/utilities/pumpskid1/+/waveform",
-        "icc26/site1/utilities/pumpskid1/+/state",
-        "icc26/site1/utilities/pumpskid1/+/ack"
+        "icc26/site1/upstream/vibration-gw/response/waveform",
+        "icc26/site1/upstream/+/+/telemetry"
       ]
     }
   },
@@ -46,7 +44,7 @@
       "subscribeTopics": [],
       "publishTopics": [
         "icc26/site1/qc/lims/sample-result",
-        "icc26/site1/mes/batch/event"
+        "icc26/site1/upstream/br-201/batch/event"
       ]
     }
   },

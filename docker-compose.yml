@@ -155,10 +155,11 @@ services:
       IGNITION_UID: ${IGNITION_UID:-2003}
       IGNITION_GID: ${IGNITION_GID:-2003}
       TZ: ${TZ:-America/Chicago}
-      # Read by the gateway's environment-backed Secret Provider, so committed
-      # config can reference a secret by name instead of embedding ciphertext
-      # only this machine can decrypt. Deliberately absent from the seed compose
-      # file: that pass runs vanilla config that references none of them.
+      # Available inside the container. Committed Cirrus/OPC config currently uses
+      # Embedded ciphertext, not env references — Ignition 8.3.8 has no env Secret
+      # Provider (see docs/00-architecture.md). Kept so ICC26_DB_PASSWORD is ready
+      # for the JDBC datasource and for a possible future provider. Deliberately
+      # absent from the seed compose file: that pass runs vanilla config.
       # Changing one needs a container restart -- `tasks.py scan` will not do it.
       MQTT_ENGINE_PASSWORD: ${MQTT_ENGINE_PASSWORD:-ign-engine}
       MQTT_TRANSMISSION_PASSWORD: ${MQTT_TRANSMISSION_PASSWORD:-ign-transmission}
@@ -189,8 +190,13 @@ services:
     networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Pattern services land here in steps 2–8:
-  #   sim-vibration    (pattern 1)  services/sim-vibration
+  # Pattern 1 adds no service here. The vibration gateway is simulated inside
+  # Ignition — a Gateway Timer Script for telemetry and an event stream for the
+  # collect command, both publishing plain MQTT through Transmission. See
+  # docs/plans/01-native-mqtt.md. (services/sim-vibration/ holds a standalone
+  # container implementation of the same contract; it is NOT wired in.)
+  #
+  # Remaining pattern services land here in steps 3–8:
   #   opcua-novaflex   (pattern 3)  services/opcua-novaflex
   #   lims             (patterns 4, 6, 7)  services/lims  — implementation TBD
   #   debezium         (pattern 5)  quay.io/debezium/server

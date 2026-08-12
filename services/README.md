@@ -1,16 +1,17 @@
 # Pattern services
 
-Empty until steps 2–8. Step 1 built only the infrastructure — Postgres, Ignition, Chariot —
-so there is a working backbone to attach these to.
+Step 1 built only the infrastructure — Postgres, Ignition, Chariot — so there is a working
+backbone to attach these to.
 
 | Directory | Pattern | Status |
 |---|---|---|
-| `sim-vibration/` | 1 — native MQTT pub/sub | not started |
+| `sim-vibration/` | 1 — native MQTT pub/sub | **not wired in** — pattern 1 simulates the gateway inside Ignition instead ([spec](../docs/plans/01-native-mqtt.md)). Kept as the payload-contract reference. Ignition side is partial: `vibsim` + UDTs + response-stream topic landed; timer/handlers/namespace/Perspective still TODO |
 | `opcua-novaflex/` | 3 — OPC UA → MQTT | not started |
 | `lims/` | 4, 6, 7 — webhook / poll / aggregation source | **implementation undecided** |
 
-Patterns 2 (Sparkplug B) and 5 (CDC) add no service here: pattern 2 runs entirely inside
-Ignition on the built-in Programmable Device Simulator, and pattern 5 is the
+Patterns 1, 2 (Sparkplug B) and 5 (CDC) add no running service here: patterns 1 and 2 run
+inside Ignition — pattern 1 as a Jython script library plus (planned) two event streams,
+pattern 2 on the built-in Programmable Device Simulator — and pattern 5 is the
 `quay.io/debezium/server` image configured from `compose/debezium/`.
 
 ## The LIMS contract

@@ -1,8 +1,12 @@
 # Architecture
 
-The decisions in this stack that are not obvious from reading the compose file, and the
-reasoning behind them. `00-plan.md` holds the full build plan; this is the reference for
-things you will need to look up again later.
+The decisions in this stack that are not obvious from reading the compose file, the reasoning
+behind them, and every trap that cost real time to find. **This is the reference — one home per
+fact.** If something here is contradicted elsewhere, this file wins; if you learn something new,
+add it here rather than in a status note.
+
+- What is true *right now* and what to do next: [`plans/00-status.md`](plans/00-status.md).
+- What is still to be built: [`plans/00-master-plan.md`](plans/00-master-plan.md).
 
 ---
 
@@ -29,10 +33,43 @@ things you will need to look up again later.
 | `postgres` | 5432 | step 1 |
 | `ignition` | 8088, 8043 | step 1 |
 | `chariot` | 1883, 8883, 8090, 8081, 8444 | step 1 |
-| `sim-vibration` | — | step 2 |
 | `opcua-novaflex` | 4840 | step 4 |
 | `lims` | 8000 | step 5 (implementation TBD) |
 | `debezium` | 8083 | step 6 |
+
+Patterns 1 and 2 add no container: both run inside Ignition — pattern 1 as the `vibsim`
+script library (partially wired: library + UDTs + `pm-sensor-listener` topic; timer, control
+stream, handlers, Engine namespace, and Perspective still TODO — see
+[`plans/01-native-mqtt.md`](plans/01-native-mqtt.md)), pattern 2 on the built-in Programmable
+Device Simulator. `services/sim-vibration/` holds a standalone implementation of pattern 1's
+contract that is deliberately **not** wired into compose.
+
+**Nothing may depend on the internet at runtime.** It is a conference network and a stage. Every
+image is pulled ahead of time, the Perspective firehose vendors its JavaScript rather than
+loading a CDN, and the acceptance test is that the whole demo runs with networking disabled.
+
+**One repo, not several.** Every meaningful change here is cross-cutting — changing the topic
+namespace touches Ignition config, the simulators, Chariot ACLs, Debezium config and the docs.
+That is one commit and one review in a monorepo; across four repos it is four PRs with an
+ordering dependency, and bisecting gets painful. Compose also builds from the tree
+(`build: ./services/...`), so splitting services out would mean publishing images to a registry
+— a CI pipeline and a network dependency bolted onto a demo whose main virtue is running
+offline. The usual reason to reach for a split, "the gateway writes noise into my repo", is
+solved by `.gitignore` instead: only `data/config` and `data/projects` are committed.
+
+### LIMS contract (implementation TBD)
+
+`lims` is a placeholder with a defined contract, not a defined implementation — it may become
+SENAITE, it may stay a FastAPI stub. Whatever backs it must expose all four surfaces, because
+four patterns each consume a different one:
+
+1. Emit a webhook POST on sample-complete → pattern 4
+2. `GET /results?since_id=N`, monotonic id → pattern 6
+3. Write to a Postgres table Debezium can tail → pattern 5
+4. Answer a query the aggregation script can join → pattern 7
+
+Build against the contract and swapping the implementation stays a compose change rather than a
+redesign.
 
 ---
 
@@ -47,20 +84,64 @@ icc26/{site}/{area}/{line-or-cell}/{device}/{message_type}
 ```
 
 ```
-icc26/site1/utilities/pumpskid1/vib-01/telemetry     # 1  periodic RMS / temp
-icc26/site1/utilities/pumpskid1/vib-01/cmd/collect   # 1  command in
-icc26/site1/utilities/pumpskid1/vib-01/waveform      # 1  bulk response
-icc26/site1/utilities/pumpskid1/vib-01/state         # 1  retained LWT birth/death
-icc26/site1/qc/analyzers/novaflex-01/result          # 3
-icc26/site1/qc/lims/sample-result                    # 4 AND 5 AND 6 — same topic
-icc26/site1/mes/batch/event                          # 5
-icc26/site1/usp/br-201/batch-summary                 # 7
+icc26/site1/upstream/vibration-gw/cmd/collect         # 1  command in — fleet broadcast, see below
+icc26/site1/upstream/vibration-gw/response/waveform   # 1  bulk response — demuxed to tags in-payload
+icc26/site1/upstream/br-201/agitator-vib/telemetry    # 1  periodic RMS / temp, per sensor
+icc26/site1/qc/analyzers/novaflex-01/result           # 3
+icc26/site1/qc/lims/sample-result                     # 4 AND 5 AND 6 — same topic
+icc26/site1/upstream/br-201/batch/event               # 5
+icc26/site1/upstream/br-201/batch-summary             # 7
 
-spBv1.0/ICC26-Site1-USP/{NBIRTH|DBIRTH|DDATA}/USP-EDGE-01/BR-201   # 2 — spec-mandated
+spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|DBIRTH|DDATA}/UPSTREAM-EDGE-01/BR-201   # 2 — spec-mandated
 ```
 
-Areas: `usp` (upstream processing), `dsp`, `qc`, `utilities`, `mes`.
-Message types are a closed set: `telemetry`, `event`, `waveform`, `state`, `cmd/<verb>`, `ack`.
+Areas: `upstream`, `downstream`, `qc`, `utilities`. These are **places** — in a biologics
+facility upstream and downstream really are segregated suites, with their own cleanroom grades,
+HVAC and personnel flow, so the process name and the physical area coincide. The industry would
+write these `usp`/`dsp`; spelled out they cost four characters and stop `dsp` colliding with
+*digital signal processing* in a talk that plots bearing spectra.
+
+Message types are a closed set: `telemetry`, `event`, `waveform`, `state`, `cmd/<verb>`,
+`response/<what>`, `ack`.
+
+`cmd/<verb>` and `response/<what>` are the two-token pair, and they go together: a request
+addressed to a fleet cannot come back addressed to a device, because the broker has no idea
+which device answered. Wherever one appears the other should too. `ack` is currently used by
+nobody — pattern 1 dropped it when it dropped its lifecycle — but it stays in the set as the
+name to reach for rather than inventing a second one.
+
+**There is no `mes` area, deliberately.** An MES is a piece of software, not a place, and an
+area slot filled with a system name is the same mistake as organising by ingestion mechanism —
+one level higher up. A batch event happens in a *suite*, so it publishes under the cell that
+produced it (`upstream/br-201/batch/event`) and names its source system in the payload. The
+Postgres schema stays `mes.batch_event`: a database schema is a system-of-record namespace, and
+that is exactly what it should be named after.
+
+> **Known remaining wart:** `qc/lims/sample-result` still puts a software system in the
+> line-or-cell slot. `qc` is a real area so the violation is smaller, and patterns 4/5/6 all key
+> off that one topic. Revisit when spec 04 is written.
+
+**The vibration gateway never appears in the namespace as a location, because it is not one.**
+An Erbessd gateway is a radio concentrator: one unit serves several skids at once, and the
+sensors — not the gateway — are what is bolted to a machine. So a channel's data is published
+at whichever cell its sensor is mounted on, and one gateway's four channels can land under
+four different bioreactors. The gateway itself is addressed only as the target of a command.
+
+**One deliberate exception, and it is a pair.** `vibration-gw` takes the line-or-cell slot as
+the class of gateways serving the area, and both command and response hang off it:
+
+- `…/vibration-gw/cmd/collect` — every gateway in the area subscribes and self-selects on the
+  `gwSerial` in the payload, which is how the real hardware is configured. The device slot is
+  elided because a broadcast has no single addressee.
+- `…/vibration-gw/response/waveform` — the answer comes back on one flat topic carrying
+  `gwSerial` + `channelIndex`, and the `pm-sensor-listener` event stream demuxes those to the
+  right sensor's tags. **The routing moves out of the topic and into the consumer**, so a new
+  sensor is one row in a lookup table rather than a new subscription.
+
+These two are the only topics here that are not device-addressed. That a vendor's command
+protocol can force even this much deviation on an otherwise clean namespace — and that the
+cost is paid once, in one event stream, rather than spread across every subscriber — is
+itself worth showing.
 
 Equipment ids in `plant.equipment` (see `compose/postgres/initdb/03-seed.sql`) are the same
 strings that appear in topics. Keep it that way.
@@ -72,8 +153,9 @@ identically. On stage you disable the webhook, enable CDC, and the subscriber ne
 
 This demonstrates the architectural point better than three separate branches would: *the
 mechanism is an implementation detail of the edge, not a property of the data.* It is also
-why `lims-bridge` in `compose/chariot/mqtt-users.json` is scoped to exactly one sample-result
-topic — the ACL enforces the convergence rather than trusting everyone to remember it.
+why `lims-bridge` in `compose/chariot/mqtt-users.json` may publish only to the sample-result
+topic (and the bioreactor `batch/event` topic for CDC) — the ACL enforces convergence rather
+than trusting everyone to remember it.
 
 ### Payload envelope
 
@@ -96,12 +178,29 @@ get per-pattern legibility on screen without encoding the mechanism into the nam
 
 ### Two things that become talk content
 
-**Native-MQTT publishers set a retained LWT on `.../state`,** hand-rolling what Sparkplug
-gives you for free. That is the direct contrast between patterns 1 and 2.
+**A Last Will belongs to whoever owns the session.** It is registered in the MQTT CONNECT
+packet, so only the client that opened the connection can set one — every publish API, in
+every module, is "send this message now" on a session that already exists. Pattern 1's
+gateway is simulated inside Ignition, on Ignition's session, so it has no will of its own and
+publishes no birth/death at all; it runs as a live stream. Pattern 2's edge node does get one,
+because MQTT Transmission owns that connection and registers its NDEATH there.
+
+Which is the more interesting version of the Sparkplug comparison anyway: **Sparkplug does not
+give you a death mechanism, it standardises the one MQTT already had.** NDEATH *is* an LWT,
+with a spec-mandated topic, a `bdSeq` payload that identifies the session, and a rule that
+every consumer must apply. DDEATH is not a will at all — it is an ordinary message the edge
+node publishes, so one connection still buys exactly one will in Sparkplug too. The difference
+is the agreement, not the plumbing. Hand-rolled, you invent the topic, the payload and the
+semantics, and the next vendor invents them differently.
 
 **Chariot is MQTT 3.1.1**, so there are no MQTT 5 response-topic or correlation-data
-properties. Pattern 1's request/response is hand-built via `correlation_id` in the payload —
-an honest moment about what MQTT is and is not.
+properties. Pattern 1 does *not* work around that with a correlation id — it turns out the
+domain does not need one. A predictive-maintenance system wants a waveform and the timestamp
+it was captured at; whether that waveform answered its request, a retry, or somebody else's
+request is immaterial. So the response carries the capture time in `ts` and echoes the
+settings that produced it in `meta.request`, and `meta.correlation_id` stays unset. The honest
+moment is not "look how we rebuilt request/response" — it is "we checked whether we needed
+it." See [`plans/01-native-mqtt.md`](plans/01-native-mqtt.md).
 
 ---
 
@@ -135,16 +234,17 @@ WARN  c.c.chariot.server.impl.Server - Not starting Chariot MQTT Server, license
 ```
 
 Unlike Ignition, Chariot's trial does **not** start automatically in the container, and
-`LICENSE_TYPE` only accepts `online` or `floating` — there is no trial value. The trial is
-started by an undocumented endpoint, found by reading the Chariot UI bundle:
+`LICENSE_TYPE` only accepts `online` or `floating` — there is no trial value.
 
-```
-POST /license?action=start-trial-timer
-```
+**Starting it is a manual step:** the web UI at `:8081` → **License** → start trial, or
+install a Cirrus Link demo key on the same page. `tasks.py` does not automate it. There is an
+undocumented `POST /license?action=start-trial-timer` in the UI bundle, and `up` used to call
+it, but licensing is not something to drive from a script on a stage machine — an undocumented
+route that changes under you takes the demo with it. So `up`, `trial` and `health` only *read*
+license state and print the URL to go press the button.
 
-`tasks.py up` calls it automatically, and `chariot-trial` does it on demand. Auth is a bearer
-token from `POST /login` (Basic auth is rejected), so the calls run via `docker exec` against
-the container's own loopback using the curl it already ships.
+Reads authenticate with a bearer token from `POST /login` (Basic auth is rejected), so the
+calls run via `docker exec` against the container's own loopback using the curl it ships.
 
 Two practical notes:
 
@@ -231,6 +331,46 @@ restart is the only way to apply a pulled change.
 
 If a pulled change "didn't take", apply it before debugging anything else.
 
+### Where each service's config actually comes from
+
+Established by direct inspection. This is the map to reason from whenever something is "set" but
+is not taking effect.
+
+**Ignition — five sources:**
+
+1. **Git, via bind mounts.** `./ignition/config` → `data/config`, `./ignition/projects` →
+   `data/projects`. Tag definitions, the `icc-2026` project, `systemName`, and the four
+   `Embedded`-ciphertext MQTT/OPC config files.
+2. **The image, via first-launch volume seeding.** Everything else under `data/`, including
+   `data/var/ignition/modl/` (the Cirrus modules) and `data/modules.json`.
+3. **Generated locally by `seed`.** `config/local/`, `config/resources/local/`,
+   `config/ignition/tags/valueStore.idb` — gitignored, machine-specific, regenerated cleanly
+   from nothing.
+4. **`.env` and compose environment.** Admin credentials, host ports, edition, TZ, the pinned
+   `hostname`.
+5. **A browser, once per fresh data volume.** Module certificate fingerprints and
+   `licenseAgreementHash`, written into `data/modules.json` *inside* the volume. Cannot be
+   pre-seeded — tested, see Commissioning below.
+
+The precedence rule that falls out: **a bind mount beats the image, and the volume beats
+nothing.** Anything under `data/` that is not bind-mounted is frozen at whatever the image held
+when the volume was first created. That is why the stale-image trap below was invisible until
+somebody created a fresh volume.
+
+**Chariot — nothing is config-as-code:**
+
+1. The `chariot-config` named volume — its persistent store.
+2. `compose/chariot/mqtt-users.json`, bind-mounted read-only, seeding the ACL'd accounts —
+   **on first run only**, per `MQTT_USERS`. Editing it does nothing to a Chariot that already
+   has a user store; that needs a `nuke` or hand-editing in the UI.
+3. `SERVER_CONFIG`, inline in `docker-compose.yml` — ports and `allowAnonymous`. Read at
+   **every container start**, so it is the one Chariot setting a restart can change.
+4. `ADMIN_PASSWORD` from `.env`.
+5. The trial — started by hand in the web UI, per volume. Runtime state, not config.
+
+A clone reproduces Chariot exactly, because everything lives in compose — but only against a
+fresh volume.
+
 ---
 
 ## Module path — resolved
@@ -269,6 +409,38 @@ is not enough, because an existing volume is never re-seeded.
 class-loading instability and gateway crashes otherwise. Note the 8.1-era 4.x downloads have
 **identical filenames** to the 5.x ones, so `tasks.py verify-modules` reads `<version>` out
 of each `.modl`'s `module.xml` rather than trusting the filename.
+
+### The stale-image trap
+
+This one shipped a broken repo and stayed invisible for two days. It is the most expensive bug
+found in step 1, so it gets stated in full.
+
+`compose/ignition/modules/` reaches the gateway **only** by being baked into the
+`icc26/ignition:8.3.8` image, and **compose builds that image only when the tag is missing.**
+Updating a `.modl` on disk therefore changes nothing: the tag already exists, `up` reuses it, and
+the newer file is never seen by any container. A clone came up running Cirrus **4.0.8** Engine
+and Transmission out of a stale image while the correct 5.0.4 files sat on disk and
+`verify-modules` reported all three green:
+
+```
+W [ModuleInstance] Module "MQTT Engine" requires Ignition 8.0.16 (b0) and is not compatible with Ignition 8.3.8
+```
+
+Two things follow, and the second is the general lesson:
+
+1. **`verify-modules` validates host files the gateway may never load.** Any check that does not
+   compare against what is actually *in the image* is measuring the wrong thing.
+2. **Upgrading a module needs the image tag deleted too**, not just `nuke` + `seed`:
+
+```powershell
+docker image rm icc26/ignition:8.3.8
+python tasks.py nuke
+python tasks.py seed
+```
+
+Landing the module sha256s in `modules.manifest.json` and hashing the `.modl` files *inside the
+image* — or forcing `docker compose build` on every `seed` — is what makes a stale image fail
+loudly instead of passing green.
 
 ## Commissioning
 
@@ -356,13 +528,87 @@ For a machine you are presenting *from* on Windows, **clone into WSL2**
 (`\\wsl$\Ubuntu\home\...`) and run the stack from there. Fast, correct ownership, no
 surprises.
 
+### Two checkouts cannot run at the same time
+
+`container_name` is pinned in `docker-compose.yml` (`icc26-ignition`, `icc26-chariot`,
+`icc26-postgres`), the network is pinned (`name: icc26`), and host ports come from `.env`. A
+second stack collides on all three regardless of `COMPOSE_PROJECT_NAME`. Bring one down first.
+
+Set `COMPOSE_PROJECT_NAME` anyway in a scratch clone: it separates **volumes only**, which is
+exactly what stops a `nuke` over there from reaching your gateway state over here.
+
+---
+
+## Things that look broken and are not
+
+**`health` green does not mean MQTT works.** It checks Chariot's *listener*, not Ignition's
+*client connection to it*. MQTT Engine once looped on a bad credential every 3 seconds for a
+whole day behind a green `health`. When MQTT is the thing you care about, check the gateway logs
+or Chariot's client list.
+
+**Chariot validates credentials that ARE supplied, even with `allowAnonymous: true`.** Anonymous
+access only helps clients that supply *no* credentials. A client with a username and a wrong (or
+missing) password is rejected, not waved through:
+
+```
+CONNECT - Bad username and/or password. username true:admin, password false:*****
+```
+
+Good news for testing — anonymous cannot paper over a genuinely broken credential — but it means
+`username: admin` with no password block is a *failure*, not a fallback. Set `username` to `""`
+to connect anonymously on purpose.
+
+`allowAnonymous` is currently `true` for the initial rollout, deliberately and temporarily. The
+ACL'd accounts in `mqtt-users.json` are still seeded and still work. **Before the talk:** set it
+back to `false`, restart, and confirm every client still connects with its own credential —
+including MQTT Engine, which is currently riding on anonymous. `compose/chariot/README.md`
+carries that reminder.
+
+### Environment facts worth not rediscovering
+
+- Chariot's version lives at `/Chariot/version.properties` (3.0.1). There is no image label.
+- `curl` exists in both images. Chariot also has `wget` and `nc`.
+- The Ignition image ships a **JRE, not a JDK** — no `javac`, no `jshell`. `java Foo.java` fails
+  with *"Module jdk.compiler not in boot Layer"*.
+- `ignition-secrets-tool.sh` only manages root/KEK keys. It cannot encrypt or decrypt a value.
+- `docker exec <ctr> test -e <path>` gives **false negatives** — there is no `test` binary in
+  these images. Use `sh -c '[ -e ... ]'`.
+- Git Bash mangles container paths in `docker exec` (`/Chariot/...` becomes
+  `C:/Program Files/Git/Chariot/...`). Prefix `MSYS_NO_PATHCONV=1` and use `//Chariot/...`, or
+  just use PowerShell.
+
+### Committed secrets are `Embedded`, on purpose
+
+The four Cirrus/OPC config files hold `"type": "Embedded"` JWE ciphertext, committed. Converting
+them to a Secret Provider was planned and then cut, on this basis: **this gateway has no
+encryption key files at all** — no `data/config/ignition/keys`, no `root.json`, no `kek.json`.
+Reading `SystemEncryptionServiceFactory`, that is what happens when `IGNITION_ROOT_KEY_PASSWORD`
+is unset: the gateway falls back to `DefaultSystemEncryptionService`, whose key is built into the
+jar rather than generated per machine. So committed ciphertext should decrypt on any 8.3.8
+gateway that also has no root key password.
+
+Two caveats. Ignition 8.3.8 ships only `internal`, `file` and `remote` provider types — **there
+is no environment-variable Secret Provider**, which is what the original plan assumed. And the
+portability claim above is **inferred from bytecode, not yet proven end-to-end** — see the open
+item in [`plans/00-status.md`](plans/00-status.md). Demo-grade committed credentials are an
+accepted trade here: portability is the goal, not secrecy.
+
 ---
 
 ## Trial timers
 
 Two independent 2-hour clocks: Ignition's and Chariot's.
 
-**The Ignition trial reset only succeeds once the trial has already expired** — POSTing
-against an active trial returns 403. You cannot top it up before walking on stage. Plan
-around it: `python tasks.py trial` shows the remaining seconds, and the runbook's T-15 checklist
-exists precisely because this cannot be done on demand.
+**Both are reset by hand, in each product's own web UI.** `tasks.py` reads them and never
+writes them:
+
+- **Ignition** — gateway UI → Config → Licensing. `GET /data/api/v1/trial` reads the clock on
+  plain basic auth, which is what `python tasks.py trial` uses. The matching `POST` resets it
+  but needs an 8.3 API key, and the reset **only succeeds once the trial has already
+  expired** (an active trial returns 403). So the procedure is *let it expire, then reset* —
+  you cannot top it up before walking on stage, scripted or not.
+- **Chariot** — web UI at `:8081` → License → start trial. Does not auto-start at all; see
+  the broker section above.
+
+The runbook's T-15 checklist exists precisely because neither of these can be done on demand
+from the command line.

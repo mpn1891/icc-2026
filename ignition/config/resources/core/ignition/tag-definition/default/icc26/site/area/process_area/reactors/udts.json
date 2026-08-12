@@ -21,7 +21,11 @@
               },
               "resolution": {
                 "dataType": "Integer",
-                "value": 512
+                "value": 4096
+              },
+              "uns_path": {
+                "dataType": "String",
+                "value": "site1/upstream/br-201/agitator-vib"
               }
             },
             "tagType": "AtomicTag"
