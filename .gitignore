@@ -10,6 +10,9 @@ docker-compose.override.yml
 # Ignition instance-local config (machine-specific, never shared)
 ignition/config/local/
 ignition/config/resources/local/
+# API key profiles (tokenHash + name). Each machine creates its own in the
+# Gateway UI and puts name:secret in gitignored .env — do not share via git.
+ignition/config/resources/core/ignition/api-token/
 
 # MQTT diagnostic tag trees, auto-generated per edge node the gateway has seen.
 # Not configuration: the modules rebuild them at runtime, and they are keyed to
