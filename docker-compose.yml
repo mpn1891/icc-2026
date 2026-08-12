@@ -174,7 +174,9 @@ services:
       # (compose/ignition/Dockerfile) because bind-mounting into a subpath of
       # the data volume stops Docker seeding data/config and data/projects.
     ports:
-      - "${IGNITION_HTTP_PORT:-8088}:8088"
+      # Bootstrap/maintenance HTTP is host-local only. Conference-network
+      # clients must use HTTPS; seed installs its certificate automatically.
+      - "127.0.0.1:${IGNITION_HTTP_PORT:-8088}:8088"
       - "${IGNITION_HTTPS_PORT:-8043}:8043"
     # CAVEAT: /StatusPing reports {"state":"RUNNING"} while the gateway is parked
     # in commissioning serving only the setup wizard -- healthy here does NOT mean

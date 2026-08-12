@@ -89,13 +89,20 @@
       },
       {
         "dataType": "Boolean",
+        "defaultValue": false,
+        "name": "collect_steady_state",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "Boolean",
         "eventScripts": [
           {
             "eventid": "valueChanged",
-            "script": "\t# One-shot observer request out to the local vibration gateway.\n\t# Fires on the rising edge of steady_state \u0026\u0026 collect_request.\n\tif initialChange or not currentValue.value:\n\t\treturn\n\t\n\timport sys\n\t\n\t# Lines of resolution the gateway accepts: powers of two, 512 .. 4194304.\n\tLOR_VALUES \u003d [512 \u003c\u003c i for i in range(14)]\n\t\n\tlogger \u003d system.util.getLogger(\"vibration_sensor.collect\")\n\tbase \u003d tagPath.rsplit(\"/\", 1)[0]\n\t\n\ttopic, gwSerial, channelIndex, resolution \u003d [\n\t\tqv.value\n\t\tfor qv in system.tag.readBlocking([\n\t\t\tbase + \"/mqtt_topic\",\n\t\t\tbase + \"/gw_serial\",\n\t\t\tbase + \"/channel_index\",\n\t\t\tbase + \"/resolution\",\n\t\t])\n\t]\n\t\n\tif not topic or not gwSerial or resolution is None:\n\t\tlogger.warn(\n\t\t\t\"collect skipped for %s: mqtt_topic, gw_serial or resolution is unset\" % base\n\t\t)\n\t\treturn\n\t\n\t# Comes back as a java.lang.Long off an Int8 tag; coerce before the membership test.\n\tresolution \u003d int(resolution)\n\tif resolution not in LOR_VALUES:\n\t\tlogger.warnf(\n\t\t\t\"collect skipped for %s: resolution %s is not one of %s\",\n\t\t\tbase, resolution, LOR_VALUES\n\t\t)\n\t\treturn\n\t\n\tpayload \u003d {\n\t\t\"type\": \"observerrequest\",\n\t\t\"channelIndex\": channelIndex,\n\t\t\"action\": \"wiredcollectnow\",\n\t\t\"settings\": {\n\t\t\t\"lor\": resolution,\n\t\t\t\"sendto\": \"cloud\",\n\t\t},\n\t\t\"gwSerial\": gwSerial,\n\t}\n\t\n\ttry:\n\t\tsystem.cirruslink.transmission.publish(\n\t\t\t\"chariot_broker\", topic, system.util.jsonEncode(payload), 1, False\n\t\t)\n\texcept:\n\t\tlogger.error(\"collect handoff to %s failed\" % topic, sys.exc_info()[1])\n\t\treturn\n\t\n\t# publish() neither raises nor returns a status when MQTT Transmission\n\t# drops the message - it logs its own warning under ClientsManager. So\n\t# this line means handed to the module, NOT delivered to the broker.\n\tlogger.infof(\n\t\t\"wiredcollectnow handed to %s for %s ch\u003d%s lor\u003d%s\",\n\t\ttopic, gwSerial, channelIndex, resolution\n\t)\n\t\n\t# Stamp when we asked, then one-shot clear the request so the next collect\n\t# needs a fresh trigger. This timestamp and the capture time that comes back\n\t# on the waveform are the whole of this pattern's request/response story -\n\t# there is no correlation id, because the PM system does not need one.\n\tsystem.tag.writeBlocking(\n\t\t[base + \"/last_request_ts\", base + \"/collect_request\"],\n\t\t[system.date.now(), False],\n\t)\n"
+            "script": "\t# One-shot observer request out to the local vibration gateway.\n\t# Fires on the rising edge of steady_state \u0026\u0026 collect_request.\n\tif initialChange or not currentValue.value:\n\t\treturn\n\t\n\timport sys\n\t\n\t# Lines of resolution the gateway accepts: powers of two, 512 .. 4194304.\n\tLOR_VALUES \u003d [512 \u003c\u003c i for i in range(14)]\n\t\n\tlogger \u003d system.util.getLogger(\"vibration_sensor.collect\")\n\tbase \u003d tagPath.rsplit(\"/\", 1)[0]\n\t\n\ttopic, gwSerial, channelIndex, resolution \u003d [\n\t\tqv.value\n\t\tfor qv in system.tag.readBlocking([\n\t\t\tbase + \"/mqtt_topic\",\n\t\t\tbase + \"/gw_serial\",\n\t\t\tbase + \"/channel_index\",\n\t\t\tbase + \"/resolution\",\n\t\t])\n\t]\n\t\n\tif not topic or not gwSerial or resolution is None:\n\t\tlogger.warn(\n\t\t\t\"collect skipped for %s: mqtt_topic, gw_serial or resolution is unset\" % base\n\t\t)\n\t\treturn\n\t\n\t# Comes back as a java.lang.Long off an Int8 tag; coerce before the membership test.\n\tresolution \u003d int(resolution)\n\tif resolution not in LOR_VALUES:\n\t\tlogger.warnf(\n\t\t\t\"collect skipped for %s: resolution %s is not one of %s\",\n\t\t\tbase, resolution, LOR_VALUES\n\t\t)\n\t\treturn\n\t\n\tpayload \u003d {\n\t\t\"type\": \"observerrequest\",\n\t\t\"channelIndex\": channelIndex,\n\t\t\"action\": \"wiredcollectnow\",\n\t\t\"settings\": {\n\t\t\t\"lor\": resolution,\n\t\t\t\"sendto\": \"cloud\",\n\t\t},\n\t\t\"gwSerial\": gwSerial,\n\t}\n\t\n\ttry:\n\t\tsystem.cirruslink.transmission.publish(\n\t\t\t\"chariot_broker\", topic, system.util.jsonEncode(payload), 1, False\n\t\t)\n\texcept:\n\t\tlogger.error(\"collect handoff to %s failed\" % topic, sys.exc_info()[1])\n\t\treturn\n\t\n\t# publish() neither raises nor returns a status when MQTT Transmission\n\t# drops the message - it logs its own warning under ClientsManager. So\n\t# this line means handed to the module, NOT delivered to the broker.\n\tlogger.infof(\n\t\t\"wiredcollectnow handed to %s for %s ch\u003d%s lor\u003d%s\",\n\t\ttopic, gwSerial, channelIndex, resolution\n\t)\n\t\n\t# Stamp when we asked, then one-shot clear the request so the next collect\n\t# needs a fresh trigger. This timestamp and the capture time that comes back\n\t# on the waveform are the whole of this pattern\u0027s request/response story -\n\t# there is no correlation id, because the PM system does not need one.\n\tsystem.tag.writeBlocking(\n\t\t[base + \"/last_request_ts\", base + \"/collect_request\"],\n\t\t[system.date.now(), False],\n\t)\n"
           }
         ],
-        "expression": "{[.]steady_state} \u0026\u0026 {[.]collect_request}",
+        "expression": "{[.]collect_steady_state} \u0026\u0026 {[.]collect_request}",
         "name": "collect_trigger",
         "tagType": "AtomicTag",
         "valueSource": "expr"
@@ -113,7 +120,7 @@
       },
       {
         "dataType": "DateTime",
-        "documentation": "When the collect command was handed to MQTT Transmission. Pairs with waveform/captured_at - together they are this pattern's request/response trace, in place of a correlation id.",
+        "documentation": "When the collect command was handed to MQTT Transmission. Pairs with waveform/captured_at - together they are this pattern\u0027s request/response trace, in place of a correlation id.",
         "name": "last_request_ts",
         "tagType": "AtomicTag",
         "valueSource": "memory"
@@ -130,6 +137,44 @@
         "valueSource": "memory"
       },
       {
+        "name": "readings",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "dataType": "Float8",
+            "documentation": "Referenced from MQTT Engine custom-namespace ingest of the sensor telemetry topic.",
+            "name": "crest_factor",
+            "sourceTagPath": "[MQTT Engine]icc26/{uns_path}/telemetry/values/crest_factor",
+            "tagType": "AtomicTag",
+            "valueSource": "reference"
+          },
+          {
+            "dataType": "Float8",
+            "documentation": "Referenced from MQTT Engine custom-namespace ingest of the sensor telemetry topic.",
+            "name": "peak_accel_g",
+            "sourceTagPath": "[MQTT Engine]icc26/{uns_path}/telemetry/values/peak_accel_g",
+            "tagType": "AtomicTag",
+            "valueSource": "reference"
+          },
+          {
+            "dataType": "Float8",
+            "documentation": "Referenced from MQTT Engine custom-namespace ingest of the sensor telemetry topic.",
+            "name": "rms_velocity_mm_s",
+            "sourceTagPath": "[MQTT Engine]icc26/{uns_path}/telemetry/values/rms_velocity_mm_s",
+            "tagType": "AtomicTag",
+            "valueSource": "reference"
+          },
+          {
+            "dataType": "Float8",
+            "documentation": "Referenced from MQTT Engine custom-namespace ingest of the sensor telemetry topic.",
+            "name": "temperature_c",
+            "sourceTagPath": "[MQTT Engine]icc26/{uns_path}/telemetry/values/temperature_c",
+            "tagType": "AtomicTag",
+            "valueSource": "reference"
+          }
+        ]
+      },
+      {
         "dataType": "Int8",
         "documentation": "Lines of resolution sent as settings.lor. Must be a power of two from 512 to 4194304; the collect is rejected otherwise. The simulator caps this at MAX_LOR (65536) - 4096 is ~37 KB on the wire, 32768 is ~300 KB.",
         "name": "resolution",
@@ -141,26 +186,91 @@
         "valueSource": "memory"
       },
       {
-        "dataType": "Boolean",
-        "defaultValue": false,
-        "name": "steady_state",
-        "tagType": "AtomicTag",
-        "valueSource": "memory"
-      },
-      {
         "name": "waveform",
         "tagType": "Folder",
         "tags": [
           {
+            "name": "box_whisker",
+            "tagType": "Folder",
+            "tags": [
+              {
+                "dataType": "Boolean",
+                "documentation": "True when outlier_count / sample_count is at or below vibsim.MAX_OUTLIER_FRACTION (Tukey fences on this capture). Bearing impacts push the fraction up as defect severity grows.",
+                "name": "check_ok",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Tukey upper fence: q3 + 1.5 * iqr. Points above this are outliers.",
+                "name": "fence_high",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Tukey lower fence: q1 - 1.5 * iqr. Points below this are outliers.",
+                "name": "fence_low",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              },
+              {
+                "dataType": "Float8",
+                "name": "iqr",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              },
+              {
+                "dataType": "Float8",
+                "name": "max",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              },
+              {
+                "dataType": "Float8",
+                "name": "median",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              },
+              {
+                "dataType": "Float8",
+                "name": "min",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              },
+              {
+                "dataType": "Int4",
+                "documentation": "Samples outside [fence_low, fence_high]. Rises with impulsive BPFO content as the defect grows.",
+                "name": "outlier_count",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "25th percentile of the capture (g).",
+                "name": "q1",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "75th percentile of the capture (g).",
+                "name": "q3",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              }
+            ]
+          },
+          {
             "dataType": "DateTime",
-            "documentation": "Capture START time, taken from the waveform payload's ts field - deliberately not the publish time. This is the timestamp the PM system keys on.",
+            "documentation": "Capture START time, taken from the waveform payload\u0027s ts field - deliberately not the publish time. This is the timestamp the PM system keys on.",
             "name": "captured_at",
             "tagType": "AtomicTag",
             "valueSource": "memory"
           },
           {
             "dataType": "Document",
-            "documentation": "Latest time waveform, written by the pm-sensor-listener event stream. Holds the payload's values block: unit, sample_rate_hz, sample_count, duration_s, shaft_rpm, samples[].",
+            "documentation": "Latest time waveform, written by the pm-sensor-listener event stream. Holds the payload\u0027s values block: unit, sample_rate_hz, sample_count, duration_s, shaft_rpm, samples[].",
             "name": "latest",
             "tagType": "AtomicTag",
             "valueSource": "memory"

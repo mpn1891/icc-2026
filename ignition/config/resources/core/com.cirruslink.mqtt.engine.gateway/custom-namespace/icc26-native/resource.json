@@ -1,0 +1,13 @@
+{
+  "scope": "A",
+  "version": 1,
+  "restricted": false,
+  "overridable": true,
+  "files": [
+    "config.json"
+  ],
+  "attributes": {
+    "enabled": true,
+    "description": "Pattern 1 native MQTT telemetry ingest into pm-sensors"
+  }
+}

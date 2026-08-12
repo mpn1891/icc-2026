@@ -103,7 +103,7 @@ class Config:
         self.channel_count = _env_int("CHANNEL_COUNT", 4)
 
         self.telemetry_interval_s = _env_float("TELEMETRY_INTERVAL_S", 5.0)
-        self.sample_rate_hz = _env_int("SAMPLE_RATE_HZ", 6400)
+        self.sample_rate_hz = _env_int("SAMPLE_RATE_HZ", 32000)
         self.max_lor = _env_int("MAX_LOR", 65536)
         self.capture_overhead_s = _env_float("CAPTURE_OVERHEAD_S", 0.5)
 
@@ -407,26 +407,15 @@ class Gateway:
             # along for a human reading the firehose, and nothing keys off them.
             self._publish(
                 self.cfg.response_waveform_topic,
-                envelope(
-                    device,
-                    "vibration-sensor",
-                    {
-                        "unit": "g",
-                        "sample_rate_hz": fs,
-                        "sample_count": lor,
-                        "duration_s": round(duration_s, 4),
-                        "shaft_rpm": self.cfg.shaft_rpm,
-                        "samples": [round(value, 5) for value in samples],
-                    },
-                    ts=capture_start,
-                    meta={
-                        "gw_serial": self.cfg.gw_serial,
-                        "channel_index": index,
-                        "cell": cell,
-                        "device": device,
-                        "request": settings,
-                    },
-                ),
+                {
+                    "datatype": "wiredCollection",
+                    "wiredChannel": index,
+                    "gwSerial": self.cfg.gw_serial,
+                    "timestamp": _iso(capture_start),
+                    "sensorType": "accel",
+                    "sampleRate": fs,
+                    "data": [round(value, 5) for value in samples],
+                },
             )
             self.log.info("published %s-sample waveform for ch%s (%s)", lor, index, device)
         except Exception:

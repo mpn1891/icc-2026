@@ -1,7 +1,7 @@
 {
   "accessPermissions": {
     "securityLevels": [],
-    "type": "AllOf"
+    "type": "AnyOf"
   },
   "allowDesignerSSO": false,
   "allowUserAdmin": false,
@@ -20,12 +20,15 @@
             "children": [
               {
                 "children": [],
+                "description": "System generated security level representing read and write privileges to Gateway configuration",
                 "name": "Administrator"
               }
             ],
+            "description": "Represents the roles that a user has.",
             "name": "Roles"
           }
         ],
+        "description": "Represents a user who has been authenticated by the system.",
         "name": "Authenticated"
       }
     ],
@@ -41,13 +44,20 @@
             "children": [
               {
                 "children": [],
+                "description": "System generated security level representing read and write privileges to Gateway configuration",
                 "name": "Administrator"
               }
             ],
+            "description": "Represents the roles that a user has.",
             "name": "Roles"
           }
         ],
+        "description": "Represents a user who has been authenticated by the system.",
         "name": "Authenticated"
+      },
+      {
+        "children": [],
+        "name": "API"
       }
     ],
     "type": "AnyOf"
@@ -63,13 +73,20 @@
             "children": [
               {
                 "children": [],
+                "description": "System generated security level representing read and write privileges to Gateway configuration",
                 "name": "Administrator"
               }
             ],
+            "description": "Represents the roles that a user has.",
             "name": "Roles"
           }
         ],
+        "description": "Represents a user who has been authenticated by the system.",
         "name": "Authenticated"
+      },
+      {
+        "children": [],
+        "name": "API"
       }
     ],
     "type": "AnyOf"

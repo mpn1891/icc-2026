@@ -41,9 +41,11 @@ and the fix is to move the fact rather than keep two copies.
 
 ## Also outstanding
 
-- **Ignition 8.3 API key** — unblocks `tasks.py scan`. Gateway UI → Platform → Security → API
-  Keys → `IGNITION_API_TOKEN` in `.env`; over plain HTTP also disable *Require secure connections
-  for API Keys*. Until then, apply pulled config changes with `python tasks.py restart ignition`.
+- **Per-machine Ignition 8.3 API key** — `tasks.py scan` now uses verified HTTPS only. After
+  seeding, each user must create a secure-channel key in Gateway UI → Platform → Security → API
+  Keys, grant its security level Gateway read/write access, and put the complete `name:secret`
+  value in `.env` as `IGNITION_API_TOKEN_HTTPS`. The first key cannot be automated because its
+  creation API already requires authenticated write access.
 - **Postgres JDBC datasource `ICC26`** → `jdbc:postgresql://postgres:5432/icc26`, user `icc26`.
   Patterns 6 and 7 need it; not created yet (no `database-connection` resource in the repo).
 - **Transmission logs `Failed to subscribe to TARGET elements`** immediately after connecting.
@@ -104,6 +106,7 @@ Do not `git commit` from inside the scratch clone, and do not `nuke` the main ch
   `valueStore.idb`, `.modl` files, or `.env`.
 - **Unknown gateway schemas: UI first, then read `git status`, then commit.** Known formats
   (tags, project scripts, WebDev, Perspective views) can be authored as files.
-- **Changed `.env` secrets need `python tasks.py restart ignition`**, not `scan`.
+- **Changed container-consumed `.env` secrets need `python tasks.py restart ignition`**, not
+  `scan`; the API token is read directly by `tasks.py` and needs no restart.
 - **Before the talk:** set `allowAnonymous` back to `false` and confirm every client still
   connects with its own credential.

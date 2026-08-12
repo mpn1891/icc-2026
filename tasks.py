@@ -12,12 +12,13 @@ verification, the Chariot login race). One runner, one place for that knowledge.
 Standard library only. No pip install, no venv. Python 3.8+.
 """
 
-import base64
 import hashlib
 import json
 import os
 import re
 import shutil
+import socket
+import ssl
 import stat
 import subprocess
 import sys
@@ -42,6 +43,15 @@ COMPOSE = ["docker", "compose"]
 COMPOSE_SEED = ["docker", "compose", "-f", "docker-compose.seed.yml"]
 
 IGNITION_DATA = "/usr/local/bin/ignition/data"
+SSL_KEYTOOL = "/usr/local/bin/ignition/lib/runtime/jre-nix/bin/keytool"
+SSL_KEYSTORE_REL = "config/local/ignition/webserver/keystore/ssl.pfx"
+SSL_KEYSTORE = "%s/%s" % (IGNITION_DATA, SSL_KEYSTORE_REL)
+SSL_KEYSTORE_HOST = os.path.join(
+    ROOT, "ignition", *SSL_KEYSTORE_REL.split("/")
+)
+SSL_CERT_HOST = os.path.join(
+    ROOT, "ignition", "certificates", "icc26-ignition.crt"
+)
 
 
 # ── output ───────────────────────────────────────────────────────────────────
@@ -156,13 +166,19 @@ def capture(args):
 
 # ── HTTP ─────────────────────────────────────────────────────────────────────
 
-def http(url, method="GET", headers=None, body=None, timeout=5):
-    """Returns (status, text). status is None if the host never answered."""
+def http(url, method="GET", headers=None, body=None, timeout=5, insecure=False):
+    """Returns (status, text). status is None if the host never answered.
+
+    insecure=True skips TLS verification (Ignition's default HTTPS cert is
+    self-signed). It is used only for the unauthenticated HTTPS readiness probe;
+    API calls validate the certificate against the host trust store.
+    """
     data = body.encode("utf-8") if isinstance(body, str) else body
     req = urllib.request.Request(url, data=data, method=method,
                                  headers=headers or {})
+    context = ssl._create_unverified_context() if insecure else None
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:
             return resp.getcode(), resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         # A 401/403 still proves something is listening, so the status matters
@@ -172,28 +188,42 @@ def http(url, method="GET", headers=None, body=None, timeout=5):
         return None, ""
 
 
+def ignition_https_base(env):
+    """https://localhost:<IGNITION_HTTPS_PORT> for /data/api/v1 routes."""
+    port = env_value(env, "IGNITION_HTTPS_PORT", "8043")
+    return "https://localhost:%s" % port
+
+
 def ignition_auth(env):
     """Headers for the gateway's /data/api/v1 routes.
 
-    Ignition 8.3 does not accept Basic auth here -- it wants an API key, created
-    at Platform > Security > API Keys in the gateway UI and sent as
-    X-Ignition-API-Token. Note the gateway also refuses API keys over plain HTTP
-    until "Require secure connections for API Keys" is turned off.
-
-    Basic is still sent underneath. It authenticates nothing on these routes, but
-    keeping it means an unconfigured gateway answers a clean 401 instead of
-    behaving as though no credentials were offered at all.
+    Ignition 8.3 requires the complete ``name:secret`` API token in the
+    X-Ignition-API-Token header. Only the HTTPS token is supported here; there is
+    deliberately no HTTP credential or transport fallback.
     """
-    headers = {}
-    token = env.get("IGNITION_API_TOKEN", "").strip()
-    if token:
-        headers["X-Ignition-API-Token"] = token
+    token = env.get("IGNITION_API_TOKEN_HTTPS", "").strip()
+    return {"X-Ignition-API-Token": token} if token else {}
 
-    user = env_value(env, "IGNITION_ADMIN_USERNAME", "admin")
-    password = env_value(env, "IGNITION_ADMIN_PASSWORD", "password")
-    pair = base64.b64encode(("%s:%s" % (user, password)).encode("ascii")).decode("ascii")
-    headers["Authorization"] = "Basic " + pair
-    return headers
+
+def https_ready(env):
+    """True once the gateway is answering StatusPing on the HTTPS port."""
+    url = "%s/StatusPing" % ignition_https_base(env)
+    status, text = http(url, timeout=5, insecure=True)
+    return status == 200 and "RUNNING" in text and "COMMISSIONING" not in text
+
+
+def wait_for_https(timeout_sec=60):
+    env = dotenv()
+    port = env_value(env, "IGNITION_HTTPS_PORT", "8043")
+    step("Waiting for HTTPS on :%s (up to %d s)" % (port, timeout_sec))
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        if https_ready(env):
+            ok("HTTPS is up on :%s" % port)
+            return True
+        time.sleep(2)
+    bad("HTTPS did not come up on :%s within %d s" % (port, timeout_sec))
+    return False
 
 
 # ── Chariot ──────────────────────────────────────────────────────────────────
@@ -661,6 +691,13 @@ def task_seed():
         print("       docker compose -f docker-compose.seed.yml logs -f")
         return False
 
+    # SSL is machine-local identity, so create it while the seed container owns
+    # the unmounted data volume. The subsequent export carries ssl.pfx into the
+    # host config/local directory used by the normal stack.
+    if not _enable_ssl(COMPOSE_SEED, label="seed gateway"):
+        bad("Could not configure seed gateway HTTPS. Leaving it up for inspection.")
+        return False
+
     if clone:
         task_export_identity(container="icc26-ignition-seed")
     else:
@@ -710,8 +747,9 @@ def task_up():
     check_chariot_listener()
 
     started = wait_for_gateway(timeout_sec=300)
+    ssl_ready = task_enable_ssl() if started else False
     print("")
-    return task_health() and started
+    return task_health() and started and ssl_ready
 
 
 def task_down(rest):
@@ -746,18 +784,327 @@ def task_nuke():
     ok("Volumes destroyed. Next: python tasks.py seed")
 
 
+def _compose_exec(compose, *args):
+    return compose + ["exec", "-T", "ignition"] + list(args)
+
+
+def _csv(value):
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _ssl_subject_names(env):
+    """Stable local names plus optional conference-network names from .env."""
+    dns_names = ["localhost"]
+    for name in (socket.gethostname(), socket.getfqdn()):
+        if name and name.lower() not in [item.lower() for item in dns_names]:
+            dns_names.append(name)
+    for name in _csv(env.get("IGNITION_SSL_DNS_NAMES", "")):
+        if name.lower() not in [item.lower() for item in dns_names]:
+            dns_names.append(name)
+
+    ip_addresses = ["127.0.0.1"]
+    for address in _csv(env.get("IGNITION_SSL_IP_ADDRESSES", "")):
+        if address not in ip_addresses:
+            ip_addresses.append(address)
+    return dns_names, ip_addresses
+
+
+def _ssl_keystore_exists(compose):
+    rc, _ = capture(_compose_exec(compose, "test", "-f", SSL_KEYSTORE))
+    return rc == 0
+
+
+def _ssl_keystore_valid(compose):
+    rc, _ = capture(_compose_exec(
+        compose,
+        SSL_KEYTOOL,
+        "-list",
+        "-alias", "ignition",
+        "-storetype", "PKCS12",
+        "-keystore", SSL_KEYSTORE,
+        "-storepass", "ignition",
+    ))
+    return rc == 0
+
+
+def _prepare_ssl_dir(compose):
+    directory = SSL_KEYSTORE.rsplit("/", 1)[0]
+    return run(_compose_exec(compose, "mkdir", "-p", directory)) == 0
+
+
+def _restore_host_keystore_to_seed(compose, env):
+    """Reuse the same machine's cert after nuke instead of rotating it."""
+    if compose != COMPOSE_SEED or not os.path.isfile(SSL_KEYSTORE_HOST):
+        return False
+    if not _prepare_ssl_dir(compose):
+        return False
+
+    rc = run(compose + [
+        "cp", SSL_KEYSTORE_HOST, "ignition:%s" % SSL_KEYSTORE
+    ])
+    if rc != 0:
+        warn("Could not restore the existing host ssl.pfx; generating a new one")
+        capture(_compose_exec(compose, "rm", "-f", SSL_KEYSTORE))
+        return False
+
+    uid = env_value(env, "IGNITION_UID", "2003")
+    gid = env_value(env, "IGNITION_GID", "2003")
+    # `compose cp` creates a root-owned file. Restore ownership for Ignition.
+    capture(compose + [
+        "exec", "-T", "--user", "0", "ignition",
+        "chown", "%s:%s" % (uid, gid), SSL_KEYSTORE,
+    ])
+    ok("restored the existing machine-local ssl.pfx")
+    return True
+
+
+def _generate_ssl_keystore(compose, env):
+    if not _prepare_ssl_dir(compose):
+        bad("could not create the SSL keystore directory")
+        return False
+
+    dns_names, ip_addresses = _ssl_subject_names(env)
+    sans = (["DNS:%s" % name for name in dns_names]
+            + ["IP:%s" % address for address in ip_addresses])
+    common_name = env_value(env, "IGNITION_SSL_COMMON_NAME", "localhost")
+    cmd = _compose_exec(
+        compose,
+        SSL_KEYTOOL,
+        "-genkeypair",
+        "-alias", "ignition",
+        "-keyalg", "RSA",
+        "-keysize", "2048",
+        "-validity", "3650",
+        "-storetype", "PKCS12",
+        "-keystore", SSL_KEYSTORE,
+        "-storepass", "ignition",
+        "-keypass", "ignition",
+        "-dname", "CN=%s, O=ICC26, OU=Demo, C=US" % common_name,
+        "-ext", "SAN=%s" % ",".join(sans),
+    )
+    if run(cmd) != 0 or not _ssl_keystore_valid(compose):
+        bad("keytool failed to create a usable ssl.pfx")
+        return False
+    ok("created ssl.pfx for %s" % ", ".join(dns_names + ip_addresses))
+    return True
+
+
+def _export_ssl_certificate(compose):
+    """Export the public cert for host trust and other demo clients."""
+    os.makedirs(os.path.dirname(SSL_CERT_HOST), exist_ok=True)
+    container_cert = "/tmp/icc26-ignition.crt"
+    rc, _ = capture(_compose_exec(
+        compose,
+        SSL_KEYTOOL,
+        "-exportcert",
+        "-rfc",
+        "-alias", "ignition",
+        "-storetype", "PKCS12",
+        "-keystore", SSL_KEYSTORE,
+        "-storepass", "ignition",
+        "-file", container_cert,
+    ))
+    if rc != 0:
+        bad("could not export the public SSL certificate")
+        return None
+
+    temp_path = SSL_CERT_HOST + ".tmp"
+    try:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        rc = run(compose + [
+            "cp", "ignition:%s" % container_cert, temp_path
+        ])
+        if rc != 0:
+            bad("could not copy the public SSL certificate to the host")
+            return None
+        os.replace(temp_path, SSL_CERT_HOST)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        capture(_compose_exec(compose, "rm", "-f", container_cert))
+
+    ok("exported %s" % os.path.relpath(SSL_CERT_HOST, ROOT))
+    return SSL_CERT_HOST
+
+
+def _cert_thumbprint(path):
+    with open(path, "r", encoding="ascii") as fh:
+        pem = fh.read()
+    der = ssl.PEM_cert_to_DER_cert(pem)
+    return hashlib.sha1(der).hexdigest().upper()
+
+
+def _cert_is_self_signed(path):
+    try:
+        info = ssl._ssl._test_decode_cert(path)
+    except Exception:
+        return False
+    return info.get("subject") == info.get("issuer")
+
+
+def _env_enabled(env, key, default=True):
+    value = env.get(key, "").strip().lower()
+    if not value:
+        return default
+    return value not in ("0", "false", "no", "off")
+
+
+def _host_os():
+    if os.name == "nt":
+        return "windows"
+    if sys.platform == "darwin":
+        return "macos"
+    return "other"
+
+
+def _mac_login_keychain():
+    rc, path = capture(["security", "login-keychain"])
+    if rc == 0 and path:
+        return path.strip().strip('"')
+    return os.path.expanduser("~/Library/Keychains/login.keychain-db")
+
+
+def _trust_ssl_certificate(env, path):
+    """Trust our self-signed leaf in the current user's OS trust store."""
+    if not _env_enabled(env, "IGNITION_SSL_TRUST_HOST", default=True):
+        warn("host trust disabled; import %s manually if needed"
+             % os.path.relpath(path, ROOT))
+        return True
+
+    host_os = _host_os()
+    if host_os == "other":
+        warn("automatic host trust supports Windows and macOS")
+        print("       Import %s into this host's trust store."
+              % os.path.relpath(path, ROOT))
+        return True
+
+    if not _cert_is_self_signed(path):
+        bad("HTTPS certificate is not self-signed and its chain is not trusted")
+        print("       Install its issuing CA instead of trusting the server leaf.")
+        return False
+
+    if host_os == "windows":
+        thumbprint = _cert_thumbprint(path)
+        rc, _ = capture([
+            "certutil.exe", "-user", "-verifystore", "Root", thumbprint
+        ])
+        if rc == 0:
+            ok("certificate already trusted in CurrentUser\\Root")
+            return True
+
+        rc = run([
+            "certutil.exe", "-user", "-f", "-addstore", "Root", path
+        ])
+        if rc != 0:
+            bad("could not add the certificate to CurrentUser\\Root")
+            return False
+        ok("trusted certificate in CurrentUser\\Root")
+        return True
+
+    keychain = _mac_login_keychain()
+    common_name = env_value(env, "IGNITION_SSL_COMMON_NAME", "localhost")
+    rc, _ = capture([
+        "security", "verify-cert",
+        "-c", path,
+        "-p", "ssl",
+        "-n", common_name,
+        "-k", keychain,
+    ])
+    if rc == 0:
+        ok("certificate already trusted by the macOS login keychain")
+        return True
+
+    rc = run([
+        "security", "add-trusted-cert",
+        "-r", "trustRoot",
+        "-p", "basic",
+        "-p", "ssl",
+        "-k", keychain,
+        path,
+    ])
+    if rc != 0:
+        bad("could not trust the certificate in the macOS login keychain")
+        print("       macOS may require the login keychain password.")
+        return False
+    ok("trusted certificate in the macOS login keychain")
+    return True
+
+
+def _enable_ssl(compose, label):
+    """Ensure the selected gateway has HTTPS and its host trusts the cert."""
+    assert_env()
+    env = dotenv()
+    https_port = env_value(env, "IGNITION_HTTPS_PORT", "8043")
+    listener_ready = https_ready(env)
+
+    step("Configuring %s HTTPS" % label)
+    if not _ssl_keystore_exists(compose):
+        restored = _restore_host_keystore_to_seed(compose, env)
+        if not restored and not _generate_ssl_keystore(compose, env):
+            return False
+    else:
+        ok("ssl.pfx already present")
+
+    if not _ssl_keystore_valid(compose):
+        bad("ssl.pfx does not contain alias 'ignition' with the expected password")
+        return False
+
+    if not listener_ready:
+        reload = capture(_compose_exec(
+            compose,
+            "/usr/local/bin/ignition/gwcmd.sh", "--reloadks",
+        ))
+        if reload[0] != 0:
+            warn("gwcmd --reloadks unavailable; restarting %s" % label)
+            run(compose + ["restart", "ignition"])
+            if not wait_for_gateway(timeout_sec=300, label=label):
+                return False
+        else:
+            ok("reloaded SSL keystore")
+        if not wait_for_https(timeout_sec=90):
+            return False
+    else:
+        ok("HTTPS already enabled on :%s" % https_port)
+
+    cert_path = _export_ssl_certificate(compose)
+    return bool(cert_path and _trust_ssl_certificate(env, cert_path))
+
+
+def task_enable_ssl():
+    """Enable gateway HTTPS and trust its public cert on the local host."""
+    return _enable_ssl(COMPOSE, label="gateway")
+
+
 def task_scan():
     assert_env()
     env = dotenv()
-    port = env_value(env, "IGNITION_HTTP_PORT", "8088")
-    headers = ignition_auth(env)
 
-    step("Asking the gateway to re-read config and projects from disk")
+    https_tok = env.get("IGNITION_API_TOKEN_HTTPS", "").strip()
+    if not https_tok:
+        bad("No HTTPS API token configured for scan.")
+        print("       Put the complete name:secret token in .env as")
+        print("       IGNITION_API_TOKEN_HTTPS.")
+        print("       Gateway UI > Platform > Security > API Keys.")
+        print("")
+        print("       Meanwhile, to apply pulled changes:")
+        print("         python tasks.py restart ignition")
+        return False
+    if not https_ready(env):
+        bad("HTTPS is not ready - run: python tasks.py enable-ssl")
+        return False
+
+    base = ignition_https_base(env)
+    headers = ignition_auth(env)
+    step("Asking the gateway to re-read config and projects from disk (HTTPS)")
     scanned = True
     unauthorized = False
     for what in ("config", "projects"):
-        url = "http://localhost:%s/data/api/v1/scan/%s" % (port, what)
-        status, _ = http(url, method="POST", headers=headers, body="", timeout=20)
+        url = "%s/data/api/v1/scan/%s" % (base, what)
+        status, text = http(
+            url, method="POST", headers=headers, body="",
+            timeout=20,
+        )
         if status and 200 <= status < 300:
             ok("scanned %s" % what)
         else:
@@ -768,10 +1115,13 @@ def task_scan():
     if not scanned:
         print("")
         if unauthorized:
-            warn("The gateway rejected the request. These routes need an 8.3 API key,")
-            warn("not the admin password: Gateway UI > Platform > Security > API Keys,")
-            warn("then put it in .env as IGNITION_API_TOKEN. Over plain HTTP you must")
-            warn("also disable 'Require secure connections for API Keys'.")
+            warn("The gateway rejected the request. Check the API key:")
+            warn("  Gateway UI > Platform > Security > API Keys")
+            warn("  - key enabled, security level includes whatever writePermissions allow")
+            warn("  - if 'Require secure connections' is on, either use real HTTPS")
+            warn("    that Ignition treats as secure, or turn that off on the key")
+            warn("  - put the complete name:secret token in .env as")
+            warn("    IGNITION_API_TOKEN_HTTPS")
         print("")
         print("       Meanwhile, to apply pulled changes:")
         print("         python tasks.py restart ignition")
@@ -783,7 +1133,8 @@ def task_scan():
 def task_trial():
     assert_env()
     env = dotenv()
-    port = env_value(env, "IGNITION_HTTP_PORT", "8088")
+    http_port = env_value(env, "IGNITION_HTTP_PORT", "8088")
+    base = ignition_https_base(env)
 
     both_clocks_read = True
 
@@ -792,7 +1143,7 @@ def task_trial():
     # 404s regardless of auth. Read out of LicensingRoutes in the gateway jar and confirmed
     # live. Works on plain basic auth. Read-only on purpose: resetting the trial is a
     # by-hand step in the gateway UI, and nothing here tries to do it for you.
-    status, text = http("http://localhost:%s/data/api/v1/trial" % port,
+    status, text = http("%s/data/api/v1/trial" % base,
                         headers=ignition_auth(env), timeout=15)
     if status and 200 <= status < 300:
         try:
@@ -806,7 +1157,7 @@ def task_trial():
             mins = round(left / 60, 1)
             if left <= 0:
                 bad("Trial EXPIRED - reset it by hand: http://localhost:%s -> "
-                    "Config -> Licensing" % port)
+                    "Config -> Licensing" % http_port)
             elif left < 900:
                 warn("%s minutes left" % mins)
             else:
@@ -948,6 +1299,8 @@ Running
   nuke             Stop and DESTROY all volumes (asks first)
 
 Gateway / broker
+  enable-ssl       Configure HTTPS and trust its cert on Windows/macOS
+                   (seed does this automatically; safe to rerun)
   scan             Tell the gateway to re-read config + projects from disk
   trial            Show BOTH trial clocks (Ignition and Chariot)
                    Licensing itself is by hand, in each product's web UI
@@ -977,6 +1330,7 @@ def main(argv):
         "ps": lambda: task_ps(rest),
         "logs": lambda: task_logs(rest),
         "nuke": task_nuke,
+        "enable-ssl": task_enable_ssl,
         "scan": task_scan,
         "trial": task_trial,
         "health": task_health,

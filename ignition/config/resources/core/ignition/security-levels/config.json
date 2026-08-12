@@ -16,6 +16,10 @@
       ],
       "description": "Represents a user who has been authenticated by the system.",
       "name": "Authenticated"
+    },
+    {
+      "children": [],
+      "name": "API"
     }
   ]
 }

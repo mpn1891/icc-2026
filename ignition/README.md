@@ -24,8 +24,11 @@ reads this directory at startup and does **not** watch it afterwards, so run
 
 `python tasks.py scan` POSTs to `/data/api/v1/scan/config` and `/data/api/v1/scan/projects` to
 do the same without a restart, but Ignition 8.3 guards those routes with an API key rather than
-the admin password — see `IGNITION_API_TOKEN` in `.env.example`. Until yours is configured,
-`scan` fails with a 401 that explains itself.
+the admin password. Each machine needs a one-time manual key created at Gateway UI → Platform →
+Security → API Keys, with a security level granted Gateway read/write access. Put the complete
+`name:secret` value in the gitignored `.env` as `IGNITION_API_TOKEN_HTTPS`. The first key cannot
+bootstrap itself through the API because key creation already requires authenticated write
+access. Until yours is configured, `scan` fails with a 401 that explains itself.
 
 That second step is the one people forget. If a pulled change "didn't take", apply it before
 debugging anything else.
@@ -38,9 +41,10 @@ files you actually changed, then `git restore .` to drop the rest. A `resource.j
 diff is a timestamp is churn — restoring it costs nothing and saves everyone else a pointless
 merge conflict.
 
-Secrets are the exception to "scan is enough": those live in `.env` and reach the gateway as
-environment variables, which are read once at process start. After changing one, run
-`python tasks.py restart ignition`.
+Container-consumed secrets are the exception to "scan is enough": those live in `.env` and
+reach the gateway as environment variables, which are read once at process start. After
+changing one, run `python tasks.py restart ignition`. `IGNITION_API_TOKEN_HTTPS` is consumed
+by `tasks.py` itself and is re-read on every invocation, so changing that token needs no restart.
 
 ## What is and is not tracked
 

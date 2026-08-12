@@ -38,8 +38,9 @@ add it here rather than in a status note.
 | `debezium` | 8083 | step 6 |
 
 Patterns 1 and 2 add no container: both run inside Ignition — pattern 1 as the `vibsim`
-script library (partially wired: library + UDTs + `pm-sensor-listener` topic; timer, control
-stream, handlers, Engine namespace, and Perspective still TODO — see
+script library (partially wired: library + UDTs at `icc26/site1/upstream/bioreactors/br-201` incl.
+`waveform/box_whisker`, + `pm-sensor-listener` topic; timer, control stream, handlers, and
+Engine namespace still TODO — Designer toggles collect; no Perspective in v1 — see
 [`plans/01-native-mqtt.md`](plans/01-native-mqtt.md)), pattern 2 on the built-in Programmable
 Device Simulator. `services/sim-vibration/` holds a standalone implementation of pattern 1's
 contract that is deliberately **not** wired into compose.
@@ -324,10 +325,18 @@ a restart. Any workflow that assumes a file watcher is wrong.
 `python tasks.py scan` POSTs to `/data/api/v1/scan/config` and `/data/api/v1/scan/projects` and
 avoids the restart, but 8.3 changed the auth on those routes: they take an API key
 (Platform > Security > API Keys) in an `X-Ignition-API-Token` header, not the admin password,
-and reject keys over plain HTTP unless *Require secure connections for API Keys* is disabled.
-`tasks.py` sends the key when `IGNITION_API_TOKEN` is set in `.env` and otherwise fails with a
-401 that says all of this. **Creating that key is still an open task** — until it is done,
-restart is the only way to apply a pulled change.
+and the header value is the complete `name:secret` token shown once at creation. `tasks.py`
+uses `IGNITION_API_TOKEN_HTTPS` and validates the gateway certificate; it deliberately has no
+HTTP credential fallback. API keys are machine-local, so each clone must create its own key
+with a security level granted Gateway read/write access.
+
+The first key remains a manual bootstrap step. `/data/api/v1/api-token/generate` and the API
+token resource routes require an already authenticated write-capable actor, while these routes
+do not accept the gateway admin password as HTTP Basic auth. Automating key creation would
+therefore require scripting the browser's session/CSRF login flow or shipping a shared
+credential, neither of which is appropriate for this demo. After seeding, each user creates a
+secure-channel key in the Gateway UI and copies its complete `name:secret` value into the
+gitignored `.env`. Once that key exists, creating additional keys through the API is possible.
 
 If a pulled change "didn't take", apply it before debugging anything else.
 
@@ -346,8 +355,8 @@ is not taking effect.
 3. **Generated locally by `seed`.** `config/local/`, `config/resources/local/`,
    `config/ignition/tags/valueStore.idb` — gitignored, machine-specific, regenerated cleanly
    from nothing.
-4. **`.env` and compose environment.** Admin credentials, host ports, edition, TZ, the pinned
-   `hostname`.
+4. **`.env` and compose environment.** Admin credentials, the per-machine HTTPS API token,
+   host ports, edition, TZ, and the pinned `hostname`.
 5. **A browser, once per fresh data volume.** Module certificate fingerprints and
    `licenseAgreementHash`, written into `data/modules.json` *inside* the volume. Cannot be
    pre-seeded — tested, see Commissioning below.
@@ -462,6 +471,26 @@ in, so a partial file silently disables every built-in module.
 
 So commissioning stays a one-time manual step per fresh volume. `tasks.py seed` detects it,
 prints the URL, and waits.
+
+## Gateway HTTPS
+
+HTTPS setup is part of `tasks.py seed`, immediately after commissioning and before the
+machine-local identity is exported. The seed container uses Ignition's own `keytool` to create
+`config/local/ignition/webserver/keystore/ssl.pfx`, reloads the keystore, and exports the public
+certificate to the gitignored `ignition/certificates/icc26-ignition.crt`. On Windows it also
+adds that public certificate to the current user's Trusted Root store. On macOS it adds the
+certificate as a trusted root in the current user's login keychain (a locked keychain may
+prompt for its password). Neither path exports the private key or requires machine-wide trust.
+`tasks.py enable-ssl` repeats the same process idempotently for an existing gateway.
+
+The generated certificate always covers `localhost`, `127.0.0.1`, and the host's current
+hostname/FQDN. Extra stable conference-network names and addresses can be set before seeding
+with `IGNITION_SSL_DNS_NAMES` and `IGNITION_SSL_IP_ADDRESSES`. Trusting it on the gateway host
+does not make it trusted on audience devices: those devices must import the exported public
+certificate too, and the URL they use must match one of its SANs.
+
+Both Compose files bind Ignition's HTTP port to `127.0.0.1` only. It remains available for
+local commissioning and maintenance, but network clients can reach only the HTTPS port.
 
 ---
 
@@ -602,9 +631,9 @@ Two independent 2-hour clocks: Ignition's and Chariot's.
 **Both are reset by hand, in each product's own web UI.** `tasks.py` reads them and never
 writes them:
 
-- **Ignition** — gateway UI → Config → Licensing. `GET /data/api/v1/trial` reads the clock on
-  plain basic auth, which is what `python tasks.py trial` uses. The matching `POST` resets it
-  but needs an 8.3 API key, and the reset **only succeeds once the trial has already
+- **Ignition** — gateway UI → Config → Licensing. `GET /data/api/v1/trial` is unauthenticated;
+  `python tasks.py trial` reads it over verified HTTPS. The matching `POST` resets it but needs
+  an 8.3 write-capable API key, and the reset **only succeeds once the trial has already
   expired** (an active trial returns 403). So the procedure is *let it expire, then reset* —
   you cannot top it up before walking on stage, scripted or not.
 - **Chariot** — web UI at `:8081` → License → start trial. Does not auto-start at all; see

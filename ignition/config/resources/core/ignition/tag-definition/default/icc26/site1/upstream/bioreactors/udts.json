@@ -1,6 +1,6 @@
 [
   {
-    "name": "reactor1",
+    "name": "br-201",
     "tagType": "UdtInstance",
     "typeId": "bioreactor",
     "tags": [
@@ -21,7 +21,7 @@
               },
               "resolution": {
                 "dataType": "Integer",
-                "value": 4096
+                "value": 512
               },
               "uns_path": {
                 "dataType": "String",

@@ -38,6 +38,7 @@ def reset(volume, config, modules=True, commissioned=True):
     stub("run", lambda a: calls.append("run:" + " ".join(a[-2:])))
     stub("task_export_config", lambda container=None: calls.append("EXPORT_FULL"))
     stub("task_export_identity", lambda container=None: calls.append("EXPORT_IDENTITY"))
+    stub("_enable_ssl", lambda compose, label: calls.append("SSL:" + label) or True)
     stub("check_chariot_listener", lambda: calls.append("chariot-check"))
     stub("task_health", lambda: True)
 
@@ -64,10 +65,12 @@ print("== seed: volume x config matrix ==")
 reset(volume=False, config=False)
 rc, out, c = run_task("seed")
 check("absent/empty -> full seed, exit 0", (rc, "EXPORT_FULL" in c, "EXPORT_IDENTITY" in c), (0, True, False))
+check("full seed configures SSL before export", c.index("SSL:seed gateway") < c.index("EXPORT_FULL"), True)
 
 reset(volume=False, config=True)
 rc, out, c = run_task("seed")
 check("absent/populated -> clone seed, exit 0", (rc, "EXPORT_IDENTITY" in c, "EXPORT_FULL" in c), (0, True, False))
+check("clone seed configures SSL before export", c.index("SSL:seed gateway") < c.index("EXPORT_IDENTITY"), True)
 check("clone seed never rmtrees committed config", "EXPORT_FULL" in c, False)
 
 reset(volume=True, config=True)
@@ -106,6 +109,7 @@ check("volume but empty config -> refuse, exit 1", (rc, c), (1, []))
 reset(volume=True, config=True)
 rc, out, c = run_task("up")
 check("both present -> starts stack, exit 0", (rc, any("up" in x for x in c)), (0, True))
+check("up verifies SSL", "SSL:gateway" in c, True)
 
 print("== A1: exit-code plumbing ==")
 
@@ -140,6 +144,47 @@ buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
     rc = tasks.main(["nonsense"])
 check("unknown task -> exit 2", rc, 2)
+
+print("== SSL host trust ==")
+
+trust_calls = []
+stub("_host_os", lambda: "windows")
+stub("_cert_is_self_signed", lambda path: True)
+stub("_cert_thumbprint", lambda path: "AABBCC")
+stub("capture", lambda args: (1, ""))
+stub("run", lambda args: trust_calls.append(args) or 0)
+with contextlib.redirect_stdout(io.StringIO()):
+    trusted = tasks._trust_ssl_certificate({}, "gateway.crt")
+check("Windows trusts cert in current-user Root", trusted, True)
+check("  uses certutil current-user store",
+      trust_calls[0][:5],
+      ["certutil.exe", "-user", "-f", "-addstore", "Root"])
+
+trust_calls = []
+trust_checks = []
+stub("_host_os", lambda: "macos")
+stub("_mac_login_keychain", lambda: "/Users/demo/Library/Keychains/login.keychain-db")
+stub("capture", lambda args: trust_checks.append(args) or (1, ""))
+stub("run", lambda args: trust_calls.append(args) or 0)
+with contextlib.redirect_stdout(io.StringIO()):
+    trusted = tasks._trust_ssl_certificate({}, "gateway.crt")
+check("macOS trusts cert in the login keychain", trusted, True)
+check("  uses security add-trusted-cert",
+      trust_calls[0][:4],
+      ["security", "add-trusted-cert", "-r", "trustRoot"])
+check("  verifies SSL hostname against the keychain",
+      trust_checks[0][3:8],
+      ["gateway.crt", "-p", "ssl", "-n", "localhost"])
+check("  scopes trust to basic and SSL policies",
+      ("basic" in trust_calls[0], "ssl" in trust_calls[0]),
+      (True, True))
+
+trust_calls = []
+stub("capture", lambda args: (0, "certificate verification successful"))
+stub("run", lambda args: trust_calls.append(args) or 0)
+with contextlib.redirect_stdout(io.StringIO()):
+    trusted = tasks._trust_ssl_certificate({}, "gateway.crt")
+check("macOS trust step is idempotent", (trusted, trust_calls), (True, []))
 
 print("")
 if failures:

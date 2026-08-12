@@ -45,14 +45,16 @@ python tasks.py up
 python tasks.py health   # this going green is the success criterion
 ```
 
-Five things about that sequence, roughly in the order they will trip you up:
+Six things about that sequence, roughly in the order they will trip you up:
 
 1. **The `.modl` files are not optional and are not in the repo.** `init` only warns, but
    `seed` and `up` both hard-fail with a pointer to
    [`compose/ignition/MODULES.md`](compose/ignition/MODULES.md).
 2. **`seed` blocks partway through and prints a URL.** Ignition parks in commissioning until
    someone accepts the Cirrus module certificates in a browser. One-time per machine, cannot
-   be automated away — accept it and `seed` carries on by itself.
+   be automated away — accept it and `seed` carries on by itself. It then generates the
+   gateway HTTPS certificate, exports it to `ignition/certificates/`, and trusts it in the
+   current user's Windows certificate store or macOS login keychain.
 3. **`seed` is once per machine, not once per session.** Run it against an already-seeded
    stack and it refuses rather than overwriting anything. You only repeat it after
    `python tasks.py nuke`.
@@ -66,6 +68,10 @@ Five things about that sequence, roughly in the order they will trip you up:
    even auto-start, so its MQTT port stays shut until you visit its License page. `up` and
    `health` tell you which clock needs attention; neither touches licensing itself. If the
    stack has been sitting overnight, expect `health` to have opinions.
+6. **The HTTPS certificate is automatic; the first API key is not.** Ignition requires an
+   authenticated write-capable session or key to create an API key, so a fresh gateway has a
+   bootstrap problem that `tasks.py` cannot solve with the admin password. Each person creates
+   one key in the Gateway UI and stores it only in their gitignored `.env`; details below.
 
 After that, day to day is just:
 
@@ -87,7 +93,7 @@ python tasks.py down     # stops the stack, keeps volumes
 
 | | |
 |---|---|
-| Ignition gateway | <http://localhost:8088> — `admin` / `password` |
+| Ignition gateway | <https://localhost:8043> — `admin` / `password` |
 | Chariot MQTT UI | <http://localhost:8081> — `admin` / `password` |
 | MQTT broker | `localhost:1883` (see `compose/chariot/mqtt-users.json` for credentials) |
 | PostgreSQL | `localhost:5432` — db `icc26`, user `icc26` |
@@ -112,10 +118,32 @@ All Ignition 8.3 gateway configuration lives in files under `ignition/config` an
   changes nothing). Apply it with `python tasks.py restart ignition`.
 
   `python tasks.py scan` does the same thing without a restart, but needs an Ignition 8.3 API
-  key first (Gateway UI → Platform → Security → API Keys → `IGNITION_API_TOKEN` in your `.env`;
-  over plain HTTP also turn off "Require secure connections for API Keys"). Until that is set
-  up, `scan` returns 401 and tells you so. *Applying the pull is the step people forget* — if a
-  pulled change didn't take, do this before debugging anything else.
+  key first (Gateway UI → Platform → Security → API Keys). Put a secure-channel key in
+  `IGNITION_API_TOKEN_HTTPS` as the complete `name:secret` value; `scan` validates the gateway
+  certificate and has no HTTP fallback. Until a key is set up, `scan` returns 401 and tells
+  you so. *Applying the pull is the step people forget* — if a pulled change didn't take, do
+  this before debugging anything else.
+
+### One-time API key setup (per machine)
+
+The first API key cannot be created automatically on a fresh gateway: the key-creation API
+itself requires an existing authenticated actor with Gateway write access, and Ignition does
+not accept the admin username/password as Basic auth on these routes.
+
+1. Open <https://localhost:8043/app/platform/security/api-keys>.
+2. Create a key that requires a secure channel.
+3. Assign it a security level included in both Gateway **Read** and **Write** permissions.
+4. Copy the complete value shown once at creation — `name:secret`, not the stored hash — into:
+
+   ```env
+   IGNITION_API_TOKEN_HTTPS=name:secret
+   ```
+
+5. Run `python tasks.py scan`; both scans should report `OK`.
+
+`.env` is gitignored. Never commit or paste the token into documentation, issues, or chat.
+Once this bootstrap key exists, additional API keys could be created through the API, but
+every new clone still needs this one manual setup.
 
 **Expect more diff than you made.** Any gateway write touches `lastModification` fields in the
 neighbouring `resource.json` files, so `git status` routinely lists resources you never
@@ -129,8 +157,9 @@ git restore .                      # discard the rest — it is timestamp churn
 Committing the churn is not harmful in itself, but it makes every teammate's next pull conflict
 on files nobody changed. If a `resource.json` diff is *only* `lastModification*`, restore it.
 
-**Changing a secret in `.env` needs a container restart** (`python tasks.py restart ignition`),
-not `scan`. Environment variables are read at process start; scan only re-reads files.
+**Changing a container-consumed secret in `.env` needs a container restart**
+(`python tasks.py restart ignition`), not `scan`. The API token is the exception: `tasks.py`
+reads `IGNITION_API_TOKEN_HTTPS` itself on every invocation, so updating it needs no restart.
 
 ## Common tasks
 

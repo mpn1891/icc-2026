@@ -3,7 +3,7 @@
   "source": {
     "type": "com.cirruslink.mqtt.engine.gateway.mqtt.source",
     "config": {
-      "topic": "icc26/site1/upstream/vibration-gw/response/waveform",
+      "topic": "icc26/site1/upstream/vibration-gw/cmd/collect",
       "qos": 1
     }
   },
@@ -13,7 +13,22 @@
       "encoding": "UTF-8"
     }
   },
-  "handlers": [],
+  "handlers": [
+    {
+      "enabled": true,
+      "type": "com.cirruslink.mqtt.transmission.gateway.mqtt.handler",
+      "config": {
+        "serverName": "chariot_broker",
+        "topic": "icc26/site1/upstream/vibration-gw/response/waveform",
+        "qos": 1,
+        "retained": false
+      },
+      "failureStrategy": {
+        "type": "ABORT",
+        "retryPolicy": null
+      }
+    }
+  ],
   "batch": {
     "debounceMs": 100,
     "maxWaitMs": 1000,
@@ -25,11 +40,11 @@
     "userCode": "\treturn True"
   },
   "transform": {
-    "enabled": false,
-    "userCode": "\treturn event.data"
+    "enabled": true,
+    "userCode": "\treturn vibsim.build_collect_response(event.data)\n"
   },
   "transformEncoder": {
-    "type": "ignition.jsonObject",
+    "type": "ignition.string",
     "properties": {
       "encoding": "UTF-8"
     }

@@ -70,7 +70,9 @@ the gateway log with nothing published, which is the pattern's negative path.
                                                                ▼
                                               Event Stream "vibration-gw-control"
                                                                │
-                                                     vibsim.handle_collect()
+                                              transform: build_collect_response()
+                                                               │
+                                              MQTT handler (Transmission)
                                                                │  waveform only — no ack
                                                                ▼
                        icc26/site1/upstream/vibration-gw/response/waveform ──► Chariot
@@ -84,8 +86,8 @@ the gateway log with nothing published, which is the pattern's negative path.
                                                                        │
                                               SENSOR_TAGS[(gwSerial, channelIndex)]
                                                                        ▼
-                                    [default]…/reactors/reactor1/asset_data/
-                                             agitator_vibration/waveform/*
+                                    [default]icc26/site1/upstream/bioreactors/br-201/
+                                             asset_data/agitator_vibration/waveform/*
 ```
 
 **The demux is the point.** Every gateway's waveforms land on one flat response topic, and
@@ -136,7 +138,8 @@ not device-addressed, and both are deliberate — see talk point 1.
 
 ## Payload contracts
 
-Every payload except the inbound command uses the standard envelope from
+The inbound collect command and its waveform response use the **vendor's own shape** — no
+standard envelope. Telemetry (periodic) still uses the envelope from
 [`../00-architecture.md § Payload envelope`](../00-architecture.md).
 
 ### Inbound — collect command
@@ -170,39 +173,32 @@ rejection reasons look identical on the wire.
 because an undeclared Ignition tag defaults to numeric and publishes the serial unquoted, which
 a real gateway drops on the floor. That comment already exists on the tag — keep it.
 
-### Outbound — waveform
+### Outbound — waveform (`wiredCollection`)
+
+Same honesty as the command: vendor JSON on the fleet response topic, demuxed in
+`route_waveform` on `(gwSerial, wiredChannel)`.
 
 ```json
 {
-  "ts": "2026-08-10T18:22:04.512Z",
-  "seq": 42,
-  "source": { "id": "agitator-vib", "type": "vibration-sensor" },
-  "meta": {
-    "mechanism": "native-mqtt",
-    "ingest_ts": "2026-08-10T18:22:05.152Z",
-    "gw_serial": "12345678",
-    "channel_index": 0,
-    "request": { "action": "wiredcollectnow", "lor": 4096, "sendto": "cloud" }
-  },
-  "values": {
-    "unit": "g",
-    "sample_rate_hz": 6400,
-    "sample_count": 4096,
-    "duration_s": 0.64,
-    "shaft_rpm": 1780.0,
-    "samples": [0.0123, -0.0456, "… 4096 floats, 5 dp …"]
-  }
+  "datatype": "wiredCollection",
+  "wiredChannel": 0,
+  "gwSerial": "12345678",
+  "timestamp": "2026-08-10T18:22:04.512Z",
+  "sensorType": "accel",
+  "sampleRate": 32000,
+  "data": [0.0123, -0.0456]
 }
 ```
 
-**`ts` is the capture start, not the publish time** — the field the PM system keys on, and the
-reason no correlation id is needed. `meta.ingest_ts` is when the payload was serialised, so the
-gap between them is the capture itself and is visible on the firehose. `meta.request` echoes the
-settings that produced this waveform, so a consumer can tell a 4096-point capture from a
-16384-point one without inspecting the array. Traceability without correlation.
+| Field | Meaning |
+|---|---|
+| `wiredChannel` / `gwSerial` | Echo of the request — demux keys for `SENSOR_TAGS` |
+| `timestamp` | Capture **start** (ISO-8601 UTC) — what the PM system keys on; no correlation id |
+| `sampleRate` | Hz; fixed at 32000 for this gateway |
+| `data` | Acceleration samples in g; length = requested `settings.lor` |
 
-**Size.** ~8.5 bytes per sample once rounded to 5 dp — measured: **34 KB at `lor=4096`**,
-267 KB at 32768, 4.5 KB at 512. `MAX_LOR` is 65536 as a guard; the UDT default is 4096.
+**Size.** ~8.5 bytes per sample once rounded to 5 dp — roughly **34 KB at `lor=4096`**,
+scales with `lor`. `MAX_LOR` is 65536 as a guard; the UDT default is 4096.
 
 ### Outbound — telemetry (every 5 s)
 
@@ -262,10 +258,9 @@ shows a BPFO peak with ±1× shaft sidebands, and the housing resonance makes th
 spectrum look like something a vibration analyst would recognise. Slip jitter keeps it from
 looking synthetic.
 
-**Why 6400 Hz and 1500 Hz.** At `lor=4096` a 6400 Hz rate gives a 0.64 s record — 19 shaft
-revolutions, ~68 BPFO impacts, 1.56 Hz bins, so the ±29.7 Hz sidebands resolve cleanly. Pushing
-the resonance to a more typical 3 kHz would put it at 2.1 samples per cycle, on the Nyquist
-edge, and the impacts would look like garbage in the time domain. 1500 Hz keeps ~4.3.
+**Why 32000 Hz and 1500 Hz.** Vendor `sampleRate` is 32000. At `lor=4096` that is a 0.128 s
+record. The housing resonance at 1500 Hz stays well below Nyquist (~21 samples/cycle), so
+impacts still look like ringdowns rather than Nyquist garbage.
 
 Velocity RMS is derived, not assumed: g → mm/s², cumulative-trapezoid integrate, remove the
 linear drift the integration introduces, then RMS. That is what a real analyser does, and it
@@ -280,10 +275,13 @@ stand ≥ 6× above the noise floor at 700 Hz; severity 0.9 gives 8× the peak o
 
 ## Implementation — inside Ignition
 
-**Partial today.** Landed on disk: `vibsim` script library, UDT control/waveform tags, and the
-`pm-sensor-listener` source topic/QoS. Still to wire in Designer (then commit): Gateway Timer,
-event stream `vibration-gw-control`, `pm-sensor-listener` handler, Engine custom namespace,
-`readings/*` references, and Perspective. Verification below assumes those are in place.
+**Partial today.** Landed on disk: `vibsim` script library (incl. box-whisker ingest), UDT
+control/waveform/`box_whisker` tags, instance at `icc26/site1/upstream/bioreactors/br-201`,
+event stream `vibration-gw-control`, and the `pm-sensor-listener` source topic/QoS. Still to
+wire in Designer (then commit): Gateway Timer, `pm-sensor-listener` handler, Engine custom
+namespace, and `readings/*` references. Exercise collect from Designer (`steady_state` +
+`collect_request`); no Perspective view in v1. Verification below assumes the wiring is in
+place.
 
 ### Script library `vibsim`
 
@@ -294,7 +292,8 @@ the container build's environment variables.
 | Function | Called by (once wired) |
 |---|---|
 | `telemetry_tick()` | Gateway Timer Script, 5000 ms — **still to create** |
-| `handle_collect(request)` | Event stream `vibration-gw-control` handler — **still to create** |
+| `build_collect_response(request)` | Event stream `vibration-gw-control` transform — **landed** |
+| `handle_collect(request)` | Legacy build+publish helper (stream uses transform + MQTT handler) |
 | `route_waveform(payload)` | Event stream `pm-sensor-listener` handler — **still to add** |
 | `bearing_block(n)`, `velocity_rms_mm_s(block, fs)` | the three above |
 
@@ -311,8 +310,8 @@ directions — worth reading together:
 > shape both work: the library appeared in the Designer after `python tasks.py restart
 > ignition`, and the gateway did **not** rewrite the file or add a
 > `lastModificationSignature`. A hand-authored project script library is therefore a known
-> format and can be authored as files, like tags and Perspective views — unlike the event
-> stream handlers below.
+> format and can be authored as files, like tags and Perspective views. Event stream
+> transforms are per-event (`return …`); script handlers are batch (`for event in events`).
 
 ### Gateway Timer Script — telemetry (**still to create**)
 
@@ -322,19 +321,24 @@ Gateway Events → Timer → new, **5000 ms, fixed delay, gateway scope**, enabl
 vibsim.telemetry_tick()
 ```
 
-### Event stream `vibration-gw-control` — the device side (**still to create**)
+### Event stream `vibration-gw-control` — the device side (**landed**)
 
-New event stream. Cirrus MQTT Engine source, topic `icc26/site1/upstream/vibration-gw/cmd/collect`,
-QoS 1, `ignition.jsonObject` encoder, one script handler:
+On disk at
+`ignition/projects/icc-2026/com.inductiveautomation.eventstream/event-streams/01_mqtt/vibration-gw-control/`.
 
-```python
-vibsim.handle_collect(event.data)
-```
+Pipeline:
 
-`handle_collect` blocks for the record length (0.64 s at `lor=4096`) to simulate capture time,
-because a device cannot return a record faster than the record is long — that is what makes the
-request/response genuinely asynchronous rather than a same-millisecond echo. Set
-`SIMULATE_CAPTURE_TIME = False` in the module if it ever backs the stream up.
+| Stage | Config |
+|---|---|
+| Source | Cirrus MQTT Engine, `icc26/site1/upstream/vibration-gw/cmd/collect`, QoS 1 |
+| Encoder | `ignition.jsonObject` |
+| Transform | `return vibsim.build_collect_response(event.data)` |
+| Handler | MQTT Transmission → `icc26/site1/upstream/vibration-gw/response/waveform`, server `chariot_broker`, QoS 1 |
+
+`build_collect_response` validates the fleet command and synthesizes a vendor
+`wiredCollection` (no sleep — `SIMULATE_CAPTURE_TIME` is False). The MQTT handler publishes
+that document. There is no ack — the waveform on the response topic *is* the response. Filter is
+left disabled for now; rejects / wrong `gwSerial` return `None` from the transform.
 
 ### MQTT Engine custom namespace — telemetry ingest
 
@@ -361,7 +365,7 @@ Engine builds the folder tree from topic tokens, so the existing empty
 
 Already existed as a skeleton (Cirrus MQTT source, `EventStreams/#`, no handlers).
 
-**Applied to `…/event-streams/pm-sensor-listener/config.json`:**
+**Applied to `…/event-streams/01_mqtt/pm-sensor-listener/config.json`:**
 
 | Field | Value |
 |---|---|
@@ -377,11 +381,10 @@ vibsim.route_waveform(event.data)
 ```
 
 then commit whatever appears under
-`ignition/projects/icc-2026/com.inductiveautomation.eventstream/event-streams/pm-sensor-listener/`.
+`ignition/projects/icc-2026/com.inductiveautomation.eventstream/event-streams/01_mqtt/pm-sensor-listener/`.
 
-All the routing logic lives in `route_waveform`, so the handler stays a single line — the same
-shape as `vibration-gw-control`, and for the same reason: project scripts are a known on-disk
-format and event-stream handlers are not.
+All the routing logic lives in `route_waveform`, so the handler stays a batch loop
+(`for event in events: …`).
 
 ### Tag model — `default` provider
 
@@ -399,7 +402,8 @@ honest comment that `publish()` reports handoff, not delivery).
 | `uns_path` parameter | **new** — locates this sensor's ingested tags in `pm-sensors` |
 | `last_request_ts` tag | **new** DateTime, stamped by the collect script |
 | `waveform/` folder | **new** — `latest` (Document), `captured_at` (DateTime), `sample_rate_hz`, `sample_count` (Int4) |
-| instance `reactor1` | `resolution=4096`, `uns_path=site1/upstream/br-201/agitator-vib` |
+| instance `br-201` | at `icc26/site1/upstream/bioreactors/br-201`, `resolution=4096`, `uns_path=site1/upstream/br-201/agitator-vib` |
+| `waveform/box_whisker/` | **new** — five-number summary, Tukey fences, `outlier_count`, `check_ok` (written by `route_waveform`) |
 
 **Still to add:** a `readings/` folder of reference tags (`rms_velocity_mm_s`, `peak_accel_g`,
 `crest_factor`, `temperature_c`) pointing into `pm-sensors`.
@@ -411,21 +415,26 @@ honest comment that `publish()` reports handoff, not delivery).
 `last_request_ts` and `waveform/captured_at` side by side *are* this pattern's request/response
 story — the "we asked at" and the "captured at", with no correlation id between them.
 
-### Perspective (**still to create**)
+### Box-and-whisker check
 
-View `Patterns/01 Native MQTT`:
+Computed in `route_waveform` from `data` on every successful ingest:
 
-- Live telemetry readout (RMS velocity, peak g, crest factor, temperature).
-- `steady_state` toggle and a **Collect** button writing `collect_request = true`. The button is
-  disabled while `steady_state` is false — the precondition is enforced in the UI *and* in the
-  expression tag, and the tag is the one that counts.
-- Resolution dropdown bound to the instance's `resolution` (512 … 65536, powers of two).
-- XY chart of `waveform/latest` — samples vs time, x in ms, y in g — with `waveform/captured_at`
-  beside it. A view-level transform expands the Document into a dataset.
-- `last_request_ts` and `waveform/captured_at` shown together.
+| Tag under `waveform/box_whisker/` | Meaning |
+|---|---|
+| `min` / `q1` / `median` / `q3` / `max` | Five-number summary of the capture (g) |
+| `iqr` | `q3 - q1` |
+| `fence_low` / `fence_high` | Tukey fences (`q1 - 1.5·iqr`, `q3 + 1.5·iqr`) |
+| `outlier_count` | Samples outside the fences |
+| `check_ok` | `outlier_count / n ≤ vibsim.MAX_OUTLIER_FRACTION` (default `0.05`) |
 
-FFT / envelope-spectrum plotting is out of scope for the first build — see
-[Open items](#open-items).
+Healthy noise stays under the threshold; growing BPFO impacts drive the fraction up as
+`DEFECT_SEVERITY` ramps — that is the demo hook. No Perspective chart; read the tags in
+Designer (or bind later if a view is added).
+
+### Perspective
+
+**Not in scope for v1.** Exercise the pattern from Designer: set `steady_state = true`, then
+`collect_request = true`. FFT / envelope-spectrum plotting remains a nice-to-have (open item 8).
 
 ---
 
@@ -459,7 +468,7 @@ Recorded so nobody "fixes" these back.
 |---|---|---|
 | 4 sensors `vib-01…04` on `pumpskid1` | 1 sensor on `br-201`, gateway with 3 idle channels | The UDT models a real multi-channel wireless gateway; the bioreactor framing ties pattern 1 to pattern 2's asset |
 | Per-device `.../vib-01/cmd/collect` | Fleet topic `icc26/site1/upstream/vibration-gw/cmd/collect` | Real gateways share one control topic and self-select on `gwSerial` |
-| Waveform carries the originating `correlation_id` | No correlation id; capture `ts` + echoed `meta.request` | The PM system needs a waveform and its capture time, not request lineage |
+| Waveform carries the originating `correlation_id` | No correlation id; capture `timestamp` echoed on the vendor payload | The PM system needs a waveform and its capture time, not request lineage |
 | Perspective fires the command **via Engine** | Via **Transmission** | Engine's ACL wildcard does not match a five-token control topic; Transmission holds `icc26/#`. Neither is Sparkplug — `transmission.publish` is a general MQTT publish reached by RPC |
 | Engine custom namespace → Document tags for everything | Namespace for telemetry, event stream for waveform | Keeps a 34 KB document out of the tag change pipeline; demonstrates both 8.3 ingest surfaces |
 | Standalone `services/sim-vibration` container | Simulated inside Ignition | One fewer container and image build; the code is kept on disk unwired |
@@ -474,8 +483,9 @@ Recorded so nobody "fixes" these back.
 
 Prerequisite: **the stale-image blocker in [`00-status.md`](00-status.md) is fixed** — a gateway
 running Cirrus 4.0.8 has no working Engine or Transmission, so everything below fails for reasons
-unrelated to this pattern. Also note `tasks.py scan` does not work until an API key exists; apply
-config changes with `python tasks.py restart ignition`.
+unrelated to this pattern. `tasks.py scan` also requires the one-time, per-machine HTTPS API key
+setup described in the root README; until then, apply config changes with
+`python tasks.py restart ignition`.
 
 Watcher, in its own terminal:
 
@@ -496,10 +506,11 @@ docker run --rm --network icc26 eclipse-mosquitto:2 `
   -m '{\"type\":\"observerrequest\",\"channelIndex\":0,\"action\":\"wiredcollectnow\",\"settings\":{\"lor\":4096,\"sendto\":\"cloud\"},\"gwSerial\":\"12345678\"}'
 ```
 
-Expect **only** a `waveform` ~0.64 s later with `sample_count: 4096`, whose `meta.ingest_ts`
-is that far after its `ts`. Nothing is published immediately — there is no `ack`. (`observer`
-has no publish rights in `mqtt-users.json`; this works only because `allowAnonymous: true`.
-When that goes back off before the talk, publish as `ign-transmission`.)
+Expect **only** a `wiredCollection` on `…/response/waveform` with `len(data) == 4096` and
+`sampleRate: 32000`. `timestamp` is the capture start. Nothing is published immediately —
+there is no `ack`. (`observer` has no publish rights in `mqtt-users.json`; this works only
+because `allowAnonymous: true`. When that goes back off before the talk, publish as
+`ign-transmission`.)
 
 **3 — Negative paths.** `channelIndex: 2` → log `not-provisioned`, nothing on the wire.
 `"lor": 1000` → log `invalid-lor`, nothing on the wire. `gwSerial: "99999999"` → **nothing at
@@ -510,7 +521,7 @@ to a subscriber. Offline harness covers the dispatch table; re-check at least th
 `waveform/latest` and `waveform/captured_at` on the UDT instance.
 
 **5 — Round trip from Ignition.** With `steady_state` true, press Collect in Perspective →
-`waveform` on the watcher, `last_request_ts` and `waveform/captured_at` ~0.6 s apart, and the
+`wiredCollection` on the watcher, `last_request_ts` and `waveform/captured_at` populated, and the
 chart redraws. With `steady_state` false the expression tag never fires and nothing is
 published — verify by watching the topic, not by trusting the disabled button.
 
@@ -521,13 +532,15 @@ published — verify by watching the topic, not by trusting the disabled button.
 | # | Item | Status |
 |---|---|---|
 | 1 | Script-library path + `resource.json` shape | **confirmed 2026-08-11** — hand-authored library loads; no rewrite on restart |
-| 2 | UDT instance lives at `icc26/site/area/process_area/reactors/reactor1`, which matches no topic. Realign to `icc26/site1/upstream/br-201` or document the mismatch | decide before Perspective work |
-| 3 | `steady_state` has no driver. Perspective toggle only, or derive from `shaft_rpm` stability once pattern 2's process data exists | open |
+| 2 | UDT instance path vs topic tree | **done 2026-08-12** — instance is `icc26/site1/upstream/bioreactors/br-201` (MQTT topics stay `…/upstream/br-201/…`) |
+| 3 | `steady_state` has no driver. Toggle in Designer for v1; may derive from `shaft_rpm` stability once pattern 2's process data exists | open (Designer toggle accepted) |
 | 4 | Engine-generated tag paths under `pm-sensors` — observe and record here before authoring `readings/*` | blocked on the namespace being built |
 | 5 | Jython synthesis timing for `lor=4096` is unmeasured (CPython was ~10 ms; Jython is slower and blocks the handler) | measure on first run |
 | 6 | Chariot's max MQTT packet size unconfirmed. `MAX_LOR=65536` (~530 KB) is a guess at a safe ceiling | verify against Chariot 3.0.1 |
 | 7 | Transmission logs `Failed to subscribe to TARGET elements` (see `00-status.md`) — may or may not affect publish | investigate at step 2 of verification |
-| 8 | FFT / envelope-spectrum chart in Perspective | nice-to-have, out of scope |
+| 8 | FFT / envelope-spectrum chart in Perspective | out of scope for v1 |
+| 9 | Perspective view for pattern 1 | out of scope for v1 — Designer tag writes instead |
+| 10 | Box-and-whisker tags + `check_ok` on the UDT | **done 2026-08-12** — computed in `route_waveform` |
 
 ---
 
@@ -541,3 +554,7 @@ published — verify by watching the topic, not by trusting the disabled button.
 | 2026-08-10 | UDT edits applied: `mqtt_topic`, `resolution`, `uns_path`, `last_request_ts`, `waveform/` folder, instance overrides. Architecture doc topic table and LWT/Sparkplug paragraph corrected. |
 | 2026-08-11 | Script-library path + `resource.json` confirmed after gateway restart. |
 | 2026-08-11 | Doc scrub: removed leftover `ack` payload/verification; marked timer, `vibration-gw-control`, handlers, namespace, and Perspective as still to wire. |
+| 2026-08-12 | UDT instance moved to `icc26/site1/upstream/bioreactors/br-201`. Perspective deferred — Designer toggles `steady_state`/`collect_request`. Added `waveform/box_whisker/*` tags + Tukey check in `route_waveform`; FFT chart stays out of scope. |
+| 2026-08-12 | Event stream `vibration-gw-control` landed on disk (MQTT Engine source on `cmd/collect` → batch `vibsim.handle_collect`). Doc markers updated; JSON left as-is. |
+| 2026-08-12 | `vibration-gw-control` reworked: transform `build_collect_response` + MQTT Transmission handler to `response/waveform` (no sleep, filter still off). |
+| 2026-08-12 | Waveform response is vendor `wiredCollection` (`data`/`sampleRate`/`wiredChannel`/…); `route_waveform` demuxes on `gwSerial`+`wiredChannel`; `SAMPLE_RATE_HZ` → 32000. |

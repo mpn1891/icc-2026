@@ -1,0 +1,10 @@
+{
+  "subscription": "icc26/site1/upstream/+/+/telemetry",
+  "qos1": true,
+  "rootFolder": "",
+  "tagName": "",
+  "jsonPayload": true,
+  "charset": "UTF_8",
+  "writeableTags": false,
+  "numbersAsFloats": true
+}
