@@ -113,16 +113,15 @@ All Ignition 8.3 gateway configuration lives in files under `ignition/config` an
 `ignition/projects`, bind-mounted into the container. The loop runs both ways:
 
 - **You edit in the Designer or Gateway UI** → files change → `git status` shows the diff.
-- **You `git pull` someone else's change** → the gateway does **not** notice on its own. It
-  reads config from disk at startup and does not watch the files (verified — an edit alone
-  changes nothing). Apply it with `python tasks.py restart ignition`.
+- **You `git pull` someone else's change, or you edit files on disk** → the gateway does
+  **not** notice on its own. It does not watch the files (verified — an edit alone changes
+  nothing). Apply it with **`python tasks.py scan`**.
 
-  `python tasks.py scan` does the same thing without a restart, but needs an Ignition 8.3 API
-  key first (Gateway UI → Platform → Security → API Keys). Put a secure-channel key in
-  `IGNITION_API_TOKEN_HTTPS` as the complete `name:secret` value; `scan` validates the gateway
-  certificate and has no HTTP fallback. Until a key is set up, `scan` returns 401 and tells
-  you so. *Applying the pull is the step people forget* — if a pulled change didn't take, do
-  this before debugging anything else.
+  Scan POSTs to `/data/api/v1/scan/config` and `/data/api/v1/scan/projects` over HTTPS. It
+  needs the one-time API key in `.env` as `IGNITION_API_TOKEN_HTTPS` (setup below). Until
+  that key exists, `scan` returns 401 and tells you to fall back to
+  `python tasks.py restart ignition`. *Applying the pull is the step people forget* — if a
+  pulled change didn't take, scan before debugging anything else.
 
 ### One-time API key setup (per machine)
 
@@ -165,7 +164,7 @@ reads `IGNITION_API_TOKEN_HTTPS` itself on every invocation, so updating it need
 
 ```bash
 python tasks.py up | down | ps | logs [service] | restart [service]
-python tasks.py scan             # gateway re-reads config + projects from disk
+python tasks.py scan             # apply on-disk config/project changes (use this, not restart)
 python tasks.py health           # check every service
 python tasks.py trial            # both trial clocks (Ignition and Chariot)
 python tasks.py verify-modules   # are the Cirrus modules present and the right build

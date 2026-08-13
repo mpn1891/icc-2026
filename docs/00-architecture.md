@@ -38,9 +38,9 @@ add it here rather than in a status note.
 | `debezium` | 8083 | step 6 |
 
 Patterns 1 and 2 add no container: both run inside Ignition — pattern 1 as the `vibsim`
-script library (partially wired: library + UDTs at `icc26/site1/upstream/bioreactors/br-201` incl.
-`waveform/box_whisker`, + `pm-sensor-listener` topic; timer, control stream, handlers, and
-Engine namespace still TODO — Designer toggles collect; no Perspective in v1 — see
+script library (wired for on-request waveform: library + UDTs at
+`icc26/site1/upstream/bioreactors/br-201` incl. `waveform/box_whisker`, control + listener
+streams; periodic telemetry deferred — Designer toggles collect; no Perspective in v1 — see
 [`plans/01-native-mqtt.md`](plans/01-native-mqtt.md)), pattern 2 on the built-in Programmable
 Device Simulator. `services/sim-vibration/` holds a standalone implementation of pattern 1's
 contract that is deliberately **not** wired into compose.
@@ -135,9 +135,9 @@ the class of gateways serving the area, and both command and response hang off i
   `gwSerial` in the payload, which is how the real hardware is configured. The device slot is
   elided because a broadcast has no single addressee.
 - `…/vibration-gw/response/waveform` — the answer comes back on one flat topic carrying
-  `gwSerial` + `channelIndex`, and the `pm-sensor-listener` event stream demuxes those to the
+  `gwSerial` + `channelIndex`, and the `vibration-gw-listener` event stream demuxes those to the
   right sensor's tags. **The routing moves out of the topic and into the consumer**, so a new
-  sensor is one row in a lookup table rather than a new subscription.
+  sensor is one row in `vibsim.SENSOR_CHANNELS` rather than a new subscription.
 
 These two are the only topics here that are not device-addressed. That a vendor's command
 protocol can force even this much deviation on an otherwise clean namespace — and that the
@@ -316,19 +316,23 @@ the post-`nuke` re-seed takes the clone path.
 Bidirectional, and the second direction is the one people forget:
 
 - **Designer / Gateway UI edit** → gateway writes files → shows up in `git status`.
-- **`git pull`** → gateway does *not* notice → `python tasks.py restart ignition`.
+- **`git pull` or on-disk edit** → gateway does *not* notice → **`python tasks.py scan`**.
 
 The gateway reads `data/config` at startup and does **not** watch it. This was tested directly:
 editing `systemName` on disk on a running gateway produced no log activity and no effect until
-a restart. Any workflow that assumes a file watcher is wrong.
+the files were applied. Any workflow that assumes a file watcher is wrong.
 
-`python tasks.py scan` POSTs to `/data/api/v1/scan/config` and `/data/api/v1/scan/projects` and
-avoids the restart, but 8.3 changed the auth on those routes: they take an API key
+**`python tasks.py scan` is the default apply.** It POSTs to `/data/api/v1/scan/config` and
+`/data/api/v1/scan/projects`. 8.3 guards those routes with an API key
 (Platform > Security > API Keys) in an `X-Ignition-API-Token` header, not the admin password,
 and the header value is the complete `name:secret` token shown once at creation. `tasks.py`
 uses `IGNITION_API_TOKEN_HTTPS` and validates the gateway certificate; it deliberately has no
 HTTP credential fallback. API keys are machine-local, so each clone must create its own key
 with a security level granted Gateway read/write access.
+
+Fall back to `python tasks.py restart ignition` only when scan is unavailable (no API key yet)
+or when the change is a **container-consumed `.env` secret** — those are process environment
+and scan cannot pick them up.
 
 The first key remains a manual bootstrap step. `/data/api/v1/api-token/generate` and the API
 token resource routes require an already authenticated write-capable actor, while these routes
@@ -338,7 +342,7 @@ credential, neither of which is appropriate for this demo. After seeding, each u
 secure-channel key in the Gateway UI and copies its complete `name:secret` value into the
 gitignored `.env`. Once that key exists, creating additional keys through the API is possible.
 
-If a pulled change "didn't take", apply it before debugging anything else.
+If a pulled change "didn't take", `python tasks.py scan` before debugging anything else.
 
 ### Where each service's config actually comes from
 

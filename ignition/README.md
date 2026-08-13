@@ -18,20 +18,21 @@ It runs in both directions.
 **You change something in the Designer or Gateway UI** → the gateway writes files here →
 `git status` shows the diff → review and commit it like any other change.
 
-**A teammate's changes arrive via `git pull`** → the gateway does not notice on its own. It
-reads this directory at startup and does **not** watch it afterwards, so run
+**A teammate's changes arrive via `git pull`, or you edit these files on disk** → the gateway
+does not notice on its own. It does **not** watch this directory. Apply with
+**`python tasks.py scan`**.
+
+Scan POSTs to `/data/api/v1/scan/config` and `/data/api/v1/scan/projects`. Ignition 8.3 guards
+those routes with an API key rather than the admin password. Each machine needs a one-time
+manual key created at Gateway UI → Platform → Security → API Keys, with a security level
+granted Gateway read/write access. Put the complete `name:secret` value in the gitignored
+`.env` as `IGNITION_API_TOKEN_HTTPS`. The first key cannot bootstrap itself through the API
+because key creation already requires authenticated write access. Until yours is configured,
+`scan` fails with a 401 that explains itself — then fall back to
 `python tasks.py restart ignition`.
 
-`python tasks.py scan` POSTs to `/data/api/v1/scan/config` and `/data/api/v1/scan/projects` to
-do the same without a restart, but Ignition 8.3 guards those routes with an API key rather than
-the admin password. Each machine needs a one-time manual key created at Gateway UI → Platform →
-Security → API Keys, with a security level granted Gateway read/write access. Put the complete
-`name:secret` value in the gitignored `.env` as `IGNITION_API_TOKEN_HTTPS`. The first key cannot
-bootstrap itself through the API because key creation already requires authenticated write
-access. Until yours is configured, `scan` fails with a 401 that explains itself.
-
-That second step is the one people forget. If a pulled change "didn't take", apply it before
-debugging anything else.
+That second step is the one people forget. If a pulled change "didn't take", `python tasks.py
+scan` before debugging anything else.
 
 ## Commit what you meant to change
 

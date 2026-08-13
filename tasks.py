@@ -1293,7 +1293,7 @@ Setup
 Running
   up               Start the whole stack
   down             Stop the stack, keep volumes
-  restart [svc]    Restart everything, or one service
+  restart [svc]    Restart everything, or one service (compose env changes, not file edits)
   ps               Service status
   logs [svc]       Follow logs
   nuke             Stop and DESTROY all volumes (asks first)
@@ -1301,7 +1301,7 @@ Running
 Gateway / broker
   enable-ssl       Configure HTTPS and trust its cert on Windows/macOS
                    (seed does this automatically; safe to rerun)
-  scan             Tell the gateway to re-read config + projects from disk
+  scan             Apply on-disk config + projects (preferred over restart)
   trial            Show BOTH trial clocks (Ignition and Chariot)
                    Licensing itself is by hand, in each product's web UI
   health           Step-1 health check across all services

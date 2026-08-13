@@ -68,7 +68,7 @@ clean.
   completely clean. This was the highest-risk unverified thing in Part 1.
 - Ignition 8.3 regenerates all three identity paths when they are absent.
 - Ignition content travels: default tag provider, the `icc-2026` project, its
-  `pm-sensor-listener` event stream, and a regenerated gitignored `.resources/` cache.
+  `vibration-gw-listener` event stream, and a regenerated gitignored `.resources/` cache.
 - Chariot config is fully reproducible from compose against a fresh volume.
 - The guardrails hard-fail against a real missing-module clone, not just stubs.
 - The A1–A4 state machine, via `tests/test_tasks.py` — 22 checks, no Docker needed. Re-run after
@@ -93,7 +93,7 @@ run at once), then in a scratch clone with `COMPOSE_PROJECT_NAME=icc26test` in `
 | 1 | `seed` prints the **clone-seed** banner | not the full-seed one — otherwise it is about to overwrite the checkout |
 | 2 | `git status --short` after seed | completely empty |
 | 3 | `tasks.py health` | all green (start Chariot's trial by hand first) |
-| 4 | Content travelled | tag provider, `icc-2026` project, `pm-sensor-listener` present. Tag *values* are empty and that is correct — `valueStore.idb` is gitignored |
+| 4 | Content travelled | tag provider, `icc-2026` project, `vibration-gw-listener` present. Tag *values* are empty and that is correct — `valueStore.idb` is gitignored |
 | 5 | Secrets verdict | Transmission connected as `ign-transmission`, no decrypt errors |
 
 Do not `git commit` from inside the scratch clone, and do not `nuke` the main checkout.
@@ -106,6 +106,8 @@ Do not `git commit` from inside the scratch clone, and do not `nuke` the main ch
   `valueStore.idb`, `.modl` files, or `.env`.
 - **Unknown gateway schemas: UI first, then read `git status`, then commit.** Known formats
   (tags, project scripts, WebDev, Perspective views) can be authored as files.
+- **On-disk config/project changes: `python tasks.py scan`**, not a container restart. Restart
+  only if scan is unavailable (no API key) or you changed a container-consumed `.env` secret.
 - **Changed container-consumed `.env` secrets need `python tasks.py restart ignition`**, not
   `scan`; the API token is read directly by `tasks.py` and needs no restart.
 - **Before the talk:** set `allowAnonymous` back to `false` and confirm every client still

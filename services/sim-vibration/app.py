@@ -402,7 +402,7 @@ class Gateway:
 
             samples = self.model.block(lor)
             # The response goes on the single fleet topic, NOT under the sensor's cell.
-            # gw_serial and channel_index are what the pm-sensor-listener event stream
+            # gw_serial and channel_index are what the vibration-gw-listener event stream
             # demuxes on to find the tag, so they are the contract -- cell and device ride
             # along for a human reading the firehose, and nothing keys off them.
             self._publish(

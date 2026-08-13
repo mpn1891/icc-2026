@@ -13,15 +13,16 @@ gateway-scoped module; nothing about this pattern is Sparkplug.
 
 Wiring (see docs/plans/01-native-mqtt.md):
 
-    Gateway Timer Script, 5000 ms   ->  vibsim.telemetry_tick()
     Event Stream "vibration-gw-control"
         transform  ->  vibsim.build_collect_response(event.data)
         MQTT handler ->  …/vibration-gw/response/waveform
+    Event Stream "vibration-gw-listener"
+        handler    ->  vibsim.route_waveform(event.data)
 
-There is no birth/death here on purpose. A Last Will is registered in the MQTT CONNECT
-packet, so only the client that owns the session can set one -- and Ignition's session
-belongs to the Transmission module. Publish APIs send messages on a session that already
-exists. The pattern runs as a live stream instead.
+There is no periodic telemetry and no birth/death. A Last Will is registered in the MQTT
+CONNECT packet, so only the client that owns the session can set one -- and Ignition's
+session belongs to the Transmission module. A collect is answered by the waveform or by
+nothing at all.
 
 Jython 2.7: no f-strings, no type hints, integer division is floor division.
 """
@@ -39,35 +40,39 @@ from java.util import Date, TimeZone
 BROKER = "chariot_broker"
 
 GW_SERIAL = "12345678"
-GW_ID = "vib-gw-01"
 
 # The gateway is a radio concentrator, not process equipment -- it does not sit in a cell.
-# Three topics, one area root:
+# Two topics, one area root:
 #
 #   <AREA_ROOT>/<FLEET_ID>/cmd/collect        broadcast in; every gateway hears it and
 #                                             self-selects on gwSerial
 #   <AREA_ROOT>/<FLEET_ID>/response/waveform  the answer to that command, on one fleet topic.
-#                                             gwSerial + channelIndex are echoed in meta and
-#                                             the event stream demuxes them to the right tag.
-#   <AREA_ROOT>/<cell>/<device>/telemetry     unsolicited periodic data, addressed at the
-#                                             machine the sensor is bolted to
+#                                             gwSerial + channelIndex are echoed in the body
+#                                             and the listener demuxes them to the right tag.
 AREA_ROOT = "icc26/site1/upstream"
 FLEET_ID = "vibration-gw"
 CONTROL_TOPIC = "%s/%s/cmd/collect" % (AREA_ROOT, FLEET_ID)
 RESPONSE_WAVEFORM_TOPIC = "%s/%s/response/waveform" % (AREA_ROOT, FLEET_ID)
 
-# (gw_serial, channel_index) -> UDT instance base path. This is the demux table: the response
-# topic carries every gateway's waveforms, and this is what turns the two payload fields back
-# into one sensor's tags. A sensor missing from here is dropped with a log line -- deliberately
-# not an error, because another gateway's traffic on the shared topic is not this map's problem.
-SENSOR_TAGS = {
-    ("12345678", 0): "[default]icc26/site1/upstream/bioreactors/br-201"
-                     "/asset_data/agitator_vibration",
-}
+# Demux table for the fleet response topic. One row per provisioned sensor.
+# tag_path is the vibration_sensor UDT instance root; route_waveform writes
+# waveform/* relative to it. A new sensor is a row here, not a new subscription.
+# Kept in this module on purpose — pattern 1 does not depend on Postgres.
+SENSOR_CHANNELS = (
+    {
+        "gw_serial": "12345678",
+        "channel_index": 0,
+        "tag_path": "[default]icc26/site1/upstream/bioreactors/br-201"
+                    "/asset_data/agitator_vibration",
+    },
+)
+SENSOR_TAGS = {}
+for _row in SENSOR_CHANNELS:
+    SENSOR_TAGS[(_row["gw_serial"], _row["channel_index"])] = _row["tag_path"]
 
-# channel index -> (cell, device id). One gateway serves several skids, so the cell is per
-# channel and NOT a property of the gateway. Anything absent is physically present but
-# unprovisioned. Both ids must exist in plant.equipment (compose/postgres/initdb/03-seed.sql).
+# channel index -> (cell, device id). Used to decide which channels are provisioned.
+# Anything absent is physically present but unprovisioned. Both ids must exist in
+# plant.equipment (compose/postgres/initdb/03-seed.sql).
 CHANNELS = {0: ("br-201", "agitator-vib")}
 CHANNEL_COUNT = 4
 
@@ -101,16 +106,14 @@ SIMULATE_CAPTURE_TIME = False
 # push the fraction up as DEFECT_SEVERITY ramps.
 MAX_OUTLIER_FRACTION = 0.05
 
-GRAVITY_MM_S2 = 9806.65
 LOGGER_NAME = "vibsim"
 
 # Module-level state. Jython holds this for the life of the script module, so it resets on
-# a script save or a gateway restart -- which is harmless for both of these.
-_seq = [0]
+# a script save or a gateway restart -- which is harmless for the defect ramp.
 _started_ms = [None]
 
 
-# ── envelope ─────────────────────────────────────────────────────────────────────────────
+# ── time ─────────────────────────────────────────────────────────────────────────────────
 
 
 def _iso(date=None):
@@ -120,48 +123,6 @@ def _iso(date=None):
     if date is None:
         date = Date()
     return formatter.format(date)
-
-
-def _next_seq():
-    _seq[0] += 1
-    return _seq[0]
-
-
-def _envelope(source_id, source_type, values, ts=None, meta=None):
-    """The standard envelope from docs/00-architecture.md.
-
-    `ts` is when the thing happened -- for a waveform that is the capture start, which is
-    deliberately not the publish time. `meta.ingest_ts` is when the payload was built, so the
-    gap between the two is the capture duration and is visible on the firehose.
-    """
-    metadata = {"mechanism": "native-mqtt", "ingest_ts": _iso()}
-    if meta:
-        metadata.update(meta)
-    return {
-        "ts": _iso(ts),
-        "seq": _next_seq(),
-        "source": {"id": source_id, "type": source_type},
-        "meta": metadata,
-        "values": values,
-    }
-
-
-def _device_topic(cell, device, message_type):
-    """Sensor data is addressed at the machine the sensor is mounted on, never at the
-    gateway -- one concentrator serves several cells and is not a location itself."""
-    return "%s/%s/%s/%s" % (AREA_ROOT, cell, device, message_type)
-
-
-def _publish(topic, document, qos=1, retain=False):
-    """Plain MQTT publish -- arbitrary topic, arbitrary JSON, no Sparkplug encoding.
-
-    publish() neither raises nor returns a status when Transmission drops the message; it
-    logs its own warning under ClientsManager. A clean return means handed to the module,
-    NOT delivered to the broker.
-    """
-    system.cirruslink.transmission.publish(
-        BROKER, topic, system.util.jsonEncode(document), qos, retain
-    )
 
 
 # ── the bearing ──────────────────────────────────────────────────────────────────────────
@@ -230,81 +191,6 @@ def bearing_block(n):
             samples[start + j] += amplitude * math.exp(-t / tau) * math.sin(w_res * t)
 
     return samples
-
-
-def velocity_rms_mm_s(accel_g, fs):
-    """Overall velocity RMS the way an analyser gets it: integrate, detrend, RMS.
-
-    Integrating acceleration introduces a ramp that has nothing to do with the machine, so
-    the linear trend comes back out before the RMS. Deriving this rather than inventing a
-    number is what keeps telemetry consistent with the samples actually published.
-    """
-    if len(accel_g) < 2:
-        return 0.0
-
-    dt = 1.0 / fs
-    velocity = []
-    running = 0.0
-    previous = accel_g[0] * GRAVITY_MM_S2
-    for value in accel_g[1:]:
-        current = value * GRAVITY_MM_S2
-        running += 0.5 * (previous + current) * dt
-        velocity.append(running)
-        previous = current
-
-    n = len(velocity)
-    mean_i = (n - 1) / 2.0
-    mean_v = sum(velocity) / n
-    denominator = sum([(i - mean_i) ** 2 for i in range(n)])
-    if denominator:
-        numerator = sum([(i - mean_i) * (velocity[i] - mean_v) for i in range(n)])
-        slope = numerator / denominator
-    else:
-        slope = 0.0
-
-    total = 0.0
-    for i in range(n):
-        residual = velocity[i] - (mean_v + slope * (i - mean_i))
-        total += residual * residual
-    return math.sqrt(total / n)
-
-
-# ── telemetry ────────────────────────────────────────────────────────────────────────────
-
-
-def telemetry_tick():
-    """Gateway Timer Script, 5000 ms, fixed delay, gateway scope.
-
-    Telemetry is computed from the same model as the waveform -- a short block reduced to
-    statistics -- so when the defect grows, RMS climbs AND the next waveform shows deeper
-    impacts. One story instead of two.
-    """
-    block = bearing_block(1024)
-    peak = max([abs(v) for v in block])
-    rms_g = math.sqrt(sum([v * v for v in block]) / len(block))
-    severity = _severity()
-
-    if rms_g:
-        crest = round(peak / rms_g, 2)
-    else:
-        crest = 0.0
-
-    for index in sorted(CHANNELS.keys()):
-        cell, device = CHANNELS[index]
-        _publish(
-            _device_topic(cell, device, "telemetry"),
-            _envelope(device, "vibration-sensor", {
-                "rms_velocity_mm_s": round(velocity_rms_mm_s(block, SAMPLE_RATE_HZ), 3),
-                "peak_accel_g": round(peak, 4),
-                "crest_factor": crest,
-                "temperature_c": round(42.0 + 6.0 * severity + random.gauss(0.0, 0.15), 2),
-                "shaft_rpm": SHAFT_RPM,
-            }, meta={
-                "gw_serial": GW_SERIAL,
-                "channel_index": index,
-            }),
-            qos=0,  # periodic and disposable -- QoS 0 is the honest choice for it
-        )
 
 
 # ── collect command ──────────────────────────────────────────────────────────────────────
@@ -521,13 +407,24 @@ def _box_whisker(samples):
     }
 
 
+def lookup_sensor_tag_path(gw_serial, channel_index):
+    """SENSOR_CHANNELS row for this (gwSerial, channelIndex), or None.
+
+    tag_path is the sensor UDT root the listener writes waveform/* under.
+    """
+    if channel_index is None:
+        return None
+    return SENSOR_TAGS.get((str(gw_serial), int(channel_index)))
+
+
 def route_waveform(payload):
     """Event Stream handler for RESPONSE_WAVEFORM_TOPIC. `payload` is the decoded JSON object.
 
     Every gateway's waveforms arrive on one topic, so this is where the fan-out happens:
-    (gwSerial, wiredChannel) -> SENSOR_TAGS -> one UDT instance's waveform/* tags. The topic
-    stays flat and the routing lives here, which is the whole point of the response-topic
-    shape -- a new sensor is one row in SENSOR_TAGS, not a new subscription.
+    (gwSerial, wiredChannel) -> SENSOR_CHANNELS.tag_path -> one UDT instance's waveform/*
+    tags. The topic stays flat and the routing lives here, which is the whole point of
+    the response-topic shape -- a new sensor is one row in SENSOR_CHANNELS, not a new
+    subscription.
     """
     logger = system.util.getLogger(LOGGER_NAME)
 
@@ -542,7 +439,7 @@ def route_waveform(payload):
 
     gw_serial = str(payload.get("gwSerial", ""))
     index = _as_int(payload.get("wiredChannel"))
-    base = SENSOR_TAGS.get((gw_serial, index))
+    base = lookup_sensor_tag_path(gw_serial, index)
     if base is None:
         logger.infof("no tag mapping for gw=%s ch=%s -- dropped", gw_serial, index)
         return

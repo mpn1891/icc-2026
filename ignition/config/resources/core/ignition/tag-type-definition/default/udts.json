@@ -270,7 +270,7 @@
           },
           {
             "dataType": "Document",
-            "documentation": "Latest time waveform, written by the pm-sensor-listener event stream. Holds the payload\u0027s values block: unit, sample_rate_hz, sample_count, duration_s, shaft_rpm, samples[].",
+            "documentation": "Latest time waveform, written by the vibration-gw-listener event stream. Holds the vendor wiredCollection document (data, sampleRate, gwSerial, wiredChannel, timestamp).",
             "name": "latest",
             "tagType": "AtomicTag",
             "valueSource": "memory"
