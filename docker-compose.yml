@@ -192,14 +192,125 @@ services:
     networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
+  # Pattern 3 — a simulated Countess 3 FL cell counter, served over OPC UA
+  #
+  # Address space built from Appendix E of the instrument's user guide; the
+  # model is specified in docs/reference/countess-3fl-opcua-model.md and the
+  # deviations are listed in services/opcua-countess/README.md.
+  #
+  # Ignition subscribes to ONE node — CountCompletedCounter, written last after
+  # every result field — and reads the LastResult branch when it changes. That
+  # is the pattern: event-on-completion, not value-change polling.
+  #
+  # Runs alongside opcua-novaflex, not instead of it. The Countess has no vendor
+  # OPC server, so this address space is the one we would design; the FLEX2 has
+  # a real one, so that address space is the one a vendor actually ships. The
+  # pair is the pattern-3 argument — see docs/plans/03-opcua-analyzer-playbook.md.
+  # ───────────────────────────────────────────────────────────────────────────
+  opcua-countess:
+    build: ./services/opcua-countess
+    container_name: icc26-opcua-countess
+    restart: unless-stopped
+    environment:
+      # Cube 2 stays empty on purpose: it puts a Bad_NoData node beside a Good
+      # one inside the same result, which is the argument for modelling this in
+      # OPC UA rather than shipping the CSV. See the model doc, section 8.
+      CUBE1_INSTALLED: ${COUNTESS_CUBE1_INSTALLED:-true}
+      CUBE2_INSTALLED: ${COUNTESS_CUBE2_INSTALLED:-false}
+      COUNT_INTERVAL_S: ${COUNTESS_COUNT_INTERVAL_S:-180}
+      FIRST_COUNT_DELAY_S: ${COUNTESS_FIRST_COUNT_DELAY_S:-15}
+      BF_ONLY_EVERY_N: ${COUNTESS_BF_ONLY_EVERY_N:-4}
+      LOG_LEVEL: ${COUNTESS_LOG_LEVEL:-INFO}
+      # INFO here logs every node a client creates a monitored item for. That is the only
+      # reliable way to tell whether an Ignition tag actually bound: a faulted OPC tag is
+      # Error_Configuration in the tag browser and SILENT in the gateway log, so the server
+      # is the oracle, not the gateway. Noisy — leave it at WARNING unless diagnosing.
+      ASYNCUA_LOG_LEVEL: ${COUNTESS_ASYNCUA_LOG_LEVEL:-WARNING}
+      TZ: ${TZ:-America/Chicago}
+    ports:
+      - "${OPCUA_COUNTESS_PORT:-4840}:4840"
+    # The endpoint answering is the whole liveness question for this service --
+    # it holds no state and depends on nothing else in the stack.
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import socket; socket.create_connection(('127.0.0.1', 4840), 3).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [icc26]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Pattern 3 — a simulated Nova Biomedical BioProfile FLEX2 bioanalyzer,
+  # served over OPC UA
+  #
+  # The second half of pattern 3, and the reason there are two. The FLEX2 has a
+  # REAL vendor OPC UA server, and this container reproduces the address space
+  # its manual documents (LPN 60644B section 9) — two flat trees of string-id
+  # tags, OPCSystemObjects and OPCSystemCommands, inherited from the OPC DA
+  # server they grew out of.
+  #
+  # What that vendor server does NOT have is the whole point:
+  #   * no completion counter, no events — SampleResults just changes
+  #   * no methods at all — every action is a writable Boolean you set to 1
+  # So ICC26Extensions/ is ours, is named so nobody mistakes it for Nova's, and
+  # is where SampleCompleteCounter lives. Countess = the model we wish vendors
+  # shipped; FLEX2 = what they actually ship. Both, side by side, is the talk.
+  #
+  # Model + provenance: docs/reference/novaflex2-opcua-model.md
+  # Deviations:         services/opcua-novaflex/README.md
+  # ───────────────────────────────────────────────────────────────────────────
+  opcua-novaflex:
+    build: ./services/opcua-novaflex
+    container_name: icc26-opcua-novaflex
+    restart: unless-stopped
+    environment:
+      ANALYZER_ID: ${NOVAFLEX_ANALYZER_ID:-FLEX2-01}
+      # The osmometer stays unfitted on purpose: Osmo/Result then reads
+      # Bad_NoData beside chemistry values that are Good, in the same result, at
+      # the same timestamp — while the vendor's own ModuleInformation/Modules/
+      # Osmo says False, Good. Absent vs zero, in the vendor's vocabulary.
+      OSMO_INSTALLED: ${NOVAFLEX_OSMO_INSTALLED:-false}
+      # Autosampler bank B likewise: ten RSM status tags at Bad_NoData.
+      AUTOSAMPLER_BANK_B: ${NOVAFLEX_AUTOSAMPLER_BANK_B:-false}
+      SAMPLE_INTERVAL_S: ${NOVAFLEX_SAMPLE_INTERVAL_S:-120}
+      FIRST_SAMPLE_DELAY_S: ${NOVAFLEX_FIRST_SAMPLE_DELAY_S:-15}
+      # Every Nth free-running cycle runs an onboard QC instead of a sample. QC
+      # writes QCResults and increments QcCompleteCounter — never the sample
+      # counter. That is the manual's own section 9 warning, live.
+      QC_EVERY_N: ${NOVAFLEX_QC_EVERY_N:-6}
+      SENSOR_ERROR_RATE: ${NOVAFLEX_SENSOR_ERROR_RATE:-0.0}
+      # The arrow is what the manual prints inside the NodeId identifier itself
+      # (§1.2.2). Whether a real FLEX2 uses it or a dot is unresolved — one env
+      # var settles it without touching a field table. See the model doc § 11.
+      NODE_SEPARATOR: ${NOVAFLEX_NODE_SEPARATOR:-->}
+      LOG_LEVEL: ${NOVAFLEX_LOG_LEVEL:-INFO}
+      # INFO here logs every node a client creates a monitored item for — the only reliable
+      # way to tell whether an Ignition tag actually bound. Same trick as the Countess.
+      ASYNCUA_LOG_LEVEL: ${NOVAFLEX_ASYNCUA_LOG_LEVEL:-WARNING}
+      TZ: ${TZ:-America/Chicago}
+    ports:
+      # 4841 on the host, 4840 in the container: both analyzers run at once and
+      # the host side would collide otherwise. Ignition reaches it by service
+      # name on the compose network and never sees this number.
+      - "${OPCUA_NOVAFLEX_PORT:-4841}:4840"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import socket; socket.create_connection(('127.0.0.1', 4840), 3).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [icc26]
+
+  # ───────────────────────────────────────────────────────────────────────────
   # Pattern 1 adds no service here. The vibration gateway is simulated inside
   # Ignition — a Gateway Timer Script for telemetry and an event stream for the
   # collect command, both publishing plain MQTT through Transmission. See
   # docs/plans/01-native-mqtt.md. (services/sim-vibration/ holds a standalone
   # container implementation of the same contract; it is NOT wired in.)
   #
-  # Remaining pattern services land here in steps 3–8:
-  #   opcua-novaflex   (pattern 3)  services/opcua-novaflex
+  # Remaining pattern services land here in steps 4–8:
   #   lims             (patterns 4, 6, 7)  services/lims  — implementation TBD
   #   debezium         (pattern 5)  quay.io/debezium/server
   # ───────────────────────────────────────────────────────────────────────────

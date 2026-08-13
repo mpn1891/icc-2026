@@ -1,0 +1,62 @@
+{
+  "profile": {
+    "readOnly": false,
+    "type": "com.inductiveautomation.OpcUaServerType"
+  },
+  "settings": {
+    "advanced": {
+      "acknowledgeTimeout": 5000,
+      "browseOrigin": "OBJECTS_FOLDER",
+      "connectTimeout": 5000,
+      "deprecatedDataTypeDictionarySupport": false,
+      "maxArrayLength": 2147483647,
+      "maxMessageSize": 33554432,
+      "maxNotificationsPerPublish": 65535,
+      "maxPendingPublishRequests": 2,
+      "maxPerOperation": 8192,
+      "maxReferencesPerNode": 8192,
+      "maxStringLength": 2147483647,
+      "requestTimeout": 60000,
+      "sessionTimeout": 120000,
+      "timestampSource": "OPC_PREFER_SOURCE"
+    },
+    "authentication": {
+      "authenticationType": "USERNAME",
+      "username": "anon"
+    },
+    "configVersion": 2,
+    "endpoint": {
+      "discoveryUrl": "opc.tcp://opcua-countess:4840/countess/",
+      "endpointUrl": "opc.tcp://opcua-countess:4840/countess/",
+      "hostOverride": "",
+      "securityMode": "None",
+      "securityPolicy": "None"
+    },
+    "failover": {
+      "discoveryUrl": "",
+      "enabled": false,
+      "endpointUrl": "",
+      "hostOverride": "",
+      "threshold": 3
+    },
+    "keepAlive": {
+      "failuresAllowed": 1,
+      "interval": 15000,
+      "timeout": 10000
+    },
+    "security": {
+      "certificateValidationEnabled": true,
+      "keyStoreAlias": "client",
+      "keyStoreAliasPassword": {
+        "data": {
+          "ciphertext": "CQzeGGNGy4KcEg",
+          "encrypted_key": "qtPr8xZrlUlRbt52okU7F1Oo1OcplewXuDv5ohSt64cCU0QG9Q21qA",
+          "iv": "PNYeOmlhF1o8VJ3e",
+          "protected": "eyJhbGciOiJBMjU2S1ciLCJlbmMiOiJBMjU2R0NNIiwiaWF0IjoxNzg2NjM1NzA3LCJ6aXAiOiJERUYifQ",
+          "tag": "qgthY_MmSm3hnu8zFu3CKQ"
+        },
+        "type": "Embedded"
+      }
+    }
+  }
+}

@@ -63,14 +63,32 @@ tree + deadbands for report-by-exception (transmitter already fixed to
 NBIRTH/DBIRTH/DDATA; stopping the gateway produces NDEATH. Talk point: free birth/death
 (NDEATH/DDEATH) vs pattern 1, which deliberately claims no lifecycle at all.
 
-**03 — OPC UA → MQTT (`services/opcua-novaflex`)** — no dependencies.
-`asyncua` server: glucose, lactate, glutamine, glutamate, ammonia, pH, osmolality +
-`SampleCompleteCounter`; sample cycle every ~120 s (env-tunable) updates all analytes then
-increments the counter. Ignition OPC UA client connection to `opc.tcp://opcua-novaflex:4840`
-(UI-then-commit); tag-change gateway event script on the counter assembles ALL analytes into one
-payload → `transmission.publish` to `icc26/site1/qc/analyzers/novaflex-01/result`,
-`mechanism=opcua-event`. Verify: one message per counter increment, never per-value. Talk
-point: event-on-completion, not value-change polling.
+**03 — OPC UA → MQTT** — no dependencies. **Both servers built, and written up in
+[`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md), which supersedes this entry.**
+
+Two analyzers, and they **run together rather than as alternatives** — that decision is
+resolved. Both have a server, an Ignition connection and a bound UDT; neither has its
+tag-change publish script yet, which is all that remains of this pattern.
+
+| | `services/opcua-countess` | `services/opcua-novaflex` |
+|---|---|---|
+| Instrument | Thermo Fisher Countess 3 FL cell counter | Nova Biomedical BioProfile FLEX2 |
+| Vendor OPC server | **none** — the instrument writes CSV | **yes**, licensed, and we transcribed its real tag list |
+| Address space | ours, DI + LADS shaped | **Nova's**, flat `OPCSystemObjects` / `OPCSystemCommands` |
+| Completion signal | counter + events, designed in | **none** — added as a labelled `ICC26Extensions` branch |
+| Actions | a method *and* a command bit | **command bits only, no methods** |
+| Ignition UDT | `cell_analyzer`, 44 bound tags | `bioanalyzer`, 57 bound tags |
+
+The second earns its stage time by being what vendors actually ship: the Countess is the model
+we would design, the FLEX2 is the one we would have to integrate. It also settles the argument
+in §6.1 of the Countess model doc — a 2024 vendor product with 104 writable bits and zero
+methods, because a SCADA tag write cannot invoke a method.
+
+Remaining for both: a tag-change gateway event script on the counter reads the whole-result JSON
+node and publishes once → `transmission.publish` to
+`icc26/site1/qc/analyzers/{countess-01,novaflex-01}/result`, `mechanism=opcua-event`. Verify:
+one message per counter increment, never per-value. Talk point: event-on-completion, not
+value-change polling.
 
 **04 — LIMS stub + webhook (`services/lims` + WebDev)** — blocks 05/06/07.
 FastAPI stub satisfying the four-surface contract: (1) generator (interval + `POST /trigger` for
