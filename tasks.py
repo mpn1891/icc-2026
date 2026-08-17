@@ -43,7 +43,11 @@ COMPOSE = ["docker", "compose"]
 COMPOSE_SEED = ["docker", "compose", "-f", "docker-compose.seed.yml"]
 
 IGNITION_DATA = "/usr/local/bin/ignition/data"
-SSL_KEYTOOL = "/usr/local/bin/ignition/lib/runtime/jre-nix/bin/keytool"
+# Prefer the arch-neutral `jre` symlink. The image ships jre-aarch64 / jre-nix /
+# jre-win archives and only extracts the one matching the *container* arch, then
+# points `jre` at it. A hardcoded jre-nix path is fine on amd64 Linux (including
+# Docker Desktop on Windows) and breaks on Apple Silicon (linux/arm64).
+SSL_KEYTOOL = "/usr/local/bin/ignition/lib/runtime/jre/bin/keytool"
 SSL_KEYSTORE_REL = "config/local/ignition/webserver/keystore/ssl.pfx"
 SSL_KEYSTORE = "%s/%s" % (IGNITION_DATA, SSL_KEYSTORE_REL)
 SSL_KEYSTORE_HOST = os.path.join(
