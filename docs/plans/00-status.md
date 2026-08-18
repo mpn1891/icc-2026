@@ -2,13 +2,14 @@
 
 > **Updated 2026-08-17.** Conference is ~4 weeks out.
 >
-> **Blocker: the committed image is stale.** A clone gets Cirrus 4.0.8 and a gateway with no
-> working MQTT, silently, behind a green `health`. Fix that before anything else.
+> **The stale-image blocker is CLEARED.** A gateway rebuilt from the repo loads Cirrus **5.0.4**
+> Engine, Transmission and Distributor with no compatibility warnings. `tasks.py` now forces
+> `--build` on both `up` and `seed`, so a stale tag cannot come back quietly.
 >
-> **Patterns 1 and 2 were re-scoped on 2026-08-17** from a vibration gateway and a bioreactor
-> UDT to one smart sample valve assembly in two firmwares. Both simulator containers exist and
-> are self-tested; **neither has ever been built or run**, because Docker was unavailable in the
-> session that wrote them.
+> **Patterns 1 and 2 are built, run and verified end-to-end.** Both valve containers were built
+> and run for the first time on 2026-08-17, both produced Ignition tags, and every checkpoint
+> passed. Findings live in [`01-native-mqtt.md`](01-native-mqtt.md) and
+> [`02-sparkplug-b.md`](02-sparkplug-b.md), each under *Ingest, as built*.
 
 What is true right now and what to do next. Durable knowledge does not live here — it lives in
 [`../00-architecture.md`](../00-architecture.md). Work still to be built lives in
@@ -17,29 +18,42 @@ and the fix is to move the fact rather than keep two copies.
 
 ## Do this next
 
-**→ [`00-next-step.md`](00-next-step.md)** — written to be executed cold, in order. It clears the
-stale-image blocker, settles the `Embedded`-ciphertext question (its CP2), stops
-`docker compose up` serving a stale image for *any* service, and then lands patterns 1 and 2 in
-Ignition and runs them for the first time.
+**→ Pattern 3, step 9** — [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md) § 9,
+the tag-change script that turns an analyzer result into an MQTT publish. Both OPC UA servers are
+built and both address spaces are bound (the FLEX2 verified at 57/57 tags); the publish path is
+what is missing. Pattern 4 is the alternative if you would rather widen than deepen.
 
-Two rules from it that are durable and belong here rather than there:
+`00-next-step.md` is **done** and kept only as the record of what was run. Everything durable
+from it has moved into [`../00-architecture.md`](../00-architecture.md) and the two pattern specs.
 
-- **All of it happens in the scratch clone** `C:\Users\matt\repos\icc26-clone`. Do not
-  `git commit` from inside it.
-- **Do not `nuke` the main checkout.** `icc26_ign-data` is currently the only place the working
-  5.0.4 Engine and Transmission exist — they were hand-installed through the gateway UI and are
-  not in the image. It stays untouched until a rebuilt image is proven over in the clone.
+Rules that are still live:
 
-Mechanism and the general lesson behind the blocker:
-[*The stale-image trap*](../00-architecture.md#the-stale-image-trap).
+- **`icc26_ign-data` is no longer precious.** It was the only place a working 5.0.4 Engine and
+  Transmission existed; the image carries them now, so the main checkout can be nuked and
+  reseeded like any other. That still costs one commissioning wizard and one API key.
+- **Two checkouts still cannot run at once**, and stopping the other is not enough — its
+  containers must be *removed*, because a name is claimed by an existing container whether it is
+  running or not. `python tasks.py down`.
+- **Do not `git commit` from inside the scratch clone.** Sync it the other way:
+  `git -C ...icc26-clone fetch C:/Users/matt/repos/icc-2026 main && git reset --hard FETCH_HEAD`.
 
 ## Also outstanding
 
-- **Per-machine Ignition 8.3 API key** — `tasks.py scan` now uses verified HTTPS only. After
-  seeding, each user must create a secure-channel key in Gateway UI → Platform → Security → API
-  Keys, grant its security level Gateway read/write access, and put the complete `name:secret`
-  value in `.env` as `IGNITION_API_TOKEN_HTTPS`. The first key cannot be automated because its
-  creation API already requires authenticated write access.
+- **MQTT Engine connects to Chariot with no username at all.** Its server config
+  (`com.cirruslink.mqtt.engine.gateway/server/Chariot SCADA/config.json`) has `"username": ""`,
+  and it only works because `allowAnonymous` is still `true` — Chariot's client list shows it
+  connected with `username: None` beside `ign-transmission`, which is authenticated properly.
+  **Turning `allowAnonymous` off before the talk will break Engine**, and with it both patterns 1
+  and 2, unless the `ign-engine` credential is set first. Found 2026-08-17; deliberately not
+  fixed in the same pass as the pattern work.
+- **Per-machine Ignition 8.3 API key** — `tasks.py scan` uses verified HTTPS only. After seeding,
+  each user must create a secure-channel key in Gateway UI → Platform → Security → API Keys,
+  grant its security level Gateway read/write access, and put the complete `name:secret` value in
+  `.env` as `IGNITION_API_TOKEN_HTTPS`. The first key cannot be automated because its creation
+  API already requires authenticated write access. Two traps met on 2026-08-17: the variable was
+  once called `IGNITION_API_TOKEN`, and an older `.env` still carrying that name reads as "no
+  token" with no error; and a key is bound to the gateway that minted it, so a key from another
+  checkout returns 401 and looks identical to no key at all.
 - **Postgres JDBC datasource `ICC26`** → `jdbc:postgresql://postgres:5432/icc26`, user `icc26`.
   Patterns 6 and 7 need it; not created yet (no `database-connection` resource in the repo).
 - **Transmission logs `Failed to subscribe to TARGET elements`** immediately after connecting.
@@ -71,10 +85,13 @@ clean.
 **Disproven, and worth remembering:**
 
 - That `verify-modules` passing means the gateway will load those modules. It does not.
-- That the repo alone reproduces the working stack. It does not, today.
+- ~~That the repo alone reproduces the working stack.~~ **It does, as of 2026-08-17**: a cold
+  `nuke` + `seed` + `up` in a clean clone produced a 5.0.4 gateway, both valves, and green
+  health. The only item on this list that has flipped back.
 
-**Still assumed:** that `Embedded` ciphertext is portable between gateways — settled by CP2 of
-[`00-next-step.md`](00-next-step.md).
+**Settled 2026-08-17:** `Embedded` ciphertext **is** portable between gateways. A gateway seeded
+from an empty volume connected Transmission to Chariot as `ign-transmission` — confirmed in
+Chariot's client list as well as the gateway log, with zero decrypt errors. No Secret Provider.
 
 ## Re-running the clone test
 
@@ -106,4 +123,8 @@ Do not `git commit` from inside the scratch clone, and do not `nuke` the main ch
 - **Changed container-consumed `.env` secrets need `python tasks.py restart ignition`**, not
   `scan`; the API token is read directly by `tasks.py` and needs no restart.
 - **Before the talk:** set `allowAnonymous` back to `false` and confirm every client still
-  connects with its own credential.
+  connects with its own credential. **Start with MQTT Engine** — it is the one that is currently
+  anonymous, see *Also outstanding*.
+- **The scratch clone is downstream of main, always.** It has no unique work in it; bring it
+  current with `git -C ...icc26-clone fetch C:/Users/matt/repos/icc-2026 main` then
+  `git reset --hard FETCH_HEAD`. Its `.env` is gitignored and survives, which is the point.

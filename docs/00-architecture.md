@@ -209,6 +209,35 @@ properties. Nothing in the demo currently needs them: every pattern is one-way. 
 request/response pattern is ever added, this is the constraint it will run into first, and
 `meta.correlation_id` is the field already reserved in the envelope for it.
 
+### MQTT Engine has two ingest surfaces, and they produce different things
+
+Both are enabled at once, both feed the same `MQTT Engine` tag provider, and the contrast
+between them is most of patterns 1 and 2. Verified 2026-08-17.
+
+| | **Custom Namespace** (pattern 1) | **Sparkplug B default namespace** (pattern 2) |
+|---|---|---|
+| Config | one subscription per device, hand-written | `spBv1.0/#`, shipped enabled |
+| Resource | `com.cirruslink.mqtt.engine.gateway/custom-namespace/<name>/` | `…/default-namespace/Sparkplug B/` |
+| Tag tree | mirrors the **JSON document**, under `MQTT Engine/<topic path>/` | mirrors the **device**, under `MQTT Engine/Edge Nodes/<group>/<node>/<device>/` |
+| Datatypes | inferred per value; `numbersAsFloats` makes every counter a Float8; timestamps are String | declared in DBIRTH — Int64, Float, Boolean, String, DateTime |
+| Engineering units | nowhere | on the wire, applied to the tag |
+| A null field | **no tag is created at all** | a typed null: the tag exists, correctly typed, with no value |
+| Adding a device | edit the subscription | nothing |
+
+**Neither tree is configuration, and both are gitignored** —
+`tag-definition/MQTT Engine/Edge Nodes/` and `tag-definition/MQTT Engine/icc26/`. The modules
+rebuild them at runtime from whatever traffic that machine happened to see, so committing them
+means every gateway churns another machine's leftovers into every diff. The anchored paths
+leave the static `MQTT Engine/Engine Info/Edge Nodes/` folder tracked, as it should be.
+
+A caveat that costs an hour if you meet it cold: **a MANAGED provider's tag tree is only
+partially on disk.** Ignition persists a tag definition only where the config is non-default, so
+the Sparkplug device's nineteen metrics write four `tags.json` entries — the ones carrying
+engineering units — and the other fifteen leave empty folders. Counting files gives the wrong
+answer. The authoritative read is
+`GET /data/api/v1/tags/export?provider=MQTT Engine&type=json&recursive=true`, which needs an
+API key.
+
 ---
 
 ## Broker: why Chariot and not Distributor
@@ -461,6 +490,22 @@ Landing the module sha256s in `modules.manifest.json` and hashing the `.modl` fi
 image* — or forcing `docker compose build` on every `seed` — is what makes a stale image fail
 loudly instead of passing green.
 
+**Fixed 2026-08-17.** `tasks.py` now passes `--build` on both `up` and `seed`, and the three
+manifest `sha256` fields are filled in. The layer cache keeps an unchanged build to a couple of
+seconds. Three things to keep straight about what that buys:
+
+- **`up --build` fixes source edits reaching a container.** This is the everyday case, and it
+  was silently broken for every `build:` service, not just the gateway — a one-line edit to
+  `services/sim-valve-mqtt/app.py` never reached the running valve. Verified by making exactly
+  that edit and watching it appear in the container's log.
+- **`seed --build` is what fixes module upgrades**, and only there. The `.modl` files live at
+  `data/var/ignition/modl`, *inside* the `ign-data` volume, and Docker seeds a volume from the
+  image only while the volume is empty. A module version can therefore only change during a
+  seed, so a stale tag at that moment is baked in permanently. `docker image rm` + `nuke` +
+  `seed` is still the upgrade path.
+- **The manifest hashes still only validate host files**, which is the wrong thing to measure.
+  They catch a corrupt or swapped download, nothing more.
+
 ## Commissioning
 
 The presence of **any** third-party module makes the gateway halt in commissioning on first
@@ -573,6 +618,13 @@ surprises.
 `icc26-postgres`), the network is pinned (`name: icc26`), and host ports come from `.env`. A
 second stack collides on all three regardless of `COMPOSE_PROJECT_NAME`. Bring one down first.
 
+**Stopped is not enough — the containers must be removed.** A container name is claimed by an
+*existing* container, running or not, so a four-day-old `Exited (0)` gateway still blocks the
+other checkout with `Conflict. The container name "/icc26-ignition" is already in use`. Use
+`python tasks.py down`, which removes containers and the network while leaving volumes alone.
+Compose also warns `a network with name icc26 exists but was not created for project ...` when
+the other project created it first; harmless, and it clears once the owning project is down.
+
 Set `COMPOSE_PROJECT_NAME` anyway in a scratch clone: it separates **volumes only**, which is
 exactly what stops a `nuke` over there from reaching your gateway state over here.
 
@@ -628,8 +680,11 @@ gateway that also has no root key password.
 
 Two caveats. Ignition 8.3.8 ships only `internal`, `file` and `remote` provider types — **there
 is no environment-variable Secret Provider**, which is what the original plan assumed. And the
-portability claim above is **inferred from bytecode, not yet proven end-to-end** — see the open
-item in [`plans/00-status.md`](plans/00-status.md). Demo-grade committed credentials are an
+portability claim above was inferred from bytecode; it is now **proven end-to-end (2026-08-17)**.
+A gateway seeded from an empty volume, on a machine that had never held this gateway's identity,
+connected MQTT Transmission to Chariot as `ign-transmission` — confirmed in Chariot's own client
+list as well as the gateway log, with zero `Unable to decrypt ciphertext` lines. No Secret
+Provider is needed. Demo-grade committed credentials are an
 accepted trade here: portability is the goal, not secrecy.
 
 ---

@@ -287,6 +287,87 @@ disk under `ignition/`. Nothing publishes to them and nothing subscribes; they a
 
 ---
 
+## Ingest, as built
+
+Verified 2026-08-17 against a gateway seeded from an empty volume. **One file, one line.**
+
+`…/com.cirruslink.mqtt.engine.gateway/custom-namespace/icc26-native/config.json`
+
+```json
+"subscription": "icc26/site1/upstream/br-201/sample-valve-01/#"
+```
+
+`jsonPayload: true`, `qos1: true`, `writeableTags: false`, `numbersAsFloats: true`,
+`rootFolder: ""`. No UDT, no event stream, no routing script — Engine auto-creates tags from
+the JSON and the tree comes out shaped like the payload rather than like the asset:
+
+```
+MQTT Engine/icc26/site1/upstream/br-201/sample-valve-01/
+    {event,state,telemetry}/{ts,seq}
+    {event,state,telemetry}/meta/{mechanism,event,cell,ingest_ts,assembly_serial}
+    {event,state,telemetry}/source/{id,type}
+    {event,state,telemetry}/values/…
+```
+
+**`meta.mechanism` is duplicated into all three branches** because the tree mirrors the
+document, and every document carries the envelope. Pattern 2 has one node with 19 metrics under
+it.
+
+### The subscription has to name one device, and that is the finding
+
+The obvious `icc26/site1/upstream/+/+/#` also swallows pattern 5's `…/br-201/batch/event` and
+pattern 7's `…/br-201/batch-summary` — **`#` matches zero levels too.** So pattern 1's
+subscription enumerates a single device by name, and **adding a second plain-MQTT valve means
+editing this file.** Pattern 2's `spBv1.0/#` already covers every edge node that will ever
+exist. That row is in [`02-sparkplug-b.md`](02-sparkplug-b.md)'s comparison table.
+
+### What Engine does with the payload — measured, not guessed
+
+| Field | Tag datatype |
+|---|---|
+| `ts`, `ingest_ts`, `since` | **String** — not DateTime. Pattern 2 sends real DateTime metrics |
+| `seq`, `cycle_count`, `valve_cycles_total`, `uptime_s` | **Float8** — `numbersAsFloats: true` turns every counter into a float |
+| `is_open`, `interlock_ok` | Boolean |
+| everything else | String |
+
+**A JSON `null` produces no tag at all.** Not a dropped value, not bad quality, not an empty
+string — the key is skipped and the tag never exists. `values.sample_id` was absent from the
+tag tree entirely until the first *granted* scan carried a non-null id, at which point it
+appeared. So **the shape of the tag tree is a function of which messages happened to arrive**,
+not of the payload contract: a consumer inspecting the tree before the first grant would
+conclude `sample_id` does not exist.
+
+That is the precise counterpart to pattern 2's typed nulls, which declare `Badge/LastScanId` as
+a String in DBIRTH *before anybody has badged in*.
+
+### Death, measured both ways
+
+Both paths publish `state: "offline"`, and **both timestamps are the moment the session
+connected** — within 7 ms, confirming the will document is built before CONNECT and can never
+describe the death it announces:
+
+| | delivered | payload `ts` | stale by |
+|---|---|---|---|
+| `docker stop` (graceful) | 01:34:02.882 | 01:30:12.169 | **3 m 50 s** |
+| `docker kill` (will fires) | 01:34:29.887 | 01:34:15.929 | **14 s** |
+
+**Correction to the earlier prediction:** a graceful stop does *not* mean nothing is published.
+The broker discards the will, but the device publishes the same frozen document itself as part
+of clean shutdown — a live `state: "locked"` first, then the stale `offline`. So a consumer sees
+`offline` either way, and on the graceful path the timestamp is **staler**, not fresher.
+
+### Two behaviours captured on purpose, and not fixed
+
+- **Retained `event` replays on reconnect.** A brand-new subscriber immediately received a badge
+  scan from 21 s earlier with nothing marking it historical. Engine gets this on every
+  reconnect and presents it as current.
+- **Each scan overwrites the last.** Exactly one `event` is retained, and the tag model holds
+  one set of badge tags. A granted `B-1042` scan was gone minutes later, replaced by a `B-2087`
+  denial. A GxP audit trail that silently keeps only the most recent record is invisible until
+  somebody asks about last Tuesday. Tag history is the remedy; it stays off.
+
+---
+
 ## Verification
 
 Prerequisite: the stale-image blocker in [`00-status.md`](00-status.md). Apply on-disk config
@@ -332,7 +413,7 @@ will, and nothing is published. Only `kill` proves the will works. Both are wort
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Ignition-side ingest — Engine custom namespace or event stream, valve UDT, badge audit tags | **not built.** Docs + services only, by decision on 2026-08-17 |
+| 1 | Ignition-side ingest | **done 2026-08-17.** One Engine custom-namespace subscription and nothing else — no UDT, no event stream, no routing script. See *Ingest, as built* above |
 | 2 | Whether `event` should be its own tag branch or a Perspective-only audit table | open, decide with the Ignition wiring |
 | 3 | The retained-message-at-the-old-topic gotcha has no cleanup path | open — a real device would not clean up either, so this may stay as-is deliberately |
 | 4 | `allowAnonymous` is still `true`, so the ACL in talk point 3 is not actually enforced yet | tracked in `compose/chariot/README.md` |
@@ -346,3 +427,4 @@ will, and nothing is published. Only `kill` proves the will works. Both are wort
 |---|---|
 | 2026-08-17 | **Pattern re-scoped: vibration gateway → smart sample valve assembly.** Publish-only, local badge authorization, two containers with device config webpages, pattern 2 becomes the same device in Sparkplug B. Vibration implementation left inert inside Ignition. |
 | 2026-08-17 | `services/sim-valve-mqtt/` built: valve state machine, badge roster, envelope publishes, hand-rolled retained-LWT death certificate, stdlib config page on 8085. Compose service, ACL account, seed rows, `.env.example` block. |
+| 2026-08-17 | **Ran against a real gateway for the first time.** Engine custom namespace narrowed to one device, tag tree auto-created and confirmed, JSON-null behaviour settled, both death paths measured. Auto-created tree gitignored. See *Ingest, as built*. |

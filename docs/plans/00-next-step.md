@@ -1,3 +1,36 @@
+> ## ✅ EXECUTED 2026-08-17 — every checkpoint passed
+>
+> This file is kept as the record of what was run, not as work to do. **Do not execute it
+> again**: step 0 nukes volumes, and step 1's edits are already committed.
+>
+> | | |
+> |---|---|
+> | **CP1** | Cirrus **5.0.4** Engine, Transmission, Distributor loading — no compatibility warnings |
+> | **CP2** | Transmission authenticated as `ign-transmission`, zero decrypt errors — **`Embedded` ciphertext is portable** |
+> | **CP3** | Sparkplug `selftest.py` ran and passed inside `docker build` |
+> | **CP4** | Both valves connected, both config pages answering, both topic trees live |
+> | **CP5** | Pattern 1 tree auto-created — **a JSON `null` creates no tag at all** |
+> | **CP6** | Pattern 2: **19 typed tags with engineering units, zero configuration** |
+> | **CP7** | Engine requested Rebirth unprompted; device answered in **6 ms**; no loop |
+> | **CP8** | Both death paths measured; pattern 1's will timestamp is the **connect** time, to within 7 ms |
+> | **CP9** | Both auto-created trees correctly gitignored |
+>
+> Also proven: editing `services/sim-valve-mqtt/app.py` and re-running `tasks.py up` now reaches
+> the container — the `--build` fix, tested directly.
+>
+> Findings moved to [`../00-architecture.md`](../00-architecture.md),
+> [`01-native-mqtt.md`](01-native-mqtt.md) § *Ingest, as built* and
+> [`02-sparkplug-b.md`](02-sparkplug-b.md) § *Ingest, as built*. Current state and what is next:
+> [`00-status.md`](00-status.md).
+>
+> **Three things this brief got wrong**, worth knowing before trusting a cold-execution doc:
+> the scratch clone was five commits stale and had none of the valve work (which was uncommitted
+> in main, so no `git pull` could fix it); `docker image rm` needed `-f` because main's *exited*
+> container held the tag; and a graceful `docker stop` does **not** mean nothing is published —
+> the device publishes its own frozen `offline` document.
+
+---
+
 # The next build step — land patterns 1 & 2 in Ignition and run them for real
 
 > **Written to be executed cold.** Everything needed is here or one link away; you should not

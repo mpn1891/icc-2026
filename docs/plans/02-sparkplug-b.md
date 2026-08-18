@@ -35,6 +35,7 @@ The five minutes: **open both config pages side by side, then look at the wire.*
 | **Datatypes** | whatever `json.dumps` produced; the consumer guesses | declared per metric |
 | **Engineering units** | agreed out of band, or not at all | a metric property, on the wire |
 | **Discovery** | none — someone hand-writes an Ignition tag config and maintains it | DBIRTH builds the tag tree by itself |
+| **Consumer subscription** | `icc26/site1/upstream/br-201/sample-valve-01/#` — one device, by name. A wildcard wide enough for two valves also swallows patterns 5 and 7, so a second valve means editing Engine's config | `spBv1.0/#` — every edge node that will ever exist, already covered |
 | **Loss detection** | none | `seq`, 0–255 rolling; a gap is visible |
 | **Death** | retained JSON on a topic we chose, timestamp frozen at connect, meaning agreed nowhere | NDEATH, spec-mandated topic and payload, every consumer already applies it |
 | **Re-announce** | nothing | `Node Control/Rebirth`, and the host asks for it unprompted |
@@ -209,6 +210,90 @@ Recorded here and in [`00-master-plan.md`](00-master-plan.md); decide when spec 
 
 ---
 
+## Ingest, as built
+
+Verified 2026-08-17 against a gateway seeded from an empty volume. **Zero files changed.**
+`default-namespace/Sparkplug B/config.json` already read `subscription: "spBv1.0/#"` with
+`defaultTagsEnabled: true`, and `namespace-server-set/Sparkplug B-Default Set` already bound it
+to the Default Set. Nothing was configured, and that is the entire point.
+
+What appeared, on its own:
+
+```
+MQTT Engine/Edge Nodes/ICC26-Site1-UPSTREAM/SAMPLE-VALVE-02/
+    Node Control/Rebirth            Node Info/   (16 diagnostics)
+    SV-202/Valve/{State,IsOpen,PositionPct}
+    SV-202/Interlock/Ok
+    SV-202/Badge/{LastScanId,LastScanHolder,LastScanRole,LastScanResult,LastDenyReason,LastScanTime}
+    SV-202/Sample/{CycleCount,LastSampleId,LastSampleTime,LastOpenDurationS}
+    SV-202/Line/{PressureBar,TemperatureC}
+    SV-202/Device/{FirmwareVersion,SerialNumber,Cell}
+    SV-202/Device Info/             (9 diagnostics)
+```
+
+**19 device metric tags**, plus the diagnostics Engine adds itself. Engineering units landed on
+all four analogs — `%`, `bar`, `degC`, `s` — and those strings exist nowhere except the DBIRTH
+property sets, so they are proof Engine parsed the metric properties, not just the names.
+
+### What this does not put on disk, and why that matters
+
+`ignition/config/resources/…/tag-definition/MQTT Engine/Edge Nodes/` holds a `tags.json` for
+**only the four metrics with engineering units.** Ignition persists a tag definition only where
+the configuration is non-default, so the fifteen String, Boolean and DateTime metrics write
+nothing at all — their folders exist and are empty.
+
+Two consequences worth remembering:
+
+- **The filesystem is not a reliable way to inspect a MANAGED provider.** Counting tags on disk
+  gives 4, not 19. The authoritative read is `GET /data/api/v1/tags/export?provider=MQTT
+  Engine&type=json&recursive=true`, which needs an API key.
+- The gitignore entry for this tree is still right — it is runtime state keyed to whatever
+  edge nodes a machine has seen — but it is ignoring much less than it looks like.
+
+### The encoder, proven on the wire
+
+Captured from Chariot and decoded with the device's own `sparkplug.py`:
+
+```
+NBIRTH  seq=0   2 metrics: bdSeq (Int64), Node Control/Rebirth (Boolean)
+DBIRTH  seq=1  19 metrics, aliases 1-19, 9 of them typed nulls
+NDEATH  seq=None, bdSeq only
+```
+
+NBIRTH carries `seq = 0`, NDEATH carries `bdSeq` and **no `seq` at all** — the two sequencing
+rules the spec is strictest about, both honoured. Nine metrics went out as **typed nulls**,
+including `Badge/LastScanTime` as a DateTime, so a consumer learns the metric exists and what
+type it is before anybody has badged in. Pattern 1 cannot express that: a JSON `null` there
+creates no tag at all.
+
+### Rebirth, unprompted, in 6 milliseconds
+
+Restarting the gateway leaves Engine holding no birth certificate. The device is silent because
+it reports by exception, so nothing happens until it next has something to say — then:
+
+```
+20:28:47.193  valve   badge B-1042 granted  -> DDATA
+20:28:47.196  Engine  Received message from unknown edge node - requesting rebirth
+20:28:47.196  Engine  Requesting Rebirth from ICC26-Site1-UPSTREAM/SAMPLE-VALVE-02
+20:28:47.199  valve   rebirth requested -- re-announcing
+              page    runtime.rebirths = 1
+```
+
+No loop, no operator, no configuration. This is the self-healing property pattern 1 has no
+equivalent for — its consumer, having missed nothing in particular, simply stays wrong.
+
+### Death, both ways
+
+`docker stop` → **DDEATH then an explicit NDEATH**, because a clean DISCONNECT makes the broker
+discard the will. `docker kill` → **NDEATH alone**, published by the broker from the will. Both
+carried the matching `bdSeq`, and every restart re-birthed with `seq` back to 0.
+
+**`bdSeq` stays 0 across container restarts.** It increments per CONNECT *within a process*, and
+a restarted container is a new process starting from 0. Correct for a device that rebooted, and
+harmless here, but worth knowing before anyone reads a bdSeq of 0 as "never reconnected".
+
+---
+
 ## Verification
 
 ```powershell
@@ -253,8 +338,8 @@ holding a device that no longer exists.
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Ignition-side: confirm Engine auto-builds the tag tree, and where in the tag provider it lands | **not built.** Docs + services only, by decision on 2026-08-17 |
-| 2 | Sparkplug B 3.0.0 vs the 2.2-era shape Cirrus 5.0.4 also accepts | targeting 3.0.0; verify Engine is happy at checkpoint 2 |
+| 1 | Ignition-side: confirm Engine auto-builds the tag tree, and where in the tag provider it lands | **resolved 2026-08-17.** 19 typed tags under `MQTT Engine/Edge Nodes/ICC26-Site1-UPSTREAM/SAMPLE-VALVE-02/SV-202/`, zero configuration. See *Ingest, as built* |
+| 2 | Sparkplug B 3.0.0 vs the 2.2-era shape Cirrus 5.0.4 also accepts | **resolved 2026-08-17.** Cirrus 5.0.4 accepted the 3.0.0 payloads without complaint — no warnings, no rebirth loop |
 | 3 | Pattern 7's lost tag source | see *Known consequence* above |
 | 4 | `bdSeq` wraps at 256 (Tahu's convention); the spec only says "increment by one" | harmless, noted in the code |
 | 5 | Whether `STATE` / a primary-host application belongs in the demo at all | out of scope for v1 — no host application is claimed |
@@ -267,3 +352,4 @@ holding a device that no longer exists.
 |---|---|
 | 2026-08-17 | **Pattern re-scoped**: bioreactor UDT on the Programmable Device Simulator → the same smart sample valve assembly as pattern 1, as a standalone Sparkplug edge node container. Document created. |
 | 2026-08-17 | `services/sim-valve-spb/` built: hand-written Tahu-verified protobuf encoder, 19 metrics with deadbands and units, NBIRTH/DBIRTH/DDATA/DDEATH/NDEATH, `bdSeq` re-armed per CONNECT, Rebirth honoured, config page on 8086 with the three controls disabled and cited. Compose service, ACL account, seed rows, `.env.example` block. |
+| 2026-08-17 | **Ran against a real gateway for the first time.** Engine built all 19 tags with units from DBIRTH with zero configuration; unprompted Rebirth observed and answered in 6 ms; both death paths measured. Encoder proven on the wire against Chariot. |
