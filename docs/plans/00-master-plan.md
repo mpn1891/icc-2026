@@ -48,20 +48,29 @@ is written (planned — not present yet).
 
 ## The eight specs
 
-**01 — Native MQTT** — no dependencies. **Written up and in progress:
-[`01-native-mqtt.md`](01-native-mqtt.md), which supersedes this entry entirely.** The design
-moved a long way from the sketch that was here — the gateway is simulated inside Ignition rather
-than in a container, the command topic is fleet-addressed, there is no correlation id and no
-LWT. That file carries the reasoning and a deviations table; do not "fix" it back toward an
-older summary.
+**01 and 02 are one device in two firmwares, and they must be read together.**
+**Written up in [`01-native-mqtt.md`](01-native-mqtt.md) and
+[`02-sparkplug-b.md`](02-sparkplug-b.md), which supersede this entry entirely.** Both moved a
+very long way from the sketches that were here — pattern 1 was a wireless vibration gateway
+simulated inside Ignition, pattern 2 was a bioreactor UDT on the Programmable Device Simulator.
+Each file carries the reasoning and a deviations table; do not "fix" either back toward an older
+summary.
 
-**02 — Sparkplug B edge node** — no dependencies; no new container.
-Programmable Device Simulator device (UI-then-commit; program CSV committed) feeding a
-`Bioreactor` UDT (temp, pH, DO, agitation, level, OUR) instance `BR-201`; MQTT Transmission tag
-tree + deadbands for report-by-exception (transmitter already fixed to
-`ICC26-Site1-UPSTREAM`/`UPSTREAM-EDGE-01`, already set). Verify: `mosquitto_sub 'spBv1.0/#'` shows
-NBIRTH/DBIRTH/DDATA; stopping the gateway produces NDEATH. Talk point: free birth/death
-(NDEATH/DDEATH) vs pattern 1, which deliberately claims no lifecycle at all.
+A **smart sample valve assembly**: a sanitary sample valve with an RFID badge reader on a
+bioreactor's sample port. Badge in, the valve strokes open for a sampling window, the valve
+closes; every scan is published, granted or denied. `services/sim-valve-mqtt` on `BR-201`
+speaks plain MQTT; `services/sim-valve-spb` on `BR-202` is the *same device* speaking Sparkplug
+B v3.0.0. `valve.py` and `webui.py` are byte-for-byte identical between the two build contexts,
+so everything that differs between the containers is a difference the protocol caused.
+
+Both are **publish-only** — no command topic, nothing on the backbone can open either valve,
+authorization is decided locally against a badge roster. Each container serves its own **device
+commissioning webpage** (8085, 8086), and the difference between those two pages is as much of
+the talk as the traffic: a free-text topic, a QoS dropdown and a retained checkbox on one; the
+same three controls disabled, with the TCK clause that fixed each, on the other. Talk point:
+spec-mandated versus hand-rolled — the topic, the datatypes, the units, the loss detection and
+the death certificate, one protocol giving you all five and the other giving you three form
+fields and a wiki page.
 
 **03 — OPC UA → MQTT** — no dependencies. **Both servers built, and written up in
 [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md), which supersedes this entry.**
@@ -116,11 +125,16 @@ against datasource `ICC26`. Publish `mechanism=poll`, same topic. Verify: trigge
 webhook+CDC disabled → message within one poll interval; show the id-vs-timestamp watermark
 argument in the doc.
 
-**07 — Scripted aggregation** — needs 04, 02, and the `ICC26` datasource.
+**07 — Scripted aggregation** — needs 04 and the `ICC26` datasource.
 Gateway script (Perspective button + optional timer): joins `plant.batch` (SQL), LIMS
-`GET /results/latest`, and live `BR-201` tag values into one composite document →
+`GET /results/latest`, and a third live source into one composite document →
 `transmission.publish` to `icc26/site1/upstream/br-201/batch-summary`, `mechanism=aggregate`.
 Verify: one message containing all three source sections.
+
+> **Open: the third source is undecided.** It used to be live `BR-201` process values from
+> pattern 2's Sparkplug bioreactor, which no longer exists — pattern 2 is now a sample valve.
+> Options are the valve's own metrics, a small standalone process simulator, or dropping to two
+> sources. See [`02-sparkplug-b.md § Known consequence`](02-sparkplug-b.md).
 
 **08 — Presentation + runbook** — last.
 Perspective: overview page, one page per pattern (04/05/06 share a "LIMS result" page with
@@ -131,6 +145,14 @@ fallback (build first) = Engine-subscribed wildcard → gateway script appends t
 Perspective table. `docs/demo-runbook.md` (planned — write with this spec): T-15 dual-trial
 checklist, per-pattern trigger + recovery, set-piece choreography (webhook off → CDC on →
 only `meta.mechanism` changes).
+
+Two notes for patterns 1 and 2 specifically. Their Perspective page is mostly **a link to the
+two device config pages on 8085 and 8086** — the comparison is between those two screens, and
+rebuilding them inside Perspective would only make them less convincing. And **pattern 2 will
+not appear on a firehose that colours by `meta.mechanism`**: Sparkplug payloads carry no
+envelope, by design. Either colour it by topic prefix as a special case, or say out loud that
+the one pattern which needed no agreement is the one that does not fit the field invented to
+track agreements.
 
 ## Execution order
 

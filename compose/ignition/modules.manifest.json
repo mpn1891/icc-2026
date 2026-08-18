@@ -13,7 +13,7 @@
       "name": "MQTT Engine",
       "file": "MQTT-Engine-signed.modl",
       "version": "5.0.4",
-      "sha256": "",
+      "sha256": "9e78753237e381de8ad62bc6640680fd05e5525ea5b702e0d73098a55773bede",
       "required": true,
       "purpose": "Northbound consumer. Sparkplug B ingest (pattern 2) and Custom Namespace ingest for plain-MQTT payloads (pattern 1)."
     },
@@ -22,7 +22,7 @@
       "name": "MQTT Transmission",
       "file": "MQTT-Transmission-signed.modl",
       "version": "5.0.4",
-      "sha256": "",
+      "sha256": "0b5b472a39f428b86442ea85faafa5697dac50aef9931d9ef71edda8e4f81ebb",
       "required": true,
       "purpose": "Sparkplug B edge node (pattern 2) and the publish path for patterns 3-7."
     },
@@ -31,7 +31,7 @@
       "name": "MQTT Distributor",
       "file": "MQTT-Distributor-signed.modl",
       "version": "5.0.4",
-      "sha256": "",
+      "sha256": "3980500716ed7d9093ca12f3e48d545a098277b755be43229da7891b99835370",
       "required": false,
       "purpose": "In-gateway MQTT broker. NOT the primary broker - Chariot is. Present as break-glass fallback if Chariot's independent trial timer bites on stage. Disabled by default."
     }

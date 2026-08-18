@@ -16,14 +16,22 @@
     }
   },
   {
-    "username": "vib-gateway",
-    "password": "vib-gateway",
+    "username": "sample-valve-01",
+    "password": "sample-valve-01",
     "acl": {
-      "subscribeTopics": ["icc26/site1/upstream/vibration-gw/cmd/collect"],
-      "publishTopics": [
-        "icc26/site1/upstream/vibration-gw/response/waveform",
-        "icc26/site1/upstream/+/+/telemetry"
-      ]
+      "subscribeTopics": [],
+      "publishTopics": ["icc26/site1/upstream/#"]
+    }
+  },
+  {
+    "username": "sample-valve-02",
+    "password": "sample-valve-02",
+    "acl": {
+      "subscribeTopics": [
+        "spBv1.0/ICC26-Site1-UPSTREAM/NCMD/SAMPLE-VALVE-02",
+        "spBv1.0/ICC26-Site1-UPSTREAM/DCMD/SAMPLE-VALVE-02/#"
+      ],
+      "publishTopics": ["spBv1.0/ICC26-Site1-UPSTREAM/#"]
     }
   },
   {

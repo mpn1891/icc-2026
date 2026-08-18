@@ -14,13 +14,17 @@ ignition/config/resources/local/
 # Gateway UI and puts name:secret in gitignored .env — do not share via git.
 ignition/config/resources/core/ignition/api-token/
 
-# MQTT diagnostic tag trees, auto-generated per edge node the gateway has seen.
+# MQTT tag trees the modules build for themselves, from traffic. Both of MQTT
+# Engine's ingest surfaces produce one: Sparkplug edge nodes land under
+# "Edge Nodes/", and a Custom Namespace subscription auto-creates a tree shaped
+# like the JSON payload's topic — for us "MQTT Engine/icc26/...".
 # Not configuration: the modules rebuild them at runtime, and they are keyed to
-# whatever edge nodes that particular machine has connected to. Committing them
-# means every gateway churns another machine's leftovers into every diff.
+# whatever traffic that particular machine has seen. Committing them means every
+# gateway churns another machine's leftovers into every diff.
 # NB: these are anchored paths, so "MQTT Engine/Engine Info/Edge Nodes/" -- a
 # static folder with no per-node children -- stays tracked, as it should.
 ignition/config/resources/core/ignition/tag-definition/MQTT Engine/Edge Nodes/
+ignition/config/resources/core/ignition/tag-definition/MQTT Engine/icc26/
 ignition/config/resources/core/ignition/tag-definition/MQTT Transmission/Transmission Info/Transmitters/*/Edge Nodes/
 
 # ─────────────────────────────────────────────────────────────────────────────

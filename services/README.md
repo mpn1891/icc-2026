@@ -5,10 +5,35 @@ backbone to attach these to.
 
 | Directory | Pattern | Status |
 |---|---|---|
-| `sim-vibration/` | 1 — native MQTT pub/sub | **not wired in** — pattern 1 simulates the gateway inside Ignition instead ([spec](../docs/plans/01-native-mqtt.md)). Kept as the payload-contract reference. Ignition side is partial: `vibsim` + UDTs + response-stream topic landed; timer/handlers/namespace/Perspective still TODO |
+| `sim-valve-mqtt/` | 1 — native MQTT pub/sub | **built and wired into compose.** Smart sample valve assembly on `BR-201`; config page on <http://localhost:8085>. Ignition-side ingest still TODO ([spec](../docs/plans/01-native-mqtt.md)) |
+| `sim-valve-spb/` | 2 — Sparkplug B edge node | **built and wired into compose**, and it is the **same device** as `sim-valve-mqtt/`, not a different one (see below). Config page on <http://localhost:8086>. Ignition-side check still TODO ([spec](../docs/plans/02-sparkplug-b.md)) |
 | `opcua-countess/` | 3 — OPC UA → MQTT | **server built and wired into compose.** Simulated Countess 3 FL cell counter; address space per [`docs/reference/countess-3fl-opcua-model.md`](../docs/reference/countess-3fl-opcua-model.md). Ignition side: connection + `cell_analyzer` UDT done, tag-change script TODO |
 | `opcua-novaflex/` | 3 — OPC UA → MQTT | **server built and wired into compose**, and it runs **alongside** `opcua-countess/`, not instead of it (see below). Simulated Nova BioProfile FLEX2; address space transcribed from the real vendor server per [`docs/reference/novaflex2-opcua-model.md`](../docs/reference/novaflex2-opcua-model.md). Ignition side: connection + `bioanalyzer` UDT + instance done and **verified bound — 57/57 tags monitored**, tag-change script TODO |
 | `lims/` | 4, 6, 7 — webhook / poll / aggregation source | **implementation undecided** |
+| `sim-vibration/` | — | **retired.** The pattern-1 vibration gateway, superseded on 2026-08-17 by the sample valve. Not wired in, kept on disk only until it is clear nobody wants it back |
+
+## Why patterns 1 and 2 are the same device
+
+`valve.py` and `webui.py` are **byte-for-byte identical** in both build contexts — same badge
+roster, same interlock, same state machine, same stroke times, same simulator controls. Fix
+one, copy it across, and `diff` the two before committing.
+
+That is the experiment's control. If the two containers differed in anything but the protocol,
+every difference you could see on stage would be arguable. They do not, so the differences are
+the protocol's:
+
+| | `sim-valve-mqtt` | `sim-valve-spb` |
+|---|---|---|
+| Topic | a text box on the config page | derived from group/node/device; there is no field |
+| QoS / retained | a dropdown and a checkbox | disabled, fixed by the spec, clause shown |
+| Payload | JSON we invented | protobuf, self-describing |
+| Discovery | none — hand-written Ignition tag config | DBIRTH builds the tag tree by itself |
+| Death | retained JSON on a topic we chose, timestamp frozen at connect | NDEATH, spec-mandated, every consumer applies it |
+| Loss detection | none | `seq` |
+| Dependencies | `paho-mqtt` | `paho-mqtt` — deliberately identical, see that service's README |
+
+Both are publish-only. Nothing on the backbone can open either valve; authorization is decided
+at the sample port against a local badge roster.
 
 ## Why pattern 3 runs two analyzers
 
@@ -32,10 +57,8 @@ The FLEX2's missing trigger is why `opcua-novaflex` publishes an `ICC26Extension
 a separate top-level object with a `README` variable inside it saying it is not vendor, because
 a tag export taken from that simulator will outlive anyone's memory of which half was invented.
 
-Patterns 1, 2 (Sparkplug B) and 5 (CDC) add no running service here: patterns 1 and 2 run
-inside Ignition — pattern 1 as a Jython script library plus (planned) two event streams,
-pattern 2 on the built-in Programmable Device Simulator — and pattern 5 is the
-`quay.io/debezium/server` image configured from `compose/debezium/`.
+Pattern 5 (CDC) adds no service of its own here — it is the `quay.io/debezium/server` image
+configured from `compose/debezium/`.
 
 ## The LIMS contract
 

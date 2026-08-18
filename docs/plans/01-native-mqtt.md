@@ -1,104 +1,106 @@
-# 01 — Native MQTT: wireless vibration gateway
+# 01 — Native MQTT: smart sample valve assembly
 
 > **Living document.** Updated as the pattern is built — see the [progress log](#progress-log) at
-> the bottom. This file supersedes spec 01 in [`00-master-plan.md`](00-master-plan.md), which was
-> written before the UDT modelling started; most of its assumptions have been replaced (see
-> [Deviations](#deviations-from-the-earlier-docs)).
+> the bottom. This file supersedes spec 01 in [`00-master-plan.md`](00-master-plan.md).
+>
+> **This pattern was a wireless vibration gateway until 2026-08-17.** It is now a badge-operated
+> sample valve, and pattern 2 is the *same device* speaking Sparkplug B. See
+> [Deviations](#deviations-from-the-earlier-docs) before assuming anything here is a typo for
+> something older.
 
 | | |
 |---|---|
-| **Pattern** | 1 of 7 — native MQTT pub/sub, fleet-addressed command, bulk response |
+| **Pattern** | 1 of 7 — native MQTT pub/sub, hand-rolled everything |
 | **Mechanism tag** | `meta.mechanism = "native-mqtt"` |
-| **New container** | **none** — the gateway is simulated inside Ignition |
+| **New container** | `sim-valve-mqtt` — [`services/sim-valve-mqtt/`](../../services/sim-valve-mqtt/) |
+| **Config page** | <http://localhost:8085> |
+| **Pairs with** | [`02-sparkplug-b.md`](02-sparkplug-b.md) — same assembly, different firmware |
 | **Depends on** | nothing (Wave 1) |
 | **Blocks** | nothing |
 
-## Objective and talk point
+## Objective and talk points
 
-A wireless vibration gateway is the most *honestly primitive* thing on the backbone: raw MQTT
-3.1.1, a vendor JSON command blob rather than anything standardised, and a bulk response that
-does not fit the shape of a tag. Two things it puts on stage:
+A smart sample valve assembly is the most *ordinary* thing on the backbone, and that is why it
+earns the slot: it is a field device somebody bought, commissioned through a web page, and
+pointed at a broker. Three things it puts on stage.
 
-**1. Fleet-addressed commands break a clean namespace.** Every other topic in this demo is
-device-addressed. The vibration gateways are configured the way the real hardware is — every
-gateway on site subscribes to *one shared control topic* and self-selects on the `gwSerial` in
-the payload, then resolves the sensor from `channelIndex`. The device address moves out of the
-topic and into the body. That a vendor's command protocol can force this on an otherwise
-disciplined namespace is worth showing rather than hiding.
+**1. The commissioning page is the protocol.** Everything this device promises the outside
+world is three form fields — a topic, a QoS, and a retained flag — typed in by whoever
+installed it. Nothing validates the topic against the site namespace. Nothing knows a badge
+scan is an audit record and a line temperature is not, so one QoS applies to both. Pattern 2's
+page has the same three controls greyed out. **Put the two screenshots side by side and the
+argument makes itself**, before a single message crosses the wire.
 
-**2. The domain decides what "response" means.** There is no correlation id here. The PM system
-does not care whether a waveform came from its request, a retry, or somebody else's — it needs
-*a* waveform and the timestamp it was captured at, taken while the machine was in steady state.
-Ignition enforces the steady-state precondition on the way out (`collect_trigger` is
-`steady_state && collect_request`); the response carries the capture time on the way back. The
-honest moment is not "look how we rebuilt request/response over 3.1.1" — it is "we checked
-whether we needed to."
+**2. The device knows nothing about itself, so everything else must be agreed.** The payload
+shape is ours. The death certificate is a retained JSON document on a topic we picked, whose
+timestamp is wrong by construction. Datatypes are whatever `json.dumps` produced. Every one of
+those is a decision that has to be written down somewhere and kept in step forever — and the
+place it gets written down is an Ignition tag configuration, by hand, which is exactly the work
+pattern 2 does not do.
 
-**Two ingest surfaces, chosen deliberately.** Telemetry is a value stream and belongs in tags,
-so it arrives through an MQTT Engine custom namespace. A waveform is a document that arrives on
-request, so it goes through an 8.3 event stream instead. Showing both — with the reason for
-picking each — is a better five minutes than showing either alone.
+**3. The namespace holds because an ACL holds it.** `sample-valve-01` may publish to
+`icc26/site1/upstream/#` and nothing else, so the free-text topic box cannot put sample data in
+the QC area. That rule lives in `compose/chariot/mqtt-users.json`, not in the device and not in
+the protocol. Delete it and the discipline goes with it.
 
 ### What this pattern deliberately does *not* do
 
-**No birth/death, no Last Will.** A will is registered in the MQTT CONNECT packet, so only the
-client that owns the session can set one; every publish API is "send this message now" on a
-session that already exists. The simulated gateway runs inside Ignition, on Ignition's session,
-so it has no will available to it. Rather than fake a lifecycle with startup/shutdown scripts
-that only cover the graceful case, the pattern simply doesn't claim one — it is a live running
-stream. Pattern 2's edge node *does* get a real will (Transmission owns that connection and
-registers its NDEATH there), so the LWT still reaches the stage; it just isn't pattern 1's job.
+**No command path. At all.** There is no `cmd` topic, nothing is subscribed, and nothing on the
+backbone can open this valve. Authorization is decided at the sample port against a roster the
+assembly holds locally, because a sample port that stops working when the broker does is not one
+anybody would install. That is not a simplification for the demo — it is what makes the device
+credible, and it means both patterns 1 and 2 are pure publishers.
+
+**No request/response, and therefore no correlation id.** Nothing asks this device for
+anything. Chariot is MQTT 3.1.1 and has no response-topic or correlation-data properties, and
+this pattern never needs to find that out. (`cmd/<verb>` and `response/<what>` remain in the
+architecture doc's message-type set as the names to reach for; **no pattern currently uses
+them.**)
 
 ---
 
 ## Physical model
 
-One wireless gateway, serial `12345678`, in the USP suite, wired to four accelerometer
-channels. **Only channel 0 is provisioned** — the agitator drive-end bearing on `BR-201`.
-Channels 1–3 are physically present and unpopulated; a collect aimed at them is rejected to
-the gateway log with nothing published, which is the pattern's negative path.
+A sanitary diaphragm sample valve with an integrated RFID reader, a pneumatic actuator and
+position feedback, mounted on the sample port of `BR-201`. Serial `SV-2000-0417`.
+
+An operator presents a badge. The assembly checks it against its own roster and its process
+interlock, strokes the valve open for a sampling window, and closes it again. **Every scan is
+published, granted or denied** — a refused sample attempt is exactly as audit-relevant as a
+successful one.
 
 ```
-   UDT collect_request ──► collect_trigger  (expr: steady_state && collect_request)
+   badge presented at the reader
             │
-            │ transmission.publish  (plain MQTT, RPC into the module)
             ▼
-   icc26/site1/upstream/vibration-gw/cmd/collect ──► Chariot ──┐
-            (fleet topic: every gateway subscribes,            │
-             each ignores payloads whose gwSerial              │
-             isn't its own)                                    │
-                                                               ▼
-                                              Event Stream "vibration-gw-control"
-                                                               │
-                                              transform: build_collect_response()
-                                                               │
-                                              MQTT handler (Transmission)
-                                                               │  waveform only — no ack
-                                                               ▼
-                       icc26/site1/upstream/vibration-gw/response/waveform ──► Chariot
-                                                               │
-                        ┌──────────────────────────────────────┴────────────┐
-                        ▼                                                   ▼
-          Engine custom namespace                             Event Stream
-          (telemetry → pm-sensors tags,                       "vibration-gw-listener"
-           per-cell topics)                                            │
-                                                          vibsim.route_waveform()
-                                                                       │
-                                              SENSOR_CHANNELS[(gwSerial, channelIndex)]
-                                                                       ▼
-                                    [default]icc26/site1/upstream/bioreactors/br-201/
-                                             asset_data/agitator_vibration/waveform/*
+   ┌──────────────────┐   authorized && interlock_ok?
+   │  LOCKED          │──────────── no ──────────► event: badge-scan, result=denied
+   └────────┬─────────┘                            (nothing moves)
+            │ yes
+            ▼
+      UNLOCKING ──► OPEN ──► CLOSING ──► LOCKED
+      (1.5 s)      (12 s)    (1.5 s)        │
+            │                               └──► event: sample-complete
+            └──► event: badge-scan, result=granted, sample_id assigned
+
+   every transition ──► state topic (retained)
+   every 5 s        ──► telemetry topic
 ```
 
-**The demux is the point.** Every gateway's waveforms land on one flat response topic, and
-`route_waveform` turns `(gwSerial, channelIndex)` back into one sensor's tags. Adding a sensor
-is a row in `SENSOR_CHANNELS`, not a new subscription — the topic tree stays flat while the tag
-tree stays ISA-95.
+Deny reasons, checked **in this order** — who you are is decided before what the valve happens
+to be doing, so the audit trail says the same thing every time:
 
-Ignition is both the simulated device and the consumer, and the traffic makes a genuine round
-trip through Chariot. That is a real cost of not shipping a separate client — noted in
-[Deviations](#deviations-from-the-earlier-docs) — and it is why `services/sim-vibration/` was
-kept on disk rather than deleted.
+| Reason | |
+|---|---|
+| `badge-unknown` | not on the roster — a contractor at the wrong skid |
+| `badge-not-authorized` | on the roster, wrong role |
+| `training-expired` | on the roster, right role, lapsed qualification |
+| `valve-busy` | mid-cycle for somebody else |
+| `interlock-open` | CIP in progress / vessel not at sampling conditions |
+
+Roster ships with one of each of the first three (`B-1042` authorized, `B-2087` wrong role,
+`B-3311` training expired) so all the denial paths are demonstrable without editing config on
+stage. The interlock is toggled from the config page.
 
 ---
 
@@ -107,318 +109,159 @@ kept on disk rather than deleted.
 Namespace rule from [`../00-architecture.md`](../00-architecture.md):
 `icc26/{site}/{area}/{line-or-cell}/{device}/{message_type}`.
 
-| Topic | Dir | QoS | Purpose |
-|---|---|---|---|
-| `icc26/site1/upstream/vibration-gw/cmd/collect` | in | 1 | Fleet-addressed collect command |
-| `icc26/site1/upstream/vibration-gw/response/waveform` | out | 1 | Time waveform, on command |
-| `icc26/site1/upstream/{cell}/{device}/telemetry` | out | 0 | RMS, peak, temp — every 5 s |
+**And note that this device does not know that.** The base topic below is a factory default in a
+text box. It is device-addressed and namespace-conformant because somebody typed it that way.
 
-Nothing is retained. **There is no `ack` and no `state`** — the gateway publishes nothing about
-itself, so a collect is answered by its waveform or by nothing at all, and a rejection is
-visible only in the gateway log. See talk point 1.
+| Topic | Dir | QoS | Retained | Purpose |
+|---|---|---|---|---|
+| `icc26/site1/upstream/br-201/sample-valve-01/event` | out | 1 | yes | One per badge scan and per completed sample |
+| `icc26/site1/upstream/br-201/sample-valve-01/state` | out | 1 | yes | Valve position; **also the Last Will** |
+| `icc26/site1/upstream/br-201/sample-valve-01/telemetry` | out | 1 | yes | Line pressure/temperature, every 5 s |
 
-Only the telemetry topic is device-addressed, and its `{cell}` comes from the channel map, not
-from the gateway: one Erbessd gateway is a radio concentrator serving several skids, so
-channel 0 can publish under `br-201` while channel 1 publishes under another cell entirely.
+Nothing is subscribed.
 
-### The deliberate namespace exception — a pair, not one topic
+**The QoS and Retained columns are identical down the table, and that is the finding.** The page
+offers one of each, applied to all three message types. The honest settings would be QoS 1
+unretained for events, QoS 1 retained for state, QoS 0 unretained for telemetry — three
+different answers the device cannot express. Shipping default is `1` / retained, which is right
+for `state`, wasteful for `telemetry`, and leaves a stale `event` sitting on the broker for the
+next subscriber to mistake for a live one.
 
-**`vibration-gw` occupies the line-or-cell slot for both the command and its response.** It is
-the class of gateways serving the area, not a place.
-
-- On `cmd/collect` the device slot is elided: a broadcast has no single addressee, and the
-  device is resolved in-payload from `gwSerial` + `channelIndex`.
-- On `response/waveform` the device slot is elided for the mirror-image reason: one topic
-  carries every gateway's responses, and `route_waveform` demuxes them to tags.
-
-The `cmd/<verb>` message type is preserved. These are the only two topics in the demo that are
-not device-addressed, and both are deliberate — see talk point 1.
+Demonstrate it: turn Retained off and the death certificate stops working for anyone who was not
+already connected.
 
 ---
 
 ## Payload contracts
 
-The inbound collect command and its waveform response use the **vendor's own shape** — no
-standard envelope. Telemetry (periodic) still uses the envelope from
-[`../00-architecture.md § Payload envelope`](../00-architecture.md).
+The envelope from [`../00-architecture.md § Payload envelope`](../00-architecture.md), with
+`meta.event` naming what happened. Unlike the old vibration pattern there is no vendor payload
+here — everything on the wire is ours, which is precisely the problem being illustrated.
 
-### Inbound — collect command
-
-Published by the UDT's `collect_trigger` script (or `mosquitto_pub`). The vendor's own shape,
-byte-for-byte, with **no envelope and no correlation id** — a real gateway rejects anything else.
+### `event` — badge scan
 
 ```json
 {
-  "type": "observerrequest",
-  "channelIndex": 0,
-  "action": "wiredcollectnow",
-  "settings": { "lor": 4096, "sendto": "cloud" },
-  "gwSerial": "12345678"
-}
-```
-
-Handling, in order. Failures **log and publish nothing** — there is no `ack` topic; all
-rejection reasons look identical on the wire.
-
-| Check | Failure (log only) |
-|---|---|
-| `gwSerial` == own serial | **silently ignored** — not this gateway's command |
-| `type == "observerrequest"` | `malformed-request` |
-| `action == "wiredcollectnow"` | `unsupported-action` |
-| `channelIndex` in 0–3 | `unknown-channel` |
-| channel provisioned (ch0 only) | `not-provisioned` |
-| `settings.lor` power of two, 512 ≤ lor ≤ `MAX_LOR` | `invalid-lor` |
-
-`gwSerial` **must be a JSON string.** The `gw_serial` UDT tag is explicitly typed `String`
-because an undeclared Ignition tag defaults to numeric and publishes the serial unquoted, which
-a real gateway drops on the floor. That comment already exists on the tag — keep it.
-
-### Outbound — waveform (`wiredCollection`)
-
-Same honesty as the command: vendor JSON on the fleet response topic, demuxed in
-`route_waveform` on `(gwSerial, wiredChannel)`.
-
-```json
-{
-  "datatype": "wiredCollection",
-  "wiredChannel": 0,
-  "gwSerial": "12345678",
-  "timestamp": "2026-08-10T18:22:04.512Z",
-  "sensorType": "accel",
-  "sampleRate": 32000,
-  "data": [0.0123, -0.0456]
-}
-```
-
-| Field | Meaning |
-|---|---|
-| `wiredChannel` / `gwSerial` | Echo of the request — demux keys for `SENSOR_CHANNELS` |
-| `timestamp` | Capture **start** (ISO-8601 UTC) — what the PM system keys on; no correlation id |
-| `sampleRate` | Hz; fixed at 32000 for this gateway |
-| `data` | Acceleration samples in g; length = requested `settings.lor` |
-
-**Size.** ~8.5 bytes per sample once rounded to 5 dp — roughly **34 KB at `lor=4096`**,
-scales with `lor`. `MAX_LOR` is 65536 as a guard; the UDT default is 4096.
-
-### Outbound — telemetry (every 5 s)
-
-```json
-{
-  "ts": "2026-08-10T18:22:00.004Z",
-  "seq": 1041,
-  "source": { "id": "agitator-vib", "type": "vibration-sensor" },
+  "ts": "2026-08-17T18:22:04.512Z",
+  "seq": 41,
+  "source": { "id": "sample-valve-01", "type": "sample-valve" },
   "meta": {
     "mechanism": "native-mqtt",
-    "ingest_ts": "2026-08-10T18:22:00.004Z",
-    "gw_serial": "12345678",
-    "channel_index": 0
+    "ingest_ts": "2026-08-17T18:22:04.512Z",
+    "event": "badge-scan",
+    "cell": "br-201",
+    "assembly_serial": "SV-2000-0417"
   },
   "values": {
-    "rms_velocity_mm_s": 2.99,
-    "peak_accel_g": 1.32,
-    "crest_factor": 5.62,
-    "temperature_c": 47.4,
-    "shaft_rpm": 1780.0
+    "badge_id": "B-2087",
+    "badge_holder": "Sam Okafor",
+    "badge_role": "maintenance",
+    "result": "denied",
+    "deny_reason": "badge-not-authorized",
+    "valve_state": "locked",
+    "sample_id": null
   }
 }
 ```
 
-Telemetry is **computed from the same synthesis model as the waveform** — a short block is
-synthesised each tick and reduced to statistics — so when the simulated defect grows,
-`rms_velocity_mm_s` climbs *and* the next waveform shows deeper impacts. One story, not two.
+`result` is `granted` or `denied`; `deny_reason` is `null` on a grant. A granted scan carries the
+`sample_id` it authorized.
+
+### `event` — sample complete
+
+`values`: `sample_id`, `badge_id`, `badge_holder`, `opened_at`, `closed_at`,
+`open_duration_s`, `cycle_count`.
+
+### `state` — retained, and the death certificate
+
+`values`: `state` (`locked` | `unlocking` | `open` | `closing` | `offline`), `is_open`,
+`position_pct`, `interlock_ok`, `sample_id`, `badge_id`, `cycle_count`, `since`.
+
+The **Last Will** is the same document with `state: "offline"`, and two things about it are
+wrong on purpose:
+
+- **Its timestamp is the moment the session connected**, not the moment the device died. A will
+  is registered in the CONNECT packet, before the death it describes. Nothing can fix that from
+  inside a hand-rolled protocol.
+- **Nothing on the backbone knows this topic means death** unless it was told separately.
+
+Sparkplug does not solve the first by magic — NDEATH has the same constraint — it solves it by
+making every consumer apply the same rule, and by having the *consumer* stamp the time. The
+difference is the agreement, not the plumbing.
+
+### `telemetry` — every 5 s
+
+`values`: `line_pressure_bar`, `line_temperature_c`, `valve_cycles_total`, `interlock_ok`,
+`uptime_s`. Pressure drops and temperature rises while the valve is open, so the stream is
+visibly coupled to the events rather than decorative.
 
 ---
 
-## Waveform synthesis
+## The configuration page
 
-Acceleration in **g**, one model driving both waveform and telemetry.
+<http://localhost:8085>, served by the container itself
+([`services/sim-valve-mqtt/webui.py`](../../services/sim-valve-mqtt/webui.py) +
+`page.html`) — a device's embedded commissioning UI, which is what every smart field device
+ships. `http.server` from the standard library, one HTML file with CSS and JS inline, **no
+external assets**, because the demo has to run with networking disabled.
 
-```
-f_shaft = shaft_rpm / 60                    # 1780 rpm → 29.67 Hz
-BPFO    = 3.585 × f_shaft                   # 8-ball deep-groove, outer race → 106.4 Hz
-f_res   = 1500 Hz                           # housing resonance rung by each impact
-ζ       = 0.05                              # damping ratio
+| Section | |
+|---|---|
+| **MQTT publishing** | Topic (free text), QoS (0/1/2), Retained (checkbox). Save reconnects, because a new topic means a new will and a will is only registered at CONNECT |
+| **What this produces** | The three derived topics, live, with a note on each saying what it carries and why one QoS cannot be right for all three |
+| **Last will** | Topic, QoS, retained, and the sentence about the frozen timestamp |
+| **Simulator controls** | Fenced off, labelled *not part of the device*: a badge button per roster entry, an interlock toggle, and the live valve state |
 
-a(t) = A1·sin(2π·f_shaft·t + φ1)            # imbalance, 1×
-     + A2·sin(2π·2f_shaft·t + φ2)           # misalignment, 2×
-     + A3·sin(2π·3f_shaft·t + φ3)           # 3×
-     + S · Σₖ g(t − tₖ)·(1 + m·sin(2π·f_shaft·tₖ))   # BPFO impulse train, shaft-modulated
-     + 𝒩(0, σ²)                             # broadband noise
+The simulator block is the stage trigger. It exists because a deny path you cannot fire on
+demand is a deny path you will not get to show.
 
-g(τ)    = exp(−ζ·2π·f_res·τ)·sin(2π·f_res·τ)   for τ ≥ 0, truncated at 5 time constants
-tₖ      = k/BPFO · (1 + jitter),  jitter ~ U(−0.01, 0.01)   # rolling-element slip
-```
+Saving a new topic also surfaces a genuine gotcha: **a retained message outlives the config that
+produced it.** The old retained state sits at the old topic until something clears it, and the
+page says so when it happens.
 
-`S` — **defect severity** — ramps from 0.05 to 0.9 over `DEFECT_RAMP_S` (default 30 min), then
-holds, so a gateway left running through a rehearsal shows a visibly worse bearing than one just
-started. Set `DEFECT_RAMP_S = 0` to pin it for a reproducible stage run.
-
-The impulse train modulated at shaft frequency is the textbook outer-race signature: an FFT
-shows a BPFO peak with ±1× shaft sidebands, and the housing resonance makes the envelope
-spectrum look like something a vibration analyst would recognise. Slip jitter keeps it from
-looking synthetic.
-
-**Why 32000 Hz and 1500 Hz.** Vendor `sampleRate` is 32000. At `lor=4096` that is a 0.128 s
-record. The housing resonance at 1500 Hz stays well below Nyquist (~21 samples/cycle), so
-impacts still look like ringdowns rather than Nyquist garbage.
-
-Velocity RMS is derived, not assumed: g → mm/s², cumulative-trapezoid integrate, remove the
-linear drift the integration introduces, then RMS. That is what a real analyser does, and it
-means `rms_velocity_mm_s` is consistent with the samples actually published.
-
-**Validated offline** against a naive DFT before the Jython port
-(`services/sim-vibration/app.py`, the CPython original): peak 1.32 g, RMS 0.235 g, crest 5.62,
-velocity RMS 2.99 mm/s — ISO 10816 zone B/C for a medium machine. 1×, BPFO and the resonance all
-stand ≥ 6× above the noise floor at 700 Hz; severity 0.9 gives 8× the peak of severity 0.05.
+Commissioned settings persist to `/data/config.json` on the `valve-mqtt-config` volume, so they
+survive a restart. The `VALVE_BASE_TOPIC` / `VALVE_PUBLISH_QOS` / `VALVE_PUBLISH_RETAIN`
+environment variables are **factory defaults only** — once the page has been saved, the volume
+wins. `python tasks.py nuke` returns the device to factory.
 
 ---
 
-## Implementation — inside Ignition
+## Implementation
 
-**On-request waveform only.** Periodic telemetry (timer, Engine custom namespace, `readings/*`)
-is deferred — `vibsim` synthesizes a `wiredCollection` when asked, and the listener writes it
-to tags. Exercise collect from Designer (`steady_state` + `collect_request`); no Perspective
-view in v1.
+`services/sim-valve-mqtt/`, `paho-mqtt` and nothing else.
 
-### Script library `vibsim`
-
-`ignition/projects/icc-2026/ignition/script-python/vibsim/code.py`. Jython 2.7 port of the
-validated model. Configuration lives in constants at the top of the module — the counterpart of
-the container build's environment variables.
-
-| Function | Called by |
+| File | |
 |---|---|
-| `build_collect_response(request)` | Event stream `vibration-gw-control` transform |
-| `handle_collect(request)` | Legacy build+publish helper (stream uses transform + MQTT handler) |
-| `route_waveform(payload)` | Event stream `vibration-gw-listener` handler |
-| `bearing_block(n)` | `build_collect_response` |
+| `valve.py` | The assembly: roster, interlock, state machine, line simulation. Knows nothing about MQTT |
+| `app.py` | Config, envelope, the paho client, the will, and the page's view of the device |
+| `webui.py` | The stdlib config server |
+| `page.html` | The page |
 
-Two lookup tables at the top of the module carry the routing, and they point in opposite
-directions — worth reading together:
-
-| Table | Key → value | Used by |
-|---|---|---|
-| `CHANNELS` | `index` → `(cell, device)` | `build_collect_response`, provisioned-channel check |
-| `SENSOR_CHANNELS` | `gw_serial` + `channel_index` → `tag_path` (UDT instance root) | `route_waveform`, to reach the tags |
-
-> **Both guesses in this resource are now confirmed — 2026-08-11.** The on-disk path
-> (`ignition/script-python/<library>/{code.py,resource.json}`) and the minimal `resource.json`
-> shape both work: the library appeared in the Designer after `python tasks.py restart
-> ignition`, and the gateway did **not** rewrite the file or add a
-> `lastModificationSignature`. A hand-authored project script library is therefore a known
-> format and can be authored as files, like tags and Perspective views. Event stream
-> transforms are per-event (`return …`); script handlers are batch (`for event in events`).
-
-### Periodic telemetry — deferred
-
-No Gateway Timer. `telemetry_tick` is gone. The Engine custom namespace (`icc26-native`) and
-UDT `readings/*` references stay on disk but nothing publishes to them until telemetry comes
-back. Do not subscribe that namespace to the waveform response topic.
-
-### Event stream `vibration-gw-control` — the device side (**landed**)
-
-On disk at
-`ignition/projects/icc-2026/com.inductiveautomation.eventstream/event-streams/01_mqtt/vibration-gw-control/`.
-
-Pipeline:
-
-| Stage | Config |
-|---|---|
-| Source | Cirrus MQTT Engine, `icc26/site1/upstream/vibration-gw/cmd/collect`, QoS 1 |
-| Encoder | `ignition.jsonObject` |
-| Transform | `return vibsim.build_collect_response(event.data)` |
-| Handler | MQTT Transmission → `icc26/site1/upstream/vibration-gw/response/waveform`, server `chariot_broker`, QoS 1 |
-
-`build_collect_response` validates the fleet command and synthesizes a vendor
-`wiredCollection` (no sleep — `SIMULATE_CAPTURE_TIME` is False). The MQTT handler publishes
-that document. There is no ack — the waveform on the response topic *is* the response. Filter is
-left disabled for now; rejects / wrong `gwSerial` return `None` from the transform.
-
-### Event stream `vibration-gw-listener` — waveform ingest (**landed**)
-
-On disk at
-`ignition/projects/icc-2026/com.inductiveautomation.eventstream/event-streams/01_mqtt/vibration-gw-listener/`.
-Renamed from the `pm-sensor-listener` skeleton so it pairs with `vibration-gw-control`.
-
-Pipeline:
-
-| Stage | Config |
-|---|---|
-| Source | Cirrus MQTT Engine, `icc26/site1/upstream/vibration-gw/response/waveform`, QoS 1 |
-| Encoder | `ignition.jsonObject` |
-| Handler | script, batch: `for event in events: vibsim.route_waveform(event.data)` |
-
-`route_waveform` looks up `(gwSerial, wiredChannel)` in `SENSOR_CHANNELS` and writes
-`waveform/*` (including `box_whisker/*`) relative to that row's `tag_path`. A serial/channel
-with no row is logged and dropped — another gateway's traffic on the shared topic is not
-this map's problem. Filter and transform stay disabled.
-
-### Tag model — `default` provider
-
-The `vibration_sensor` UDT already existed; its control half was correct and is unchanged
-(`collect_request`, `steady_state`, `collect_trigger` and the `valueChanged` script — including
-its one-shot semantics, `lor` power-of-two validation, the `String` `gw_serial` note, and the
-honest comment that `publish()` reports handoff, not delivery).
-
-**Applied:**
-
-| Change | |
-|---|---|
-| `mqtt_topic` default | → `icc26/site1/upstream/vibration-gw/cmd/collect` |
-| `resolution` default | 32768 → `4096` (32768 is a 267 KB publish) |
-| `uns_path` parameter | **new** — locates this sensor's ingested tags in `pm-sensors` |
-| `last_request_ts` tag | **new** DateTime, stamped by the collect script |
-| `waveform/` folder | **new** — `latest` (Document), `captured_at` (DateTime), `sample_rate_hz`, `sample_count` (Int4) |
-| instance `br-201` | at `icc26/site1/upstream/bioreactors/br-201`, `resolution=4096`, `uns_path=site1/upstream/br-201/agitator-vib` |
-| `waveform/box_whisker/` | **new** — five-number summary, Tukey fences, `outlier_count`, `check_ok` (written by `route_waveform`) |
-
-`readings/*` reference tags exist on the UDT but are idle until periodic telemetry returns.
-
-`last_request_ts` and `waveform/captured_at` side by side *are* this pattern's request/response
-story — the "we asked at" and the "captured at", with no correlation id between them.
-
-### Box-and-whisker check
-
-Computed in `route_waveform` from `data` on every successful ingest:
-
-| Tag under `waveform/box_whisker/` | Meaning |
-|---|---|
-| `min` / `q1` / `median` / `q3` / `max` | Five-number summary of the capture (g) |
-| `iqr` | `q3 - q1` |
-| `fence_low` / `fence_high` | Tukey fences (`q1 - 1.5·iqr`, `q3 + 1.5·iqr`) |
-| `outlier_count` | Samples outside the fences |
-| `check_ok` | `outlier_count / n ≤ vibsim.MAX_OUTLIER_FRACTION` (default `0.05`) |
-
-Healthy noise stays under the threshold; growing BPFO impacts drive the fraction up as
-`DEFECT_SEVERITY` ramps — that is the demo hook. No Perspective chart; read the tags in
-Designer (or bind later if a view is added).
-
-### Perspective
-
-**Not in scope for v1.** Exercise the pattern from Designer: set `steady_state = true`, then
-`collect_request = true`. FFT / envelope-spectrum plotting remains a nice-to-have (open item 8).
+**`valve.py` and `webui.py` are byte-for-byte identical to the copies in
+`services/sim-valve-spb/`.** That is the house convention (self-contained build contexts, no
+shared library) and here it is load-bearing: the two containers must differ *only* in how they
+speak, or the comparison is worthless. Fix one, copy it across, `diff` before committing.
 
 ---
 
 ## Infrastructure
 
-**No compose service.** `docker-compose.yml` carries a comment where pattern 1's container would
-have gone, pointing here.
+**MQTT user `sample-valve-01`**, publish `icc26/site1/upstream/#`, subscribe nothing. The
+wildcard is the *area* rather than the exact topic on purpose — so the valve can be re-addressed
+to another cell live on stage and still work, while it cannot put sample data in `qc`. See
+talk point 3 and `compose/chariot/README.md`.
 
-**`services/sim-vibration/` is retained but not wired in.** A complete, tested standalone
-container implementing the same contract (also no ack, no state, no Last Will). It is the
-executable specification of the payloads and the origin of the validated model. Delete it if
-it becomes a maintenance drag; it costs nothing sitting there.
+Two caveats that will bite before they help:
 
-**The `vib-gateway` MQTT user is now unused.** Ignition publishes as `ign-transmission`
-(`icc26/#`) and subscribes through Engine. `compose/chariot/mqtt-users.json` still defines
-`vib-gateway` with the corrected topic list — harmless, and it is what a real gateway would
-need. Note that `MQTT_USERS` applies **on first run only**, so editing that file does nothing to
-a Chariot that already has its user store.
+- **`MQTT_USERS` seeds Chariot on first run only.** On an already-running broker the new
+  accounts do not exist. Both valves connect anyway today because `allowAnonymous` is `true`;
+  when that goes back to `false` before the talk, a `nuke` is what creates them.
+- **`compose/postgres/initdb/` runs on an empty volume only.** `03-seed.sql` now carries
+  `BR-202`, `sample-valve-01` and `sample-valve-02`; against a live database, apply the
+  equivalent `DELETE`/`INSERT` by hand.
 
-**`compose/postgres/initdb/03-seed.sql`** — the four `vib-01…04` pumpskid rows were replaced with
-`vib-gw-01` and `agitator-vib` under `usp`/`br-201`. `initdb` runs on an **empty volume only**;
-for a live database apply the equivalent `DELETE` + `INSERT` by hand.
+**`services/sim-vibration/` stays on disk, unwired**, along with the whole vibration
+implementation inside Ignition — see [Deviations](#deviations-from-the-earlier-docs).
 
 ---
 
@@ -426,28 +269,28 @@ for a live database apply the equivalent `DELETE` + `INSERT` by hand.
 
 Recorded so nobody "fixes" these back.
 
-| Master plan / architecture doc said | Now | Why |
+| Earlier docs said | Now | Why |
 |---|---|---|
-| 4 sensors `vib-01…04` on `pumpskid1` | 1 sensor on `br-201`, gateway with 3 idle channels | The UDT models a real multi-channel wireless gateway; the bioreactor framing ties pattern 1 to pattern 2's asset |
-| Per-device `.../vib-01/cmd/collect` | Fleet topic `icc26/site1/upstream/vibration-gw/cmd/collect` | Real gateways share one control topic and self-select on `gwSerial` |
-| Waveform carries the originating `correlation_id` | No correlation id; capture `timestamp` echoed on the vendor payload | The PM system needs a waveform and its capture time, not request lineage |
-| Perspective fires the command **via Engine** | Via **Transmission** | Engine's ACL wildcard does not match a five-token control topic; Transmission holds `icc26/#`. Neither is Sparkplug — `transmission.publish` is a general MQTT publish reached by RPC |
-| Engine custom namespace → Document tags for everything | Namespace for telemetry, event stream for waveform | Keeps a 34 KB document out of the tag change pipeline; demonstrates both 8.3 ingest surfaces |
-| Standalone `services/sim-vibration` container | Simulated inside Ignition | One fewer container and image build; the code is kept on disk unwired |
-| Retained LWT birth/death on `.../state` | **Dropped entirely** | A will can only be set by the client that owns the session. Faking it with startup/shutdown scripts covers only the graceful case, so the pattern claims no lifecycle at all |
-| `ack` topic, accept/reject per collect | **Dropped entirely** | The waveform arriving *is* the acceptance. A rejection now logs and publishes nothing, so all four negative paths look identical on the wire — which is the honest shape of a fire-and-forget command protocol |
-| Waveform on the sensor's own branch `br-201/agitator-vib/waveform` | One fleet topic `vibration-gw/response/waveform`, demuxed in `route_waveform` | A response belongs to the command channel, not the sensor. Keeps the topic tree flat while the tag tree stays ISA-95: a new sensor is a row in `SENSOR_CHANNELS`, not a new subscription |
-| Gateway sits in cell `br-201` (topics and `plant.equipment`) | Gateway sits in `vibration-gw`; each *channel* carries its own cell | An Erbessd gateway is a radio concentrator serving several skids. Pinning it to a cell asserts the fleet cannot cross cells, which is false |
+| Pattern 1 is a wireless vibration gateway; pattern 2 is a bioreactor UDT | Both are the **same smart sample valve assembly**, in two firmwares | Two unrelated subjects made the mechanism comparison harder than it needed to be. One device in two protocols is the argument, and the two config pages make it before any traffic does |
+| The gateway is simulated **inside Ignition** (`vibsim` + two event streams) | A **standalone container** | The device needs its own commissioning webpage, and it needs to own its own MQTT session — which is also what gives pattern 1 a real Last Will |
+| Pattern 1 has no Last Will and claims no lifecycle | Hand-rolled retained `state: "offline"` will | Owning the session makes a will available. Pattern 1 vs 2 is now *hand-rolled vs spec-mandated* rather than *none vs some*, which is the better comparison |
+| Fleet-addressed `…/vibration-gw/cmd/collect` + `…/response/waveform` | **No command topics at all** | The valve is publish-only. The namespace's two deliberate non-device-addressed topics are gone with it |
+| Adds no container | Two containers, `sim-valve-mqtt` and `sim-valve-spb` | See above |
+| Pattern 2 runs on the Programmable Device Simulator via MQTT Transmission | Pattern 2 is its own Sparkplug edge node container | A device that configures itself through the SCADA system it publishes to cannot make the config-page point |
+| `agitator-vib` / `vib-gw-01` in `plant.equipment` | `sample-valve-01` on `br-201`, `sample-valve-02` on `br-202` | Topic strings and equipment ids stay in step, as required |
+
+**The vibration work is left in place inside Ignition and is not referenced by any doc.**
+`vibsim`, the `vibration_sensor` UDT and its `br-201` instance, the `vibration-gw-control` and
+`vibration-gw-listener` event streams and the `icc26-native` Engine namespace are all still on
+disk under `ignition/`. Nothing publishes to them and nothing subscribes; they are inert.
+`services/sim-vibration/` likewise. Delete them when it is clear nothing wants them back.
 
 ---
 
 ## Verification
 
-Prerequisite: **the stale-image blocker in [`00-status.md`](00-status.md) is fixed** — a gateway
-running Cirrus 4.0.8 has no working Engine or Transmission, so everything below fails for reasons
-unrelated to this pattern. Apply on-disk config with **`python tasks.py scan`**. That needs the
-one-time HTTPS API key in `.env` (`IGNITION_API_TOKEN_HTTPS`, see the root README); until the
-key exists, fall back to `python tasks.py restart ignition`.
+Prerequisite: the stale-image blocker in [`00-status.md`](00-status.md). Apply on-disk config
+with `python tasks.py scan`.
 
 Watcher, in its own terminal:
 
@@ -456,33 +299,32 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
   mosquitto_sub -h chariot -u observer -P observer -t 'icc26/#' -v
 ```
 
-**1 — Collect by hand.**
+**1 — Both pages answer.** <http://localhost:8085> and <http://localhost:8086>. Open them side
+by side; this is the pattern before any traffic exists.
 
-```powershell
-docker run --rm --network icc26 eclipse-mosquitto:2 `
-  mosquitto_pub -h chariot -u observer -P observer `
-  -t 'icc26/site1/upstream/vibration-gw/cmd/collect' `
-  -m '{\"type\":\"observerrequest\",\"channelIndex\":0,\"action\":\"wiredcollectnow\",\"settings\":{\"lor\":4096,\"sendto\":\"cloud\"},\"gwSerial\":\"12345678\"}'
-```
+**2 — A granted scan.** Press `B-1042`. Expect, in order: one `event` with `result: granted` and
+a `sample_id`, `state` moving `unlocking → open → closing → locked`, then one `event` with
+`sample-complete` carrying the same `sample_id` and the open duration.
 
-Expect **only** a `wiredCollection` on `…/response/waveform` with `len(data) == 4096` and
-`sampleRate: 32000`. `timestamp` is the capture start. Nothing is published immediately —
-there is no `ack`. (`observer` has no publish rights in `mqtt-users.json`; this works only
-because `allowAnonymous: true`. When that goes back off before the talk, publish as
-`ign-transmission`.)
+**3 — Every denial.** `B-2087` → `badge-not-authorized`. `B-3311` → `training-expired`.
+`B-9999` → `badge-unknown`. Toggle the interlock, then `B-1042` → `interlock-open`. Press
+`B-1042` twice quickly → `valve-busy` on the second. Each produces exactly one `event` and **no
+state change**.
 
-**2 — Negative paths.** `channelIndex: 2` → log `not-provisioned`, nothing on the wire.
-`"lor": 1000` → log `invalid-lor`, nothing on the wire. `gwSerial: "99999999"` → **nothing at
-all** (not even a log on this gateway), which is the point. All rejection cases look identical
-to a subscriber. Offline harness covers the dispatch table; re-check at least these three live.
+**4 — Retain does the work.** Start a second `mosquitto_sub` → the retained `state` arrives
+immediately, before anything happens. Then `docker kill icc26-sim-valve-mqtt` → the retained
+`state: "offline"` will lands. Note its `ts`: it is the connect time. Now `docker start` it, set
+Retained **off** on the page, and repeat — the new subscriber gets nothing, and the death
+certificate is only seen by whoever was already listening.
 
-**3 — Ingest.** A collect populates `waveform/latest` and `waveform/captured_at` on the UDT
-instance.
+**5 — The config page round trip.** Change the topic to
+`icc26/site1/upstream/br-202/sample-valve-01`, save, scan → traffic appears on the new topic and
+the page warns about the retained message left at the old one. Change it to
+`icc26/site1/qc/lims/sample-result` → the ACL refuses it (with `allowAnonymous: false`), which
+is talk point 3.
 
-**4 — Round trip from Ignition.** With `steady_state` true, press Collect in Perspective →
-`wiredCollection` on the watcher, `last_request_ts` and `waveform/captured_at` populated, and the
-chart redraws. With `steady_state` false the expression tag never fires and nothing is
-published — verify by watching the topic, not by trusting the disabled button.
+**6 — `docker stop` vs `docker kill`.** `stop` disconnects cleanly, the broker discards the
+will, and nothing is published. Only `kill` proves the will works. Both are worth showing.
 
 ---
 
@@ -490,16 +332,11 @@ published — verify by watching the topic, not by trusting the disabled button.
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Script-library path + `resource.json` shape | **confirmed 2026-08-11** — hand-authored library loads; no rewrite on restart |
-| 2 | UDT instance path vs topic tree | **done 2026-08-12** — instance is `icc26/site1/upstream/bioreactors/br-201` (MQTT topics stay `…/upstream/br-201/…`) |
-| 3 | `steady_state` has no driver. Toggle in Designer for v1; may derive from `shaft_rpm` stability once pattern 2's process data exists | open (Designer toggle accepted) |
-| 4 | Periodic telemetry (timer, Engine namespace, `readings/*`) | **deferred 2026-08-13** — on-request waveform only |
-| 5 | Jython synthesis timing for `lor=4096` is unmeasured (CPython was ~10 ms; Jython is slower and blocks the handler) | measure on first run |
-| 6 | Chariot's max MQTT packet size unconfirmed. `MAX_LOR=65536` (~530 KB) is a guess at a safe ceiling | verify against Chariot 3.0.1 |
-| 7 | Transmission logs `Failed to subscribe to TARGET elements` (see `00-status.md`) — may or may not affect publish | investigate at step 2 of verification |
-| 8 | FFT / envelope-spectrum chart in Perspective | out of scope for v1 |
-| 9 | Perspective view for pattern 1 | out of scope for v1 — Designer tag writes instead |
-| 10 | Box-and-whisker tags + `check_ok` on the UDT | **done 2026-08-12** — computed in `route_waveform` |
+| 1 | Ignition-side ingest — Engine custom namespace or event stream, valve UDT, badge audit tags | **not built.** Docs + services only, by decision on 2026-08-17 |
+| 2 | Whether `event` should be its own tag branch or a Perspective-only audit table | open, decide with the Ignition wiring |
+| 3 | The retained-message-at-the-old-topic gotcha has no cleanup path | open — a real device would not clean up either, so this may stay as-is deliberately |
+| 4 | `allowAnonymous` is still `true`, so the ACL in talk point 3 is not actually enforced yet | tracked in `compose/chariot/README.md` |
+| 5 | Perspective view for pattern 1 | out of scope for v1 — the device's own page is the UI |
 
 ---
 
@@ -507,15 +344,5 @@ published — verify by watching the topic, not by trusting the disabled button.
 
 | Date | Change |
 |---|---|
-| 2026-08-10 | Document created. Design settled: fleet control topic, one 4-channel gateway with ch0 provisioned, no correlation id, split namespace/event-stream ingest. Existing `vibration_sensor` + `bioreactor` UDTs reviewed and kept. |
-| 2026-08-10 | Standalone container built and validated offline (physics + all 10 command-dispatch cases + envelope shape). |
-| 2026-08-10 | **Reversed: gateway moves inside Ignition.** Container unwired from compose but kept on disk. Birth/death and LWT dropped entirely — a will belongs to whoever owns the session, and faking it would only cover graceful shutdown. `state` topics removed from the contract. Jython port written to `vibsim`. |
-| 2026-08-10 | UDT edits applied: `mqtt_topic`, `resolution`, `uns_path`, `last_request_ts`, `waveform/` folder, instance overrides. Architecture doc topic table and LWT/Sparkplug paragraph corrected. |
-| 2026-08-11 | Script-library path + `resource.json` confirmed after gateway restart. |
-| 2026-08-11 | Doc scrub: removed leftover `ack` payload/verification; marked timer, `vibration-gw-control`, handlers, namespace, and Perspective as still to wire. |
-| 2026-08-12 | UDT instance moved to `icc26/site1/upstream/bioreactors/br-201`. Perspective deferred — Designer toggles `steady_state`/`collect_request`. Added `waveform/box_whisker/*` tags + Tukey check in `route_waveform`; FFT chart stays out of scope. |
-| 2026-08-12 | Event stream `vibration-gw-control` landed on disk (MQTT Engine source on `cmd/collect` → batch `vibsim.handle_collect`). Doc markers updated; JSON left as-is. |
-| 2026-08-12 | `vibration-gw-control` reworked: transform `build_collect_response` + MQTT Transmission handler to `response/waveform` (no sleep, filter still off). |
-| 2026-08-12 | Waveform response is vendor `wiredCollection` (`data`/`sampleRate`/`wiredChannel`/…); `route_waveform` demuxes on `gwSerial`+`wiredChannel`; `SAMPLE_RATE_HZ` → 32000. |
-| 2026-08-13 | Ingest stream renamed `pm-sensor-listener` → `vibration-gw-listener`. `SENSOR_CHANNELS` is the explicit `gw_serial` / `channel_index` / `tag_path` lookup; handler landed. |
-| 2026-08-13 | Periodic telemetry removed from Ignition: deleted `vibsim-telemetry` timer, `telemetry_tick` / envelope / velocity-RMS helpers. On-request waveform only. |
+| 2026-08-17 | **Pattern re-scoped: vibration gateway → smart sample valve assembly.** Publish-only, local badge authorization, two containers with device config webpages, pattern 2 becomes the same device in Sparkplug B. Vibration implementation left inert inside Ignition. |
+| 2026-08-17 | `services/sim-valve-mqtt/` built: valve state machine, badge roster, envelope publishes, hand-rolled retained-LWT death certificate, stdlib config page on 8085. Compose service, ACL account, seed rows, `.env.example` block. |

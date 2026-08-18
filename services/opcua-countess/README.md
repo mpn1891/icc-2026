@@ -230,5 +230,5 @@ binds shows up there, a tag that does not is simply absent.
 
   A plain `"opcItemPath": "...{device_id}..."` is taken **literally** — the braces are not
   substituted, the node is not found, and the tag faults. This applies to `opcServer` too. The
-  same shape already appears in the `vibration_sensor` UDT for parameter-bound memory values;
+  same shape appeared in the retired `vibration_sensor` UDT for parameter-bound memory values;
   it is the general rule for this file format, not an OPC quirk.

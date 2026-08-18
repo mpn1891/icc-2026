@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<!--
+  The Sparkplug B sample valve's embedded configuration page.
+
+  Same markup and same CSS as services/sim-valve-mqtt/page.html on purpose: put the two
+  side by side and every visible difference is a difference the specification imposed.
+  There, Topic is a text box, QoS is a dropdown and Retained is a checkbox. Here, the topic
+  is derived from three names and rendered read-only, and the QoS and Retained controls are
+  present but disabled, each labelled with the requirement that fixes it.
+
+  Leaving the disabled controls on the page rather than deleting them is the point. A device
+  that simply has no QoS setting looks like a device that forgot one. A device that shows you
+  the setting, greyed out, with the clause that pinned it, is telling you something.
+
+  No external assets of any kind -- the demo has to run with networking disabled.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sample Valve Assembly &mdash; Sparkplug B Configuration</title>
+<style>
+  :root {
+    --bg: #12161c;
+    --panel: #1a2028;
+    --panel-2: #202834;
+    --line: #2d3846;
+    --ink: #e6edf5;
+    --muted: #8d9bad;
+    --accent: #3fa7ff;
+    --ok: #37c98b;
+    --warn: #e8b44a;
+    --bad: #e8615a;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 0 3rem;
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    background: linear-gradient(180deg, #1d2530, #161c24);
+    border-bottom: 1px solid var(--line);
+    padding: 1rem 1.5rem;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  .badge-variant {
+    display: inline-block; font: 600 11px/1 var(--mono); letter-spacing: .12em;
+    text-transform: uppercase; padding: .4rem .6rem; border-radius: 3px;
+    background: #2a3f2a; color: #a8e0a0; border: 1px solid #3d5c3a;
+  }
+  h1 { font-size: 1.25rem; margin: .6rem 0 .2rem; font-weight: 600; }
+  .sub { color: var(--muted); font-size: .85rem; }
+  .sub code { font-family: var(--mono); color: #b9c7d8; }
+  .led { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%;
+         background: var(--bad); margin-right: .35rem; vertical-align: baseline; }
+  .led.on { background: var(--ok); }
+
+  main { padding: 1.5rem; }
+  section {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    margin-bottom: 1.25rem;
+  }
+  section > h2 {
+    font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    margin: 0; padding: .8rem 1.1rem; border-bottom: 1px solid var(--line); font-weight: 600;
+  }
+  .body { padding: 1.1rem; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .9rem; align-items: end; }
+  .grid.locked { grid-template-columns: 1fr 8rem 8rem; }
+  @media (max-width: 640px) { .grid, .grid.locked { grid-template-columns: 1fr; } }
+  label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .3rem; }
+  input[type=text], select {
+    width: 100%; padding: .55rem .6rem; background: #0e1319; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px; font-family: var(--mono);
+    font-size: .88rem;
+  }
+  input[type=text]:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  input:disabled, select:disabled {
+    background: #161b22; color: var(--muted); cursor: not-allowed; opacity: 1;
+  }
+  .check { display: flex; align-items: center; gap: .5rem; height: 2.3rem; }
+  .check input { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); }
+  .check input:disabled { cursor: not-allowed; }
+  .rule { display: block; margin-top: .35rem; font-family: var(--mono); font-size: .68rem;
+          color: #7e8b9c; line-height: 1.35; }
+  button {
+    margin-top: 1rem; padding: .55rem 1.1rem; border-radius: 4px; border: 1px solid #2f6ea8;
+    background: #1d5488; color: #eaf4ff; font-size: .88rem; cursor: pointer;
+  }
+  button:hover { background: #23639e; }
+  button.ghost { background: var(--panel-2); border-color: var(--line); color: var(--ink); }
+  button.ghost:hover { background: #2a3442; }
+  .msg { margin-top: .9rem; font-size: .85rem; padding: .6rem .75rem; border-radius: 4px;
+         display: none; }
+  .msg.ok { display: block; background: #14352a; color: #8fe3ba; border: 1px solid #235c46; }
+  .msg.err { display: block; background: #3a1d1c; color: #f0a09b; border: 1px solid #6b3230; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line);
+           vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .72rem; text-transform: uppercase;
+       letter-spacing: .07em; }
+  tr:last-child td { border-bottom: none; }
+  td.topic { font-family: var(--mono); color: #a8e0a0; word-break: break-all; }
+  td.note { color: var(--muted); }
+  td.mono { font-family: var(--mono); }
+  .pill { font-family: var(--mono); font-size: .78rem; padding: .1rem .4rem; border-radius: 3px;
+          background: var(--panel-2); border: 1px solid var(--line); }
+  .scroll { overflow-x: auto; }
+  .namespace { font-family: var(--mono); font-size: .9rem; color: #a8e0a0; padding: .7rem .8rem;
+               background: #0e1319; border: 1px solid var(--line); border-radius: 4px;
+               margin-bottom: 1rem; word-break: break-all; }
+  .namespace .fixed { color: var(--muted); }
+
+  .sim { border-color: #4a3a20; }
+  .sim > h2 { color: var(--warn); border-color: #4a3a20; }
+  .sim-note { color: var(--muted); font-size: .8rem; margin: 0 0 .9rem; }
+  .badges { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .badges button { margin-top: 0; text-align: left; }
+  .badges .who { display: block; font-size: .74rem; color: var(--muted); }
+  .state-line { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line);
+                font-family: var(--mono); font-size: .86rem; }
+  .state-line .v { color: var(--accent); }
+  footer { color: var(--muted); font-size: .78rem; text-align: center; margin-top: 1.5rem; }
+</style>
+</head>
+<body>
+
+<header><div class="wrap">
+  <span class="badge-variant">Pattern 2 &middot; Sparkplug B</span>
+  <h1>Smart Sample Valve Assembly</h1>
+  <p class="sub">
+    <span id="conn-led" class="led"></span><span id="conn-text">connecting</span>
+    &middot; <code id="dev-id">&hellip;</code>
+    &middot; s/n <code id="dev-serial">&hellip;</code>
+    &middot; fw <code id="dev-fw">&hellip;</code>
+    &middot; broker <code id="broker">&hellip;</code>
+  </p>
+</div></header>
+
+<main class="wrap">
+
+  <section>
+    <h2>Sparkplug identity</h2>
+    <div class="body">
+      <div class="namespace" id="namespace">&hellip;</div>
+      <form id="cfg">
+        <div class="grid">
+          <div>
+            <label for="group_id">Group ID</label>
+            <input type="text" id="group_id" name="group_id" spellcheck="false"
+                   autocomplete="off">
+          </div>
+          <div>
+            <label for="edge_node_id">Edge Node ID</label>
+            <input type="text" id="edge_node_id" name="edge_node_id" spellcheck="false"
+                   autocomplete="off">
+          </div>
+          <div>
+            <label for="device_id">Device ID</label>
+            <input type="text" id="device_id" name="device_id" spellcheck="false"
+                   autocomplete="off">
+          </div>
+        </div>
+        <button type="submit">Save configuration</button>
+        <div id="msg" class="msg"></div>
+      </form>
+      <p class="sim-note" style="margin:1rem 0 0">
+        Three names, and that is the entire commissioning surface. There is no topic field:
+        the topic is <code>spBv1.0/{group_id}/{message_type}/{edge_node_id}/{device_id}</code>
+        for every message this device will ever publish, and it is not this device&rsquo;s
+        to choose.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>MQTT publishing &mdash; fixed by the specification</h2>
+    <div class="body">
+      <div class="grid locked">
+        <div>
+          <label for="fixed_topic">Topic</label>
+          <input type="text" id="fixed_topic" disabled>
+          <span class="rule">Derived from the three names above.
+            <br>tck-id-topics-ddata-topic</span>
+        </div>
+        <div>
+          <label for="fixed_qos">QoS</label>
+          <select id="fixed_qos" disabled>
+            <option>0 &mdash; at most once</option>
+          </select>
+          <span class="rule" id="qos-rule">&hellip;</span>
+        </div>
+        <div>
+          <label for="fixed_retain">Retained</label>
+          <div class="check"><input type="checkbox" id="fixed_retain" disabled>
+            <span>publish retained</span></div>
+          <span class="rule" id="retain-rule">&hellip;</span>
+        </div>
+      </div>
+      <p class="sim-note" style="margin:1.1rem 0 0">
+        These three controls are the same three the plain-MQTT variant of this assembly puts
+        in front of you. Here they are disabled, because getting them wrong is not a
+        configuration option.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>What this produces</h2>
+    <div class="body scroll">
+      <table>
+        <thead><tr><th>Message</th><th>Topic</th><th>QoS</th><th>Retained</th>
+          <th>What it is</th></tr></thead>
+        <tbody id="plan"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Metrics &mdash; published in every birth certificate</h2>
+    <div class="body scroll">
+      <table>
+        <thead><tr><th>Metric</th><th>Datatype</th><th>Alias</th><th>Unit</th>
+          <th>Deadband</th><th>Value</th></tr></thead>
+        <tbody id="metrics"></tbody>
+      </table>
+      <p class="sim-note" style="margin:.9rem 0 0">
+        A consumer learns all of this from DBIRTH without being told anything in advance:
+        the names, the datatypes, the engineering units, and which metrics exist but have no
+        value yet. Nothing equivalent crosses the wire in pattern 1 &mdash; there, somebody
+        writes it into a tag configuration by hand and keeps it in step forever.
+      </p>
+    </div>
+  </section>
+
+  <section class="sim">
+    <h2>Simulator controls &mdash; not part of the device</h2>
+    <div class="body">
+      <p class="sim-note">A real assembly has an RFID reader here. These buttons stand in for
+        presenting a badge to it.</p>
+      <div class="badges" id="badges"></div>
+      <button type="button" class="ghost" id="interlock" style="margin-top:1rem"></button>
+      <div class="state-line">
+        valve <span class="v" id="v-state">&hellip;</span>
+        &middot; position <span class="v" id="v-pos">&hellip;</span>%
+        &middot; cycles <span class="v" id="v-cycles">&hellip;</span>
+        &middot; line <span class="v" id="v-press">&hellip;</span> bar /
+        <span class="v" id="v-temp">&hellip;</span> &deg;C
+      </div>
+      <div class="state-line" style="border-top:none;padding-top:.2rem">
+        published <span class="v" id="v-pub">&hellip;</span>
+        &middot; bdSeq <span class="v" id="v-bdseq">&hellip;</span>
+        &middot; rebirths honoured <span class="v" id="v-rebirths">&hellip;</span>
+        &middot; aliases <span class="v" id="v-aliases">&hellip;</span>
+      </div>
+      <div class="state-line" id="last-scan" style="border-top:none;padding-top:.2rem"></div>
+    </div>
+  </section>
+
+  <footer>icc-2026 &middot; docs/plans/02-sparkplug-b.md</footer>
+</main>
+
+<script>
+"use strict";
+var $ = function (id) { return document.getElementById(id); };
+var dirty = false;
+var interlockOk = true;
+
+function esc(s) {
+  return String(s === null || s === undefined ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderStatic(s) {
+  $("dev-id").textContent = s.device.id;
+  $("dev-serial").textContent = s.device.serial;
+  $("dev-fw").textContent = s.device.firmware;
+  $("broker").textContent = s.broker.host + ":" + s.broker.port + " (" + s.broker.protocol + ")";
+
+  $("namespace").innerHTML =
+    "<span class='fixed'>spBv1.0</span>/" + esc(s.config.group_id) +
+    "/<span class='fixed'>{message_type}</span>/" + esc(s.config.edge_node_id) +
+    "/" + esc(s.config.device_id);
+
+  var rows = "";
+  for (var i = 0; i < s.topic_plan.length; i++) {
+    var p = s.topic_plan[i];
+    rows += "<tr><td><span class='pill'>" + esc(p.message_type) + "</span></td>" +
+      "<td class='topic'>" + esc(p.topic) + "</td>" +
+      "<td>" + p.qos + "</td>" +
+      "<td>" + (p.retain ? "yes" : "no") + "</td>" +
+      "<td class='note'>" + esc(p.note) + "<span class='rule'>" + esc(p.rule) +
+      "</span></td></tr>";
+  }
+  $("plan").innerHTML = rows;
+
+  $("fixed_topic").value = s.topic_plan.length ? s.topic_plan[2].topic : "";
+  $("fixed_qos").innerHTML = "<option>" + s.fixed.data_qos +
+    " &mdash; at most once</option>";
+  $("fixed_retain").checked = !!s.fixed.data_retain;
+  $("qos-rule").textContent = s.fixed.qos_rule;
+  $("retain-rule").textContent = "retain equal to false — same clause. The Will is the one "
+    + "exception: QoS " + s.fixed.will_qos + ", retain "
+    + (s.fixed.will_retain ? "true" : "false") + ".";
+
+  var b = "";
+  for (var j = 0; j < s.roster.length; j++) {
+    var r = s.roster[j];
+    b += "<button type='button' class='ghost' data-badge='" + esc(r.badge_id) + "'>" +
+      esc(r.badge_id) + "<span class='who'>" + esc(r.holder) + " &middot; " +
+      esc(r.status) + "</span></button>";
+  }
+  $("badges").innerHTML = b;
+}
+
+function renderMetrics(s) {
+  var rows = "";
+  for (var i = 0; i < s.metrics.length; i++) {
+    var m = s.metrics[i];
+    rows += "<tr><td class='mono'>" + esc(m.name) + "</td>" +
+      "<td>" + esc(m.datatype) + "</td>" +
+      "<td class='mono'>" + (m.alias === null ? "&mdash;" : m.alias) + "</td>" +
+      "<td>" + (m.unit ? esc(m.unit) : "&mdash;") + "</td>" +
+      "<td class='mono'>" + (m.deadband === null ? "&mdash;" : m.deadband) + "</td>" +
+      "<td class='mono'>" +
+      (m.value === null ? "<span class='note'>null</span>" : esc(m.value)) +
+      "</td></tr>";
+  }
+  $("metrics").innerHTML = rows;
+}
+
+function renderRuntime(s) {
+  var on = s.broker.connected;
+  $("conn-led").className = "led" + (on ? " on" : "");
+  $("conn-text").textContent = on ? "connected" : "disconnected";
+
+  var v = s.runtime.valve, t = s.runtime.telemetry;
+  $("v-state").textContent = v.state;
+  $("v-pos").textContent = v.position_pct;
+  $("v-cycles").textContent = v.cycle_count;
+  $("v-press").textContent = t.line_pressure_bar;
+  $("v-temp").textContent = t.line_temperature_c;
+  $("v-pub").textContent = s.runtime.published;
+  $("v-bdseq").textContent = s.runtime.bd_seq;
+  $("v-rebirths").textContent = s.runtime.rebirths;
+  $("v-aliases").textContent = s.runtime.use_aliases ? "on" : "off";
+
+  interlockOk = v.interlock_ok;
+  $("interlock").textContent = interlockOk
+    ? "Interlock satisfied — click to open it (CIP in progress)"
+    : "Interlock open — click to satisfy it";
+
+  var ls = s.runtime.last_scan;
+  $("last-scan").innerHTML = ls
+    ? "last scan " + esc(ls.badge_id) + " → <span class='v'>" + esc(ls.result) +
+      "</span>" + (ls.deny_reason ? " (" + esc(ls.deny_reason) + ")" : "") +
+      (ls.sample_id ? " · " + esc(ls.sample_id) : "")
+    : "no scans yet";
+}
+
+function renderConfig(s) {
+  if (dirty) { return; }
+  $("group_id").value = s.config.group_id;
+  $("edge_node_id").value = s.config.edge_node_id;
+  $("device_id").value = s.config.device_id;
+}
+
+function apply(s) { renderStatic(s); renderConfig(s); renderMetrics(s); renderRuntime(s); }
+
+function refresh() {
+  fetch("/api/state").then(function (r) { return r.json(); }).then(apply)
+    .catch(function () { $("conn-text").textContent = "device unreachable"; });
+}
+
+function post(path, body) {
+  return fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {})
+  }).then(function (r) { return r.json(); });
+}
+
+["group_id", "edge_node_id", "device_id"].forEach(function (id) {
+  $(id).addEventListener("input", function () { dirty = true; });
+});
+
+$("cfg").addEventListener("submit", function (e) {
+  e.preventDefault();
+  post("/api/config", {
+    group_id: $("group_id").value,
+    edge_node_id: $("edge_node_id").value,
+    device_id: $("device_id").value
+  }).then(function (r) {
+    var msg = $("msg");
+    msg.className = "msg " + (r.ok ? "ok" : "err");
+    msg.textContent = r.message;
+    if (r.ok) { dirty = false; }
+    if (r.state) { apply(r.state); }
+  });
+});
+
+$("badges").addEventListener("click", function (e) {
+  var button = e.target.closest ? e.target.closest("button[data-badge]") : null;
+  if (!button) { return; }
+  post("/api/scan", { badge_id: button.getAttribute("data-badge") })
+    .then(function (r) { if (r.state) { apply(r.state); } });
+});
+
+$("interlock").addEventListener("click", function () {
+  post("/api/interlock", { ok: !interlockOk })
+    .then(function (r) { if (r.state) { apply(r.state); } });
+});
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

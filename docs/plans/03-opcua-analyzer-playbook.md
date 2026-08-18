@@ -57,7 +57,7 @@ transcription rather than a design exercise.
 ### 3 — Build the server
 
 `services/opcua-<device>/{app.py,Dockerfile,requirements.txt,README.md}`. Only dependency is
-`asyncua>=1.1,<2`. Copy the house style from `sim-vibration`: `_env`/`_env_float`/`_env_bool`
+`asyncua>=1.1,<2`. Copy the house style from `sim-valve-mqtt`: `_env`/`_env_float`/`_env_bool`
 helpers, a `Config` class, docstrings that explain *why*.
 
 **The one structural idea worth copying:** put the field mapping in a module-level table and

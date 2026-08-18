@@ -16,13 +16,13 @@ CREATE SCHEMA IF NOT EXISTS plant AUTHORIZATION icc26;
 -- pattern 7's aggregation script has real equipment metadata to join against
 -- rather than hardcoded strings.
 CREATE TABLE plant.equipment (
-    equipment_id  text PRIMARY KEY,          -- e.g. 'BR-201', 'vib-01'
+    equipment_id  text PRIMARY KEY,          -- e.g. 'BR-201', 'sample-valve-01'
     site          text NOT NULL,             -- 'site1'
     area          text NOT NULL,             -- 'upstream' | 'downstream' | 'qc' | 'utilities'
                                              -- Places, not systems. There is no 'mes' area:
                                              -- see docs/00-architecture.md § Topic namespace.
     line          text,                      -- 'pumpskid1'
-    equipment_type text NOT NULL,            -- 'bioreactor' | 'analyzer' | 'vibration-sensor'
+    equipment_type text NOT NULL,            -- 'bioreactor' | 'analyzer' | 'sample-valve'
     description   text
 );
 

@@ -1,9 +1,14 @@
 # Status
 
-> **Updated 2026-08-11.** Conference is ~5 weeks out.
+> **Updated 2026-08-17.** Conference is ~4 weeks out.
 >
 > **Blocker: the committed image is stale.** A clone gets Cirrus 4.0.8 and a gateway with no
 > working MQTT, silently, behind a green `health`. Fix that before anything else.
+>
+> **Patterns 1 and 2 were re-scoped on 2026-08-17** from a vibration gateway and a bioreactor
+> UDT to one smart sample valve assembly in two firmwares. Both simulator containers exist and
+> are self-tested; **neither has ever been built or run**, because Docker was unavailable in the
+> session that wrote them.
 
 What is true right now and what to do next. Durable knowledge does not live here — it lives in
 [`../00-architecture.md`](../00-architecture.md). Work still to be built lives in
@@ -12,32 +17,21 @@ and the fix is to move the fact rather than keep two copies.
 
 ## Do this next
 
-1. **Rebuild the image and prove 5.0.4 loads.** In the scratch clone at
-   `C:\Users\matt\repos\icc26-clone`, never the main checkout:
+**→ [`00-next-step.md`](00-next-step.md)** — written to be executed cold, in order. It clears the
+stale-image blocker, settles the `Embedded`-ciphertext question (its CP2), stops
+`docker compose up` serving a stale image for *any* service, and then lands patterns 1 and 2 in
+Ignition and runs them for the first time.
 
-   ```powershell
-   docker image rm icc26/ignition:8.3.8
-   python tasks.py nuke      # CLONE ONLY -- icc26test_* volumes
-   python tasks.py seed      # rebuilds the image, re-accepts certs once
-   python tasks.py up
-   ```
+Two rules from it that are durable and belong here rather than there:
 
-   Mechanism and the general lesson: [*The stale-image trap*](../00-architecture.md#the-stale-image-trap).
+- **All of it happens in the scratch clone** `C:\Users\matt\repos\icc26-clone`. Do not
+  `git commit` from inside it.
+- **Do not `nuke` the main checkout.** `icc26_ign-data` is currently the only place the working
+  5.0.4 Engine and Transmission exist — they were hand-installed through the gateway UI and are
+  not in the image. It stays untouched until a rebuilt image is proven over in the clone.
 
-2. **Then rerun the secrets check (CP5).** Confirm MQTT Transmission connects to
-   `tcp://chariot:1883` as `ign-transmission`, from Chariot's client list as well as the gateway
-   log. That proves ciphertext encrypted on Matt's gateway decrypts on a gateway that has never
-   seen his machine — the last unproven assumption in Part 1. A failure means the committed
-   `Embedded` secrets are not portable and a Secret Provider comes back onto the plan; watch for
-   `Unable to decrypt ciphertext` and record the exact line.
-
-3. **Then harden `verify-modules`** so a stale image fails loudly: land the module sha256s in
-   `modules.manifest.json` and hash the `.modl` files *inside the image*, or force
-   `docker compose build` on every `seed`.
-
-4. **Only then touch the main checkout.** `icc26_ign-data` is currently the only place the
-   working 5.0.4 Engine and Transmission exist — they were hand-installed through the gateway UI
-   and are not in the image, so **do not `nuke` it** until a rebuilt image is proven in the clone.
+Mechanism and the general lesson behind the blocker:
+[*The stale-image trap*](../00-architecture.md#the-stale-image-trap).
 
 ## Also outstanding
 
@@ -67,8 +61,8 @@ clean.
 - The clone-seed path takes the right branch against a real gateway and leaves `git status`
   completely clean. This was the highest-risk unverified thing in Part 1.
 - Ignition 8.3 regenerates all three identity paths when they are absent.
-- Ignition content travels: default tag provider, the `icc-2026` project, its
-  `vibration-gw-listener` event stream, and a regenerated gitignored `.resources/` cache.
+- Ignition content travels: default tag provider, the `icc-2026` project, its event streams,
+  and a regenerated gitignored `.resources/` cache.
 - Chariot config is fully reproducible from compose against a fresh volume.
 - The guardrails hard-fail against a real missing-module clone, not just stubs.
 - The A1–A4 state machine, via `tests/test_tasks.py` — 22 checks, no Docker needed. Re-run after
@@ -79,7 +73,8 @@ clean.
 - That `verify-modules` passing means the gateway will load those modules. It does not.
 - That the repo alone reproduces the working stack. It does not, today.
 
-**Still assumed:** that `Embedded` ciphertext is portable between gateways — step 2 above.
+**Still assumed:** that `Embedded` ciphertext is portable between gateways — settled by CP2 of
+[`00-next-step.md`](00-next-step.md).
 
 ## Re-running the clone test
 
@@ -93,7 +88,7 @@ run at once), then in a scratch clone with `COMPOSE_PROJECT_NAME=icc26test` in `
 | 1 | `seed` prints the **clone-seed** banner | not the full-seed one — otherwise it is about to overwrite the checkout |
 | 2 | `git status --short` after seed | completely empty |
 | 3 | `tasks.py health` | all green (start Chariot's trial by hand first) |
-| 4 | Content travelled | tag provider, `icc-2026` project, `vibration-gw-listener` present. Tag *values* are empty and that is correct — `valueStore.idb` is gitignored |
+| 4 | Content travelled | tag provider and the `icc-2026` project present, with at least one event stream under it. Tag *values* are empty and that is correct — `valueStore.idb` is gitignored |
 | 5 | Secrets verdict | Transmission connected as `ign-transmission`, no decrypt errors |
 
 Do not `git commit` from inside the scratch clone, and do not `nuke` the main checkout.

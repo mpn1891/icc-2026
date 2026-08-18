@@ -1,11 +1,18 @@
 # sim-vibration — pattern 1, native MQTT
 
-> **Not wired into `docker-compose.yml`.** Pattern 1 simulates the gateway *inside Ignition*
-> instead — see [`docs/plans/01-native-mqtt.md`](../../docs/plans/01-native-mqtt.md). This
-> directory is kept as the executable specification of the payload contract and the origin of
-> the validated bearing model that `vibsim` is a Jython port of. It implements the same
-> contract as the Ignition design: **no ack, no state, no Last Will.** Add it back to compose
-> if you ever want a separate MQTT client on the wire.
+> **RETIRED — 2026-08-17.** Pattern 1 is no longer a vibration gateway. It is a badge-operated
+> smart sample valve assembly ([`services/sim-valve-mqtt/`](../sim-valve-mqtt/)), and pattern 2
+> is the same device speaking Sparkplug B. The reasoning and the full deviations table are in
+> [`docs/plans/01-native-mqtt.md`](../../docs/plans/01-native-mqtt.md).
+>
+> Nothing below is wired into `docker-compose.yml`, and neither is the matching Ignition-side
+> implementation (`vibsim`, the `vibration_sensor` UDT, the two `vibration-gw-*` event streams,
+> the `icc26-native` Engine namespace) — all of which is still on disk under `ignition/` and
+> connected to nothing. This directory survives because the bearing model in `app.py` was
+> validated offline against a naive DFT and would be tedious to reproduce. **Delete both when
+> it is clear nobody wants them back.**
+>
+> The rest of this file describes the retired design and is kept for that reason.
 
 A simulated four-channel wireless vibration gateway. Serial `12345678`, one MQTT connection.
 **Channel 0 is the only provisioned channel** — the agitator drive-end bearing on `BR-201`.

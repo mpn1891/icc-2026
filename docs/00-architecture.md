@@ -14,9 +14,9 @@ add it here rather than in a status note.
 
 ```
                      ┌──────────────────────────────┐
-   pattern 1  ──────▶│                              │
-   pattern 3  ──────▶│   Chariot MQTT Server        │◀────── pattern 2 (Sparkplug B)
-   pattern 6  ──────▶│   :1883 / :8090(ws) / :8081  │◀────── pattern 7 (scripted aggregate)
+   pattern 1  ──────▶│                              │◀────── pattern 2  (the SAME valve,
+   pattern 3  ──────▶│   Chariot MQTT Server        │                    Sparkplug B)
+   pattern 6  ──────▶│   :1883 / :8090(ws) / :8081  │◀────── pattern 7  (scripted aggregate)
                      └──────────────┬───────────────┘
                                     │
                           MQTT Engine / Transmission
@@ -28,22 +28,34 @@ add it here rather than in a status note.
                                                                   Debezium Server
 ```
 
+Patterns 1 and 2 are one smart sample valve assembly in two firmwares, in their own containers.
+Everything else publishes through Ignition.
+
 | Service | Host ports | Built in |
 |---|---|---|
 | `postgres` | 5432 | step 1 |
 | `ignition` | 8088, 8043 | step 1 |
 | `chariot` | 1883, 8883, 8090, 8081, 8444 | step 1 |
-| `opcua-novaflex` | 4840 | step 4 |
+| `opcua-novaflex` | 4841 | step 4 |
+| `sim-valve-mqtt` | 8085 (config page) | pattern 1 |
+| `sim-valve-spb` | 8086 (config page) | pattern 2 |
 | `lims` | 8000 | step 5 (implementation TBD) |
 | `debezium` | 8083 | step 6 |
 
-Patterns 1 and 2 add no container: both run inside Ignition — pattern 1 as the `vibsim`
-script library (wired for on-request waveform: library + UDTs at
-`icc26/site1/upstream/bioreactors/br-201` incl. `waveform/box_whisker`, control + listener
-streams; periodic telemetry deferred — Designer toggles collect; no Perspective in v1 — see
-[`plans/01-native-mqtt.md`](plans/01-native-mqtt.md)), pattern 2 on the built-in Programmable
-Device Simulator. `services/sim-vibration/` holds a standalone implementation of pattern 1's
-contract that is deliberately **not** wired into compose.
+**Patterns 1 and 2 are the same physical device in two firmwares** — a badge-operated smart
+sample valve assembly, one on `BR-201` speaking plain MQTT and one on `BR-202` speaking
+Sparkplug B. `valve.py` and `webui.py` are byte-for-byte identical between the two build
+contexts, so everything that differs between the containers is a difference the protocol
+caused. Each serves its own device commissioning webpage (8085, 8086), and **the difference
+between those two pages is as much of the talk as the traffic is**: on one the topic, QoS and
+retained flag are editable fields, on the other the same three controls are disabled with the
+specification clause that fixed them. Both valves are publish-only — nothing on the backbone
+can open either. See [`plans/01-native-mqtt.md`](plans/01-native-mqtt.md) and
+[`plans/02-sparkplug-b.md`](plans/02-sparkplug-b.md).
+
+The retired vibration-gateway implementation (`vibsim`, the `vibration_sensor` UDT, the
+`vibration-gw-*` event streams, the `icc26-native` Engine namespace, and
+`services/sim-vibration/`) is still on disk and is wired to nothing.
 
 **Nothing may depend on the internet at runtime.** It is a conference network and a stage. Every
 image is pulled ahead of time, the Perspective firehose vendors its JavaScript rather than
@@ -85,15 +97,16 @@ icc26/{site}/{area}/{line-or-cell}/{device}/{message_type}
 ```
 
 ```
-icc26/site1/upstream/vibration-gw/cmd/collect         # 1  command in — fleet broadcast, see below
-icc26/site1/upstream/vibration-gw/response/waveform   # 1  bulk response — demuxed to tags in-payload
-icc26/site1/upstream/br-201/agitator-vib/telemetry    # 1  periodic RMS / temp, per sensor
-icc26/site1/qc/analyzers/novaflex-01/result           # 3
-icc26/site1/qc/lims/sample-result                     # 4 AND 5 AND 6 — same topic
-icc26/site1/upstream/br-201/batch/event               # 5
-icc26/site1/upstream/br-201/batch-summary             # 7
+icc26/site1/upstream/br-201/sample-valve-01/event      # 1  badge scan + sample complete
+icc26/site1/upstream/br-201/sample-valve-01/state      # 1  valve position, retained; also the LWT
+icc26/site1/upstream/br-201/sample-valve-01/telemetry  # 1  line pressure / temp, every 5 s
+icc26/site1/qc/analyzers/novaflex-01/result            # 3
+icc26/site1/qc/lims/sample-result                      # 4 AND 5 AND 6 — same topic
+icc26/site1/upstream/br-201/batch/event                # 5
+icc26/site1/upstream/br-201/batch-summary              # 7
 
-spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|DBIRTH|DDATA}/UPSTREAM-EDGE-01/BR-201   # 2 — spec-mandated
+spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|NDEATH}/SAMPLE-VALVE-02             # 2 — spec-mandated
+spBv1.0/ICC26-Site1-UPSTREAM/{DBIRTH|DDATA|DDEATH}/SAMPLE-VALVE-02/SV-202 # 2 — spec-mandated
 ```
 
 Areas: `upstream`, `downstream`, `qc`, `utilities`. These are **places** — in a biologics
@@ -105,11 +118,12 @@ write these `usp`/`dsp`; spelled out they cost four characters and stop `dsp` co
 Message types are a closed set: `telemetry`, `event`, `waveform`, `state`, `cmd/<verb>`,
 `response/<what>`, `ack`.
 
-`cmd/<verb>` and `response/<what>` are the two-token pair, and they go together: a request
-addressed to a fleet cannot come back addressed to a device, because the broker has no idea
-which device answered. Wherever one appears the other should too. `ack` is currently used by
-nobody — pattern 1 dropped it when it dropped its lifecycle — but it stays in the set as the
-name to reach for rather than inventing a second one.
+`cmd/<verb>` and `response/<what>` are the two-token pair, and they go together: wherever one
+appears the other should too. **All three of `cmd`, `response` and `ack` are currently used by
+nobody.** Patterns 1 and 2 are both publish-only field devices — a sample valve that needs the
+network's permission to open is a sample valve that stops working when the network does — and
+no other pattern has yet needed to address a device. They stay in the set as the names to
+reach for rather than inventing new ones later.
 
 **There is no `mes` area, deliberately.** An MES is a piece of software, not a place, and an
 area slot filled with a system name is the same mistake as organising by ingestion mechanism —
@@ -122,27 +136,18 @@ that is exactly what it should be named after.
 > line-or-cell slot. `qc` is a real area so the violation is smaller, and patterns 4/5/6 all key
 > off that one topic. Revisit when spec 04 is written.
 
-**The vibration gateway never appears in the namespace as a location, because it is not one.**
-An Erbessd gateway is a radio concentrator: one unit serves several skids at once, and the
-sensors — not the gateway — are what is bolted to a machine. So a channel's data is published
-at whichever cell its sensor is mounted on, and one gateway's four channels can land under
-four different bioreactors. The gateway itself is addressed only as the target of a command.
+**Every topic here is device-addressed.** There is currently no exception, which was not true
+of the earlier vibration-gateway design and is worth knowing changed: that pattern had a
+fleet-broadcast command topic and a flat response topic, both non-device-addressed, and both
+went away with it.
 
-**One deliberate exception, and it is a pair.** `vibration-gw` takes the line-or-cell slot as
-the class of gateways serving the area, and both command and response hang off it:
-
-- `…/vibration-gw/cmd/collect` — every gateway in the area subscribes and self-selects on the
-  `gwSerial` in the payload, which is how the real hardware is configured. The device slot is
-  elided because a broadcast has no single addressee.
-- `…/vibration-gw/response/waveform` — the answer comes back on one flat topic carrying
-  `gwSerial` + `channelIndex`, and the `vibration-gw-listener` event stream demuxes those to the
-  right sensor's tags. **The routing moves out of the topic and into the consumer**, so a new
-  sensor is one row in `vibsim.SENSOR_CHANNELS` rather than a new subscription.
-
-These two are the only topics here that are not device-addressed. That a vendor's command
-protocol can force even this much deviation on an otherwise clean namespace — and that the
-cost is paid once, in one event stream, rather than spread across every subscriber — is
-itself worth showing.
+**Pattern 1's conformance is enforced by an ACL, not by the protocol.** Its device has a
+free-text topic box on its config page, so the only thing keeping sample data out of the `qc`
+area is `sample-valve-01`'s publish grant of `icc26/site1/upstream/#` in
+`compose/chariot/mqtt-users.json` — deliberately the *area* rather than the exact topic, so
+the valve can be re-addressed to another cell on stage but cannot leave upstream. Pattern 2
+needs no such grant to be well-behaved, because its topic is not its to choose. That contrast
+is the point of running both.
 
 Equipment ids in `plant.equipment` (see `compose/postgres/initdb/03-seed.sql`) are the same
 strings that appear in topics. Keep it that way.
@@ -180,28 +185,29 @@ get per-pattern legibility on screen without encoding the mechanism into the nam
 ### Two things that become talk content
 
 **A Last Will belongs to whoever owns the session.** It is registered in the MQTT CONNECT
-packet, so only the client that opened the connection can set one — every publish API, in
-every module, is "send this message now" on a session that already exists. Pattern 1's
-gateway is simulated inside Ignition, on Ignition's session, so it has no will of its own and
-publishes no birth/death at all; it runs as a live stream. Pattern 2's edge node does get one,
-because MQTT Transmission owns that connection and registers its NDEATH there.
+packet, so only the client that opened the connection can set one — every publish API is "send
+this message now" on a session that already exists. Both valves own their own sessions, so
+both get a will, and comparing them is the cleanest version of the Sparkplug argument:
 
-Which is the more interesting version of the Sparkplug comparison anyway: **Sparkplug does not
-give you a death mechanism, it standardises the one MQTT already had.** NDEATH *is* an LWT,
-with a spec-mandated topic, a `bdSeq` payload that identifies the session, and a rule that
-every consumer must apply. DDEATH is not a will at all — it is an ordinary message the edge
-node publishes, so one connection still buys exactly one will in Sparkplug too. The difference
-is the agreement, not the plumbing. Hand-rolled, you invent the topic, the payload and the
-semantics, and the next vendor invents them differently.
+**Sparkplug does not give you a death mechanism, it standardises the one MQTT already had.**
+NDEATH *is* an LWT, and it inherits every one of the LWT's constraints. Its payload is frozen
+at CONNECT, so a Sparkplug death certificate cannot carry the time of death either — the
+consumer stamps that. DDEATH is not a will at all; it is an ordinary publish, so one connection
+still buys exactly one will in Sparkplug too. What changed is the *agreement*: a spec-mandated
+topic, a `bdSeq` payload that identifies the session, and a rule every consumer applies.
+Hand-rolled — pattern 1 publishes a retained JSON document with `state: "offline"` on a topic
+it chose — you invent the topic, the payload and the semantics, you have to tell every
+consumer separately, and the next vendor invents them differently.
+
+Pattern 1's will has one further flaw worth showing live: it is only useful to a late
+subscriber if the retained flag happens to be ticked, and that flag is a checkbox on the
+device's config page covering *all* its messages.
 
 **Chariot is MQTT 3.1.1**, so there are no MQTT 5 response-topic or correlation-data
-properties. Pattern 1 does *not* work around that with a correlation id — it turns out the
-domain does not need one. A predictive-maintenance system wants a waveform and the timestamp
-it was captured at; whether that waveform answered its request, a retry, or somebody else's
-request is immaterial. So the response carries the capture time in `ts` and echoes the
-settings that produced it in `meta.request`, and `meta.correlation_id` stays unset. The honest
-moment is not "look how we rebuilt request/response" — it is "we checked whether we needed
-it." See [`plans/01-native-mqtt.md`](plans/01-native-mqtt.md).
+properties. Nothing in the demo currently needs them: every pattern is one-way. Patterns 1 and
+2 are publish-only field devices, and patterns 3–7 are Ignition publishing outward. If a
+request/response pattern is ever added, this is the constraint it will run into first, and
+`meta.correlation_id` is the field already reserved in the envelope for it.
 
 ---
 

@@ -682,7 +682,12 @@ def task_seed():
     print("")
 
     step("Starting seed gateway")
-    run_checked(COMPOSE_SEED + ["up", "-d"], "Seed gateway failed to start")
+    # --build for the same reason as task_up, and it matters more here: seeding
+    # is the ONLY moment a module version can change, because Docker copies
+    # data/var/ignition/modl out of the image only while the volume is empty. A
+    # stale image tag at this point bakes the wrong Cirrus version into the
+    # volume and every later `up` faithfully reproduces it.
+    run_checked(COMPOSE_SEED + ["up", "-d", "--build"], "Seed gateway failed to start")
 
     # Generous timeout: if third-party modules are present this blocks on a
     # human completing commissioning in the browser.
@@ -739,7 +744,17 @@ def task_up():
         print("       Run:  python tasks.py seed")
         return False
 
-    run_checked(COMPOSE + ["up", "-d"], "docker compose up failed")
+    # --build, not a bare up. Compose builds a `build:` service only when its
+    # image tag is missing, so an edit to a Dockerfile or to any source a service
+    # copies in silently never reaches the container -- the same stale-image trap
+    # that shipped a gateway running Cirrus 4.0.8. The layer cache keeps an
+    # unchanged build to a couple of seconds.
+    #
+    # It does NOT make a module upgrade land on an existing gateway: the .modl
+    # files live at data/var/ignition/modl, inside the ign-data named volume, and
+    # Docker seeds a volume from the image only while the volume is empty. That
+    # still needs `docker image rm` + nuke + seed. See docs/00-architecture.md.
+    run_checked(COMPOSE + ["up", "-d", "--build"], "docker compose up failed")
 
     # Chariot's MQTT listener stays closed until a trial or license is active,
     # and that is a manual step in its web UI. Check before the health check so
@@ -750,6 +765,13 @@ def task_up():
     ssl_ready = task_enable_ssl() if started else False
     print("")
     return task_health() and started and ssl_ready
+
+
+def task_build(rest):
+    """Rebuild service images on demand. `up` does this anyway; this is for
+    rebuilding without starting, or for one service in isolation."""
+    assert_env()
+    run_checked(COMPOSE + ["build"] + rest, "docker compose build failed")
 
 
 def task_down(rest):
@@ -1291,7 +1313,8 @@ Setup
                    (see docs/00-architecture.md)
 
 Running
-  up               Start the whole stack
+  up               Start the whole stack (rebuilds changed images first)
+  build [svc]      Rebuild images without starting, or just one service
   down             Stop the stack, keep volumes
   restart [svc]    Restart everything, or one service (compose env changes, not file edits)
   ps               Service status
@@ -1325,6 +1348,7 @@ def main(argv):
         "hash-modules": task_hash_modules,
         "seed": task_seed,
         "up": task_up,
+        "build": lambda: task_build(rest),
         "down": lambda: task_down(rest),
         "restart": lambda: task_restart(rest),
         "ps": lambda: task_ps(rest),

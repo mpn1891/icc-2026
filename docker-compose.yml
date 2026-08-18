@@ -304,21 +304,145 @@ services:
     networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Pattern 1 adds no service here. The vibration gateway is simulated inside
-  # Ignition — a Gateway Timer Script for telemetry and an event stream for the
-  # collect command, both publishing plain MQTT through Transmission. See
-  # docs/plans/01-native-mqtt.md. (services/sim-vibration/ holds a standalone
-  # container implementation of the same contract; it is NOT wired in.)
+  # Pattern 1 — smart sample valve assembly, plain MQTT 3.1.1
   #
+  # A sanitary sample valve with an RFID badge reader on BR-201's sample port.
+  # Badge in, the valve strokes open for a sampling window, the valve closes;
+  # every scan is published, granted or denied.
+  #
+  # Its twin below is the SAME assembly with Sparkplug B firmware, and the pair
+  # is the argument. valve.py and webui.py are byte-for-byte identical in both
+  # build contexts, so everything that differs between these two containers is a
+  # difference the protocol caused rather than the device.
+  #
+  # The container serves the device's own commissioning page on 8085. Three
+  # fields — topic, QoS, retained — and all three are somebody's opinion. Open it
+  # next to 8086 and read the two pages side by side; that comparison is as much
+  # of pattern 1 as the MQTT traffic is.
+  #
+  # Publish-only. There is no command topic and nothing on the backbone can open
+  # this valve: authorization is decided against a local badge roster, because a
+  # sample port that stops working when the broker does is not one anybody would
+  # install. See docs/plans/01-native-mqtt.md.
+  # ───────────────────────────────────────────────────────────────────────────
+  sim-valve-mqtt:
+    build: ./services/sim-valve-mqtt
+    container_name: icc26-sim-valve-mqtt
+    restart: unless-stopped
+    environment:
+      BROKER_HOST: ${VALVE_BROKER_HOST:-chariot}
+      BROKER_PORT: ${VALVE_BROKER_PORT:-1883}
+      MQTT_USERNAME: ${VALVE_MQTT_USERNAME:-sample-valve-01}
+      MQTT_PASSWORD: ${VALVE_MQTT_PASSWORD:-sample-valve-01}
+      DEVICE_ID: ${VALVE_DEVICE_ID:-sample-valve-01}
+      CELL: ${VALVE_CELL:-br-201}
+      # Factory defaults only. Whatever is saved on the config page wins and is
+      # persisted to the named volume below, so changing these does nothing to a
+      # device that has already been commissioned once.
+      BASE_TOPIC: ${VALVE_BASE_TOPIC:-icc26/site1/upstream/br-201/sample-valve-01}
+      PUBLISH_QOS: ${VALVE_PUBLISH_QOS:-1}
+      PUBLISH_RETAIN: ${VALVE_PUBLISH_RETAIN:-true}
+      BADGE_ROSTER: ${VALVE_BADGE_ROSTER:-B-1042:Jordan Reyes:qc-analyst:authorized,B-2087:Sam Okafor:maintenance:not-authorized,B-3311:Alex Chen:qc-analyst:training-expired}
+      SAMPLE_WINDOW_S: ${VALVE_SAMPLE_WINDOW_S:-12}
+      TELEMETRY_INTERVAL_S: ${VALVE_TELEMETRY_INTERVAL_S:-5}
+      # Background badge traffic so the firehose is not empty between triggers.
+      # Set to 0 for a scripted stage run where the only scan should be yours.
+      SCAN_INTERVAL_S: ${VALVE_SCAN_INTERVAL_S:-90}
+      LOG_LEVEL: ${VALVE_LOG_LEVEL:-INFO}
+      TZ: ${TZ:-America/Chicago}
+    ports:
+      - "${VALVE_MQTT_UI_PORT:-8085}:8080"
+    volumes:
+      - valve-mqtt-config:/data
+    # The config page answering is the whole liveness question: the MQTT client
+    # reconnects on its own and the broker being down is this app's problem to
+    # absorb, not a reason to call the container unhealthy.
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [icc26]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Pattern 2 — the SAME smart sample valve assembly, Sparkplug B v3.0.0
+  #
+  # On BR-202's sample port, so both can run at once and be compared live.
+  #
+  # What the spec took away: the topic (derived from group/node/device), the QoS
+  # and the retained flag. Its config page on 8086 still SHOWS all three — greyed
+  # out, each labelled with the TCK clause that fixed it — because a device with
+  # no QoS setting looks like one that forgot, and a device that shows you the
+  # setting you may not touch is making a point.
+  #
+  # What it gave back: DBIRTH builds the consumer's tag tree by itself, every
+  # metric carries its own datatype and engineering unit, `seq` makes a dropped
+  # message detectable, and NDEATH is a death certificate every consumer already
+  # knows how to read. Pattern 1 hand-rolls each of those, badly, on purpose.
+  #
+  # Still publish-only. The one inbound message honoured is Node Control/Rebirth,
+  # which is not a valve command — it is the host asking the device to
+  # re-announce itself, and Ignition's MQTT Engine sends it unprompted.
+  # See docs/plans/02-sparkplug-b.md.
+  # ───────────────────────────────────────────────────────────────────────────
+  sim-valve-spb:
+    build: ./services/sim-valve-spb
+    container_name: icc26-sim-valve-spb
+    restart: unless-stopped
+    environment:
+      BROKER_HOST: ${VALVE_BROKER_HOST:-chariot}
+      BROKER_PORT: ${VALVE_BROKER_PORT:-1883}
+      MQTT_USERNAME: ${VALVE_SPB_MQTT_USERNAME:-sample-valve-02}
+      MQTT_PASSWORD: ${VALVE_SPB_MQTT_PASSWORD:-sample-valve-02}
+      # The only three commissionable fields, and they are names inside a
+      # namespace rather than the namespace itself. Same caveat as above: the
+      # config page's saved value wins.
+      GROUP_ID: ${VALVE_SPB_GROUP_ID:-ICC26-Site1-UPSTREAM}
+      EDGE_NODE_ID: ${VALVE_SPB_EDGE_NODE_ID:-SAMPLE-VALVE-02}
+      DEVICE_ID: ${VALVE_SPB_DEVICE_ID:-SV-202}
+      CELL: ${VALVE_SPB_CELL:-br-202}
+      # Name + alias at birth, alias alone in DATA — which is what Cirrus's own
+      # Transmission does. Set false to put the names back on the wire and watch
+      # the payload grow.
+      USE_ALIASES: ${VALVE_SPB_USE_ALIASES:-true}
+      BADGE_ROSTER: ${VALVE_BADGE_ROSTER:-B-1042:Jordan Reyes:qc-analyst:authorized,B-2087:Sam Okafor:maintenance:not-authorized,B-3311:Alex Chen:qc-analyst:training-expired}
+      SAMPLE_WINDOW_S: ${VALVE_SAMPLE_WINDOW_S:-12}
+      TELEMETRY_INTERVAL_S: ${VALVE_TELEMETRY_INTERVAL_S:-5}
+      SCAN_INTERVAL_S: ${VALVE_SCAN_INTERVAL_S:-90}
+      LOG_LEVEL: ${VALVE_SPB_LOG_LEVEL:-INFO}
+      TZ: ${TZ:-America/Chicago}
+    ports:
+      - "${VALVE_SPB_UI_PORT:-8086}:8080"
+    volumes:
+      - valve-spb-config:/data
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [icc26]
+
+  # ───────────────────────────────────────────────────────────────────────────
   # Remaining pattern services land here in steps 4–8:
   #   lims             (patterns 4, 6, 7)  services/lims  — implementation TBD
   #   debezium         (pattern 5)  quay.io/debezium/server
+  #
+  # (services/sim-vibration/ is the retired pattern-1 vibration gateway. It is
+  # kept on disk and is NOT wired in — see services/README.md.)
   # ───────────────────────────────────────────────────────────────────────────
 
 volumes:
   pgdata:
   ign-data:
   chariot-config:
+  # What each valve was commissioned with, so a restart does not silently revert
+  # the topic somebody set on stage. `tasks.py nuke` returns both to factory.
+  valve-mqtt-config:
+  valve-spb-config:
 
 networks:
   icc26:

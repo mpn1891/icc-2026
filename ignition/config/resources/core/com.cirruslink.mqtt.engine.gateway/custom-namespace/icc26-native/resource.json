@@ -8,6 +8,6 @@
   ],
   "attributes": {
     "enabled": true,
-    "description": "Pattern 1 native MQTT telemetry ingest into pm-sensors"
+    "description": "Pattern 1: sample-valve-01 event/state/telemetry -> auto-created tags in the MQTT Engine provider"
   }
 }

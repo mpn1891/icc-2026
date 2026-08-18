@@ -66,6 +66,9 @@ reset(volume=False, config=False)
 rc, out, c = run_task("seed")
 check("absent/empty -> full seed, exit 0", (rc, "EXPORT_FULL" in c, "EXPORT_IDENTITY" in c), (0, True, False))
 check("full seed configures SSL before export", c.index("SSL:seed gateway") < c.index("EXPORT_FULL"), True)
+# Seeding is the only moment a module version can change -- the volume is copied
+# from the image just once -- so a stale image tag here is baked in for good.
+check("seed forces a rebuild", "run_checked:up -d --build" in c, True)
 
 reset(volume=False, config=True)
 rc, out, c = run_task("seed")
@@ -110,6 +113,15 @@ reset(volume=True, config=True)
 rc, out, c = run_task("up")
 check("both present -> starts stack, exit 0", (rc, any("up" in x for x in c)), (0, True))
 check("up verifies SSL", "SSL:gateway" in c, True)
+# A bare `up` reuses an existing image tag, so a source edit never reaches the
+# container. This assertion is the regression guard for that whole class of bug.
+check("up forces a rebuild", "run_checked:up -d --build" in c, True)
+
+print("== A5: build ==")
+
+reset(volume=True, config=True)
+rc, out, c = run_task("build")
+check("build shells out to compose build, exit 0", (rc, c), (0, ["run_checked:docker compose build"]))
 
 print("== A1: exit-code plumbing ==")
 

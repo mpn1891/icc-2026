@@ -11,16 +11,24 @@ PostgreSQL 17, all under `docker compose`, all version controlled.
 
 | # | Pattern | Demo subject | Built |
 |---|---------|--------------|-------|
-| 1 | Native MQTT pub/sub | Vibration sensors behind a simulated local gateway — command in, waveform out | in progress |
-| 2 | Sparkplug B edge node | Bioreactor UDT publishing report-by-exception | step 3 |
+| 1 | Native MQTT pub/sub | Smart sample valve assembly — RFID badge scan opens a bioreactor sample valve | services built |
+| 2 | Sparkplug B edge node | **The same valve assembly**, other firmware — birth/death, RBE, self-describing metrics | services built |
 | 3 | OPC UA → MQTT | Nova Flex analyzer; Ignition publishes on sample-complete | step 4 |
 | 4 | Webhook / Push API | Event-capable but non-MQTT system POSTing to Ignition | step 5 |
 | 5 | CDC / log tailing | Postgres WAL → Debezium → Ignition | step 6 |
 | 6 | Poll / diff | REST and SQL polled on an incrementing high-water mark | step 7 |
 | 7 | Scripted aggregation | Gateway script joining Postgres + REST + tags into one publish | step 8 |
 
+**Patterns 1 and 2 are one device in two firmwares**, which is the point of running both: a
+badge-operated sample valve on `BR-201` speaking plain MQTT, and the identical assembly on
+`BR-202` speaking Sparkplug B. Each ships its own **device commissioning webpage** — and the
+difference between those two pages is as much of the talk as the traffic. On one, the topic is
+a text box, the QoS is a dropdown and Retained is a checkbox. On the other, the same three
+controls are disabled, each labelled with the clause of the specification that fixed it.
+
 **Current state: step 1 complete — infrastructure only.** Postgres, Ignition and Chariot come
-up and talk to each other. Pattern 1 is in progress. What is true today and what is next:
+up and talk to each other. Patterns 1 and 2 have their simulator containers and config pages
+built; the Ignition-side ingest for them is not wired yet. What is true today and what is next:
 [`docs/plans/00-status.md`](docs/plans/00-status.md).
 
 ## Prerequisites
@@ -97,6 +105,8 @@ python tasks.py down     # stops the stack, keeps volumes
 | Chariot MQTT UI | <http://localhost:8081> — `admin` / `password` |
 | MQTT broker | `localhost:1883` (see `compose/chariot/mqtt-users.json` for credentials) |
 | PostgreSQL | `localhost:5432` — db `icc26`, user `icc26` |
+| Sample valve — plain MQTT | <http://localhost:8085> — the device's own config page (pattern 1) |
+| Sample valve — Sparkplug B | <http://localhost:8086> — the same page, three controls disabled (pattern 2) |
 
 > **Why the separate `seed` step?** Ignition 8.3 seeds `data/` from the image on first launch,
 > and bind-mounting host directories over `data/config` at that moment blocks the seeding and
