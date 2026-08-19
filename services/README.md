@@ -8,8 +8,12 @@ backbone to attach these to.
 | `sim-valve-mqtt/` | 1 — native MQTT pub/sub | **built and wired into compose.** Smart sample valve assembly on `BR-201`; config page on <http://localhost:8085>. **Ignition ingest verified 2026-08-17**: the Engine custom namespace auto-creates a JSON-shaped tag tree, and a null field creates no tag at all ([spec](../docs/plans/01-native-mqtt.md)) |
 | `sim-valve-spb/` | 2 — Sparkplug B edge node | **built and wired into compose**, and it is the **same device** as `sim-valve-mqtt/`, not a different one (see below). Config page on <http://localhost:8086>. **Ignition ingest verified 2026-08-17**: MQTT Engine built all 19 typed tags with their engineering units straight from DBIRTH, with no configuration at all ([spec](../docs/plans/02-sparkplug-b.md)) |
 | `opcua-countess/` | 3 — OPC UA → MQTT | **server built and wired into compose.** Simulated Countess 3 FL cell counter; address space per [`docs/reference/countess-3fl-opcua-model.md`](../docs/reference/countess-3fl-opcua-model.md). Ignition side: connection + `cell_analyzer` UDT done, tag-change script TODO |
-| `opcua-novaflex/` | 3 — OPC UA → MQTT | **server built and wired into compose**, and it runs **alongside** `opcua-countess/`, not instead of it (see below). Simulated Nova BioProfile FLEX2; address space transcribed from the real vendor server per [`docs/reference/novaflex2-opcua-model.md`](../docs/reference/novaflex2-opcua-model.md). Ignition side: connection + `bioanalyzer` UDT + instance done and **verified bound — 57/57 tags monitored**, tag-change script TODO |
-| `lims/` | 4, 6, 7 — webhook / poll / aggregation source | **implementation undecided** |
+| `opcua-novaflex/` | 3 — OPC UA → MQTT | **server built and wired into compose**, and it runs **alongside** `opcua-countess/`, not instead of it (see below). Simulated Nova BioProfile FLEX2; address space transcribed from the real vendor server per [`docs/reference/novaflex2-opcua-model.md`](../docs/reference/novaflex2-opcua-model.md). Ignition side: connection + `bioanalyzer` UDT + instance **verified bound — 57/57 tags monitored**. **MQTT publish built 2026-08-19**: `result/sample_time` (vendor `HistoricalSampleResults/SampleTime`) → Event Stream `03_opcua/novaflex-result` → `icc26/site1/qc/analyzers/novaflex-01/result`. Does not use `ICC26Extensions` |
+| `lims/` | 4 — approval webhook | **specified, not built.** Was the source for 4, 6 and 7; since the 2026-08-19 re-sourcing it serves pattern 4 only. Subscribes to the analyzer topic, holds results for human approval, POSTs the released result to Ignition via a transactional outbox ([spec](../docs/plans/04-lims-webhook.md)) |
+| `odoo/` | 5 — CDC source | **planned.** Debezium tails Odoo's own Postgres. Community edition only — the Quality app is Enterprise, so the demo keys off `mrp_production` / `stock_move` |
+| `sim-particle-counter/` | 6 — poll / diff | **planned.** Simulated Hach MET ONE over Modbus TCP, with the vendor's buffered record block and its *Rotate Buffer* checkbox — two ways to lose data, selected by a tickbox |
+| `ams/` | 7 — aggregation trigger | **planned.** Asset management system stub; a copy of `lims/`'s FastAPI skeleton with a different noun |
+| `opcua-dcs/` | 7 — steady-state gate | **planned.** Small OPC UA server, cheapest possible new source because that toolchain is already proven |
 | `sim-vibration/` | — | **retired.** The pattern-1 vibration gateway, superseded on 2026-08-17 by the sample valve. Not wired in, kept on disk only until it is clear nobody wants it back |
 
 ## Why patterns 1 and 2 are the same device
@@ -60,20 +64,26 @@ a tag export taken from that simulator will outlive anyone's memory of which hal
 Pattern 5 (CDC) adds no service of its own here — it is the `quay.io/debezium/server` image
 configured from `compose/debezium/`.
 
-## The LIMS contract
+## The LIMS contract — one surface since 2026-08-19
 
-`lims/` is deliberately unresolved — it may become [SENAITE](https://www.senaite.com/) or
-stay a small FastAPI stub. What matters is that whatever fills it exposes all four surfaces,
-because four separate patterns read from it:
+`lims/` used to serve four patterns, and the contract was the point: four surfaces, one per
+consumer, so the implementation could be swapped between [SENAITE](https://www.senaite.com/) and a
+FastAPI stub with a compose change.
 
-1. **Emits a webhook POST** on sample-complete → pattern 4
-2. **`GET /results?since_id=N`** with a monotonic id → pattern 6
-3. **Writes to `lims.sample_result`** in Postgres, which Debezium tails → pattern 5
-4. **Answers a query** the aggregation script can join against → pattern 7
+**Patterns 5, 6 and 7 were re-sourced on 2026-08-19** — CDC moved to Odoo, polling to a MET ONE
+particle counter, aggregation to condition monitoring — so three of those surfaces have no
+consumer. What is left is the one that does:
 
-Build against the contract, not the implementation. SENAITE satisfies all four and carries
-real weight with a life-sciences audience; a ~100-line stub satisfies them too and starts in
-a second. Either way the swap is a `docker-compose.yml` change, not a redesign.
+1. **Receives analyzer results off the backbone**, holds them for a human to approve, and **POSTs
+   the approved result to Ignition** → pattern 4
 
-The Postgres schema those patterns depend on already exists — see
-`compose/postgres/initdb/02-schema.sql`.
+Retired, and recorded so the reasoning survives: `GET /results?since_id=N` (pattern 6), a
+Debezium-tailed insert into `lims.sample_result` (pattern 5), and a query for the aggregation script
+to join (pattern 7).
+
+SENAITE was worth considering when four patterns depended on this. For one webhook, a small FastAPI
+service is the right size. See [`../docs/plans/04-lims-webhook.md`](../docs/plans/04-lims-webhook.md).
+
+The Postgres schema exists (`compose/postgres/initdb/02-schema.sql`) and needs two columns added;
+note that `mes.batch_event` in the same file now has **no consumer at all**, since Odoo replaces the
+hand-made MES table.

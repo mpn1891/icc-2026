@@ -1,6 +1,6 @@
 # Status
 
-> **Updated 2026-08-17.** Conference is ~4 weeks out.
+> **Updated 2026-08-19.** Conference is ~4 weeks out.
 >
 > **The stale-image blocker is CLEARED.** A gateway rebuilt from the repo loads Cirrus **5.0.4**
 > Engine, Transmission and Distributor with no compatibility warnings. `tasks.py` now forces
@@ -10,6 +10,10 @@
 > and run for the first time on 2026-08-17, both produced Ignition tags, and every checkpoint
 > passed. Findings live in [`01-native-mqtt.md`](01-native-mqtt.md) and
 > [`02-sparkplug-b.md`](02-sparkplug-b.md), each under *Ingest, as built*.
+>
+> **Pattern 3 Nova MQTT publish is built** (not yet run against a live gateway in this pass):
+> vendor `SampleTime` → Event Stream `03_opcua/novaflex-result` → Transmission. Countess publish
+> is still open.
 
 What is true right now and what to do next. Durable knowledge does not live here — it lives in
 [`../00-architecture.md`](../00-architecture.md). Work still to be built lives in
@@ -18,10 +22,38 @@ and the fix is to move the fact rather than keep two copies.
 
 ## Do this next
 
-**→ Pattern 3, step 9** — [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md) § 9,
-the tag-change script that turns an analyzer result into an MQTT publish. Both OPC UA servers are
-built and both address spaces are bound (the FLEX2 verified at 57/57 tags); the publish path is
-what is missing. Pattern 4 is the alternative if you would rather widen than deepen.
+**Patterns 5, 6 and 7 were re-sourced on 2026-08-19, and the shared-topic set-piece was dropped.**
+This is the largest design change since pattern 2 stopped being a bioreactor, so read
+[`../00-architecture.md` § *Patterns 4, 5 and 6 used to share one
+topic*](../00-architecture.md) before touching any of them. In short: 5 becomes CDC on **Odoo**,
+6 becomes a Modbus poll of a **MET ONE particle counter**, 7 is leaning toward a **vibration
+waveform gated on DCS steady-state and requested by an asset management system**. Each mechanism
+now gets the source that genuinely forces it, and no two patterns carry the same data.
+
+**Four work items, and they are genuinely independent** — the old plan funnelled everything
+through pattern 4 because 5/6/7 read the LIMS. They no longer do.
+
+1. **Watch Nova's publish on the broker.** Authored, never seen: tag-change on
+   `result/sample_time` → Event Stream `03_opcua/novaflex-result` → Transmission.
+   `python tasks.py scan`, then the mosquitto check in
+   [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md) § 9. Pattern 4 consumes this
+   topic, so it is still the first thing to do — but it is no longer four patterns' critical path.
+2. **Build 08's fallback firehose.** Moved forward from last. It depends on no pattern, and it is
+   the only deliverable whose absence is visible from the audience.
+3. **Pattern 4**, per [`04-lims-webhook.md`](04-lims-webhook.md) — now a single-purpose webhook
+   source that blocks nothing.
+4. **Pattern 6's Modbus simulator.** The longest new build of the four; start it earliest.
+
+**One `nuke` + `seed`** covers both of pattern 4's config changes — the `lims.sample_result`
+columns in `02-schema.sql` and the `lims-bridge` subscribe grant in `mqtt-users.json`. Neither
+takes effect against an existing volume. **Do it before Odoo is initialized**, because the same
+`nuke` destroys Odoo's database.
+
+Countess still needs its own publish on `count_completed_counter`; nothing depends on it.
+
+Newly dead, and worth deleting rather than maintaining: `mes.batch_event` has no consumer at all
+(Odoo replaces the hand-made MES table), and `04-cdc.sql`'s publication points at two tables
+nothing reads. Retire both with pattern 5's spec.
 
 `00-next-step.md` is **done** and kept only as the record of what was run. Everything durable
 from it has moved into [`../00-architecture.md`](../00-architecture.md) and the two pattern specs.

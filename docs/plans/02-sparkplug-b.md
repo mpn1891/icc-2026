@@ -195,18 +195,21 @@ the publisher for Ignition-originated events in patterns 3–7.
 
 ---
 
-## Known consequence, not solved here
+## Known consequence — **resolved 2026-08-19**
 
-**Pattern 7 (scripted aggregation) has lost its live process values.** It planned to join
-`plant.batch` (SQL), the LIMS `GET /results/latest`, and live `BR-201` tag values — and those tag
-values came from pattern 2's Sparkplug bioreactor, which no longer exists. Options, in rough
-order of cost:
+**Pattern 7 (scripted aggregation) lost its live process values when this pattern stopped being a
+bioreactor.** It had planned to join `plant.batch` (SQL), the LIMS `GET /results/latest`, and live
+`BR-201` tag values, and the tag values came from the Sparkplug bioreactor that no longer exists.
+Three options were recorded here: the valve's own metrics, a standalone process simulator, or
+dropping to two sources.
 
-1. Join the valve's own metrics instead (sampling history is a legitimate thing to aggregate).
-2. Add a small process simulator publishing bioreactor conditions, unattached to any pattern.
-3. Let pattern 7 join only SQL + LIMS and drop the third source.
+None of them was taken. Pattern 7 was re-scoped entirely: a **vibration waveform on a downstream
+asset, requested by an asset management system and gated on a DCS steady-state signal**, joining
+none of the three original sources. So this consequence is closed, and closed by replacement rather
+than by repair. See [`00-master-plan.md`](00-master-plan.md) § 07.
 
-Recorded here and in [`00-master-plan.md`](00-master-plan.md); decide when spec 07 is written.
+Nothing in this file needs to change as a result. Recorded because the open question stood here for
+two days and somebody will come looking for how it ended.
 
 ---
 

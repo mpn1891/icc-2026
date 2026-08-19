@@ -23,13 +23,19 @@ add it here rather than in a status note.
                                     │
    pattern 4 (webhook) ──▶ ┌────────┴─────────┐
    pattern 5 (CDC/HTTP) ─▶ │  Ignition 8.3.8  │──── JDBC ────▶ PostgreSQL 17
-                           │  + Cirrus 5.0.4  │                (wal_level=logical)
-                           └──────────────────┘                        │
-                                                                  Debezium Server
+   pattern 7 (webhook) ──▶ │  + Cirrus 5.0.4  │                (wal_level=logical)
+                           └──────────────────┘                   │          │
+                                                            Debezium    Odoo (own database,
+                                                             Server      pattern 5's source)
 ```
 
 Patterns 1 and 2 are one smart sample valve assembly in two firmwares, in their own containers.
 Everything else publishes through Ignition.
+
+Note that pattern 7 also arrives by webhook, and is not pattern 4. **The transport is not the
+mechanism**: an inbound HTTP callback from an asset management system triggers a *scripted
+aggregation*, which is what `meta.mechanism` records. Two patterns sharing a transport and
+carrying different mechanisms is a useful thing to be able to point at.
 
 | Service | Host ports | Built in |
 |---|---|---|
@@ -39,8 +45,16 @@ Everything else publishes through Ignition.
 | `opcua-novaflex` | 4841 | step 4 |
 | `sim-valve-mqtt` | 8085 (config page) | pattern 1 |
 | `sim-valve-spb` | 8086 (config page) | pattern 2 |
-| `lims` | 8000 | step 5 (implementation TBD) |
-| `debezium` | 8083 | step 6 |
+| `lims` | 8000 (approval screen) | pattern 4 — planned |
+| `odoo` | 8069 | pattern 5 — planned |
+| `debezium` | 8083 | pattern 5 — planned |
+| `sim-particle-counter` | 5020 (Modbus TCP) | pattern 6 — planned |
+| `sim-vibration` | — | pattern 7 — planned, resurrected |
+| `ams` | 8001 | pattern 7 — planned |
+| `opcua-dcs` | 4842 | pattern 7 — planned |
+
+The four `planned` services below `lims` were all decided on 2026-08-19 and none has a spec yet.
+Ports are provisional.
 
 **Patterns 1 and 2 are the same physical device in two firmwares** — a badge-operated smart
 sample valve assembly, one on `BR-201` speaking plain MQTT and one on `BR-202` speaking
@@ -70,19 +84,21 @@ ordering dependency, and bisecting gets painful. Compose also builds from the tr
 offline. The usual reason to reach for a split, "the gateway writes noise into my repo", is
 solved by `.gitignore` instead: only `data/config` and `data/projects` are committed.
 
-### LIMS contract (implementation TBD)
+### LIMS contract — one surface, not four
 
-`lims` is a placeholder with a defined contract, not a defined implementation — it may become
-SENAITE, it may stay a FastAPI stub. Whatever backs it must expose all four surfaces, because
-four patterns each consume a different one:
+`lims` served four patterns under the original convergence design. **Since 2026-08-19 it serves
+exactly one**, and the other three surfaces have no consumers: pattern 5 moved to Odoo, pattern 6
+to a particle counter, pattern 7 to condition monitoring.
 
-1. Emit a webhook POST on sample-complete → pattern 4
-2. `GET /results?since_id=N`, monotonic id → pattern 6
-3. Write to a Postgres table Debezium can tail → pattern 5
-4. Answer a query the aggregation script can join → pattern 7
+What remains is the only surface with a consumer: **a sample result, received off the backbone,
+released by a human, pushed to Ignition over HTTP.** See
+[`plans/04-lims-webhook.md`](plans/04-lims-webhook.md). SENAITE was under consideration when four
+patterns depended on this; for one webhook, a small FastAPI service is the right size.
 
-Build against the contract and swapping the implementation stays a compose change rather than a
-redesign.
+The three retired surfaces (`GET /results?since_id=N`, a Debezium-tailed insert, and a query for
+the aggregation script) are recorded here because the reason they existed — convergence — is
+worth remembering, and because `02-schema.sql` and `04-cdc.sql` still carry comments written when
+they were live.
 
 ---
 
@@ -101,9 +117,11 @@ icc26/site1/upstream/br-201/sample-valve-01/event      # 1  badge scan + sample 
 icc26/site1/upstream/br-201/sample-valve-01/state      # 1  valve position, retained; also the LWT
 icc26/site1/upstream/br-201/sample-valve-01/telemetry  # 1  line pressure / temp, every 5 s
 icc26/site1/qc/analyzers/novaflex-01/result            # 3
-icc26/site1/qc/lims/sample-result                      # 4 AND 5 AND 6 — same topic
-icc26/site1/upstream/br-201/batch/event                # 5
-icc26/site1/upstream/br-201/batch-summary              # 7
+icc26/site1/qc/lims/sample-result                      # 4  (only pattern 4, since 2026-08-19)
+icc26/site1/upstream/br-201/batch/event                # 5  Odoo manufacturing orders
+icc26/site1/upstream/br-201/particle-counter-01/telemetry  # 6  provisional
+icc26/site1/downstream/tff-301/vibration-01/waveform   # 7  provisional
+icc26/site1/downstream/tff-301/asset-summary           # 7  provisional, the aggregate document
 
 spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|NDEATH}/SAMPLE-VALVE-02             # 2 — spec-mandated
 spBv1.0/ICC26-Site1-UPSTREAM/{DBIRTH|DDATA|DDEATH}/SAMPLE-VALVE-02/SV-202 # 2 — spec-mandated
@@ -124,6 +142,16 @@ nobody.** Patterns 1 and 2 are both publish-only field devices — a sample valv
 network's permission to open is a sample valve that stops working when the network does — and
 no other pattern has yet needed to address a device. They stay in the set as the names to
 reach for rather than inventing new ones later.
+
+**Pattern 7 will be the first user of the pair**, if it lands as scoped: an asset management
+system asking for a vibration reading is a genuine request/response, and it is also the first
+thing in this stack that will meet the MQTT 3.1.1 constraint below as a live problem rather than
+a footnote.
+
+The last three topics above are **provisional** — patterns 6 and 7 have no spec yet, and a topic
+is settled when its spec is written. Two things about them are worth noting now: pattern 7 gives
+`downstream` its first user, so the area list stops being aspirational; and `utilities` still has
+none.
 
 **There is no `mes` area, deliberately.** An MES is a piece of software, not a place, and an
 area slot filled with a system name is the same mistake as organising by ingestion mechanism —
@@ -152,16 +180,40 @@ is the point of running both.
 Equipment ids in `plant.equipment` (see `compose/postgres/initdb/03-seed.sql`) are the same
 strings that appear in topics. Keep it that way.
 
-### Patterns 4, 5 and 6 deliberately share one topic
+### Patterns 4, 5 and 6 used to share one topic. Reversed 2026-08-19
 
-Same logical data — a LIMS sample result — acquired three completely different ways, landing
-identically. On stage you disable the webhook, enable CDC, and the subscriber never notices.
+The original design had all three carrying the same logical data — one LIMS sample result —
+acquired three different ways and landing identically, so that disabling the webhook and enabling
+CDC on stage changed nothing but `meta.mechanism`. **That is no longer the design**, and the
+reasoning for the reversal matters more than the reversal:
 
-This demonstrates the architectural point better than three separate branches would: *the
-mechanism is an implementation detail of the edge, not a property of the data.* It is also
-why `lims-bridge` in `compose/chariot/mqtt-users.json` may publish only to the sample-result
-topic (and the bioreactor `batch/event` topic for CDC) — the ACL enforces convergence rather
-than trusting everyone to remember it.
+**Nobody webhooks, tails and polls the same table in production. You pick one.** The convergence
+demo was a pedagogical device, and a well-informed audience would recognise it as one. Each
+mechanism now gets the source that genuinely forces it: an ERP whose schema you do not own and
+cannot make emit events (CDC), an instrument with no push capability whatsoever (poll), and a
+LIMS release that a human has to sign (webhook). "Seven integration problems and the mechanism
+each one actually demands" is a harder talk to give and a more credible one.
+
+**What was given up:** a very good set-piece, and the ability to prove the interchangeability
+claim in one gesture.
+
+**What was not given up, and is the part worth protecting:** the namespace still must not leak
+the mechanism. That principle is *more* strongly demonstrated by seven unrelated sources than by
+one table, because with seven genuinely different systems the temptation to sort topics by how
+their data arrived is far stronger — and a subscriber reading the namespace still cannot tell
+which topic is fed by CDC and which by a Modbus poll loop. The demonstration changed; the rule
+did not.
+
+Consequences that are easy to miss:
+
+- The `lims-bridge` ACL no longer enforces convergence. It still exists, and it still earns its
+  place — see the cycle hazard in [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md).
+- **`lims.sample_result` is no longer "the single most important table in the demo"**, whatever
+  the comment in `compose/postgres/initdb/02-schema.sql` says. Exactly one pattern touches it.
+- **`mes.batch_event` has no consumer at all.** Odoo's manufacturing orders replace the
+  hand-made MES table, and `04-cdc.sql`'s publication needs revisiting with pattern 5.
+- Pattern 4's message can now be sample-shaped rather than row-shaped, because it no longer has
+  to match a row-granular CDC stream. That is a simplification, not a loss.
 
 ### Payload envelope
 
@@ -208,6 +260,11 @@ properties. Nothing in the demo currently needs them: every pattern is one-way. 
 2 are publish-only field devices, and patterns 3–7 are Ignition publishing outward. If a
 request/response pattern is ever added, this is the constraint it will run into first, and
 `meta.correlation_id` is the field already reserved in the envelope for it.
+
+**`meta.correlation_id` gets its first real user in pattern 4**, which carries the analyzer's
+`sample_id` through the LIMS and back out under a different mechanism, so one sample is traceable
+across two colours on the firehose. Pattern 7's AMS request would be the second, and the one that
+actually needs the MQTT 5 properties this broker does not have.
 
 ### MQTT Engine has two ingest surfaces, and they produce different things
 
