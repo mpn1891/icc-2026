@@ -6,8 +6,10 @@
 > cost most of the build time and every one of them will repeat verbatim on the next analyzer.
 
 **Built:** simulated Thermo Fisher Countess 3 FL cell counter → OPC UA → Ignition UDT, and then
-a simulated Nova Biomedical BioProfile FLEX2 the same way.
-**Not built yet:** the tag-change script that publishes to MQTT (step 9), for either analyzer.
+a simulated Nova Biomedical BioProfile FLEX2 the same way. Nova MQTT publish is built: a
+tag-change on vendor `HistoricalSampleResults/SampleTime` hands the result folder to Event
+Stream `03_opcua/novaflex-result`, which reads the historical UDT tags and publishes through
+Transmission. **Not built yet:** the Countess publish (step 9).
 
 | Artifact | Countess | Novaflex |
 |---|---|---|
@@ -159,11 +161,35 @@ that never resets it still gets exactly one run per write.
 Keep the method too. The method is better engineering — atomic, typed, returns an id and a real
 status code — and the contrast between the two is a talk point, not an embarrassment.
 
-### 9 — Still to do: publish to MQTT
+### 9 — Publish to MQTT
 
-Tag-change gateway event script on `count_completed_counter` → read `result_json` → one
-`system.cirruslink.transmission.publish(...)` per increment, `meta.mechanism = "opcua-event"`.
-Transmission, not Engine, per the ACL split.
+**Novaflex — built.** No new OPC UA nodes. Trigger is the vendor `SampleTime` already on
+`HistoricalSampleResults`.
+
+1. Tag-change script on `[default]icc26/site1/qc/analyzers/novaflex-01/result/sample_time`
+   (skips `initialChange` and Bad quality).
+2. `system.eventstream.publishEvent("icc-2026", "03_opcua/novaflex-result", resultFolder, False)`.
+3. Event Stream transform `opcua_event.build_novaflex_result` reads the historical UDT siblings
+   (Bad → JSON `null`) and returns the envelope, `meta.mechanism = "opcua-event"`.
+4. MQTT Transmission handler publishes to `icc26/site1/qc/analyzers/novaflex-01/result`.
+
+The simulator writes `SampleTime` **last** on the historical tree so the script cannot fire
+before the rest of the result is on the wire. `ICC26Extensions` is still in the address space
+so the missing vendor counter is visible; the MQTT path does not read it. QC is a separate
+event and is not on this stream.
+
+**Countess — not built.** Same idea, on `count_completed_counter` (that counter *is* part of
+the model we designed — there is no vendor server to stay faithful to).
+
+Verify Nova: trigger `ESMScheduleAnalysis`, then
+
+```
+docker run --rm -it --network icc26 eclipse-mosquitto:2 `
+  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/qc/analyzers/novaflex-01/result' -v
+```
+
+One message per completed sample, never per-value, `mechanism` is `opcua-event`. A failed or
+aborted run must not publish. A QC run must not publish on this topic.
 
 ---
 
@@ -256,6 +282,5 @@ the field-table pattern (generalised into `_add_branch`), `_CommandHandler`, `_n
 Dockerfile, and the compose block. Every gotcha table below applied unchanged and cost no time
 the second run.
 
-Still TODO on the Novaflex, and identical to the Countess's step 9: the OPC connection must be
-created in the gateway UI (`bioanalyzer` → `opc.tcp://opcua-novaflex:4840/novaflex/`, no
-security, anonymous), and the tag-change publish script does not exist yet.
+The Novaflex OPC connection and UDT are built. MQTT publish is built off `SampleTime` (step 9).
+Countess still needs its publish script.

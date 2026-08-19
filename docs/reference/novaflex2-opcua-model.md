@@ -373,23 +373,24 @@ Topic `icc26/site1/qc/analyzers/novaflex-01/result`, envelope per `docs/00-archi
 
 Rules for the projection:
 
-- **One publish per `SampleCompleteCounter` increment**, never per value change — the same rule
-  as the Countess, and here it is the *only* workable rule, because the vendor branch gives a
-  poller nothing safe to key on.
-- Read **`ICC26Extensions/ResultJson`**, not the 141 leaves. One read, one timestamp, no tearing.
+- **One publish per `HistoricalSampleResults/SampleTime` change**, never per value change. That
+  is a vendor field, not `ICC26Extensions/SampleCompleteCounter`. The simulator writes
+  `SampleTime` last on the historical tree so the trigger cannot fire before the rest of the
+  result is settled. QC does not touch this tree and is a separate event.
+- Read the **historical UDT tags** already bound under `novaflex-01/result/…`. Do not read
+  `ICC26Extensions/ResultJson` — that node is an extension, and the publish path stays on
+  vendor tags. Bad quality maps to JSON `null`, never `0`.
 - `values` carries the result, **not `StartTags->Ranges`**. That is 52 of the 141 leaves,
   constant across a sample type, and publishing them on every sample is bytes nobody reads.
   Expose them on a retained `…/ranges` topic if anyone asks. Say the choice out loud.
-- A field whose StatusCode is not `Good` maps to JSON `null`, never `0`. See §8 — `"osmo": null`
-  above is the osmometer that is not fitted.
 - **Publish `modules_used`.** Without it a consumer cannot distinguish "not measured" from
   "dropped in transit," and it is one Boolean per module.
-- QC results go to a **separate topic** (`…/qc`), driven off `QcCompleteCounter`. They are not
+- QC results go to a **separate topic** (`…/qc`) if/when that stream is built. They are not
   samples and must not land in a sample trend.
 
-Ignition side: OPC UA connection → one tag on `sample_complete_counter` → tag-change gateway
-event script reads `result_json` → `system.cirruslink.transmission.publish(...)`, Transmission
-not Engine, per the ACL split in `docs/plans/00-master-plan.md`.
+Ignition side: tag-change on `result/sample_time` → Event Stream `03_opcua/novaflex-result`
+(`opcua_event.build_novaflex_result`) → MQTT Transmission handler → the topic above.
+Transmission, not Engine, per the ACL split in `docs/plans/00-master-plan.md`.
 
 ---
 

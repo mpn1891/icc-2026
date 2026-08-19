@@ -39,7 +39,7 @@
         },
         "tagType": "AtomicTag",
         "valueSource": "opc",
-        "documentation": "THE trigger. Monotonic, written last after every one of the 141 result leaves and after state, so when this changes the whole result branch is settled. Subscribe to this one tag. NOTE: it is in ICC26Extensions because the real FLEX2 OPC server has no completion counter at all - SampleResults just changes underneath you. A QC run and a failed analysis both leave this untouched. UInt32 on the wire, so Int8 here."
+        "documentation": "Demo extension, not the MQTT trigger. The real FLEX2 OPC server has no completion counter at all - SampleResults just changes underneath you. Pattern 3 publishes off result/sample_time (vendor HistoricalSampleResults/SampleTime). This node still increments last in ICC26Extensions so the gap is visible in the address space. A QC run and a failed analysis both leave this untouched. UInt32 on the wire, so Int8 here."
       },
       {
         "dataType": "Int8",
@@ -399,6 +399,13 @@
           },
           {
             "dataType": "DateTime",
+            "documentation": "THE trigger for the MQTT publish. Vendor HistoricalSampleResults/SampleTime, written last by the simulator after every other historical leaf. A valueChanged script hands the result folder to event stream 03_opcua/novaflex-result, which reads the sibling historical tags and publishes via Transmission. Do not point this at ICC26Extensions.",
+            "eventScripts": [
+              {
+                "eventid": "valueChanged",
+                "script": "\t# Pattern 3: one MQTT publish per HistoricalSampleResults SampleTime change.\n\t# Vendor field, not ICC26Extensions. The event stream reads the historical siblings.\n\tif initialChange:\n\t\treturn\n\tif currentValue is None or currentValue.value is None:\n\t\treturn\n\ttry:\n\t\tif not currentValue.quality.isGood():\n\t\t\treturn\n\texcept:\n\t\treturn\n\tbase = tagPath.rsplit(\"/\", 1)[0]\n\tsystem.eventstream.publishEvent(\"icc-2026\", \"03_opcua/novaflex-result\", str(base), False)\n"
+              }
+            ],
             "name": "sample_time",
             "opcItemPath": {
               "bindType": "parameter",
@@ -409,8 +416,7 @@
               "binding": "{opc_server}"
             },
             "tagType": "AtomicTag",
-            "valueSource": "opc",
-            "documentation": "Acquisition instant. Every leaf of a result carries this same SourceTimestamp - that is how you prove a set of reads is one sample and not a mixture of two."
+            "valueSource": "opc"
           },
           {
             "dataType": "DateTime",

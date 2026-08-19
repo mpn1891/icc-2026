@@ -23,8 +23,11 @@ Three facts about the vendor server drive everything below, and each is a talk p
     "sample ready" flag, and the server raises no OPC UA events. SampleResults simply changes
     underneath any client watching it. A client therefore cannot tell a new sample from a
     re-read without diffing TimeStamp itself -- and cannot tell two samples apart at all if
-    they happen to carry equal values. Everything this demo needs to drive a publish is in
-    ICC26Extensions, which is OURS and is labelled as such in the address space.
+    they happen to carry equal values. ICC26Extensions still exists as a labelled demo
+    branch (counter, state, ResultJson) so the gap is visible in the address space; the
+    Ignition publish does not use it. Pattern 3 keys off HistoricalSampleResults/SampleTime,
+    a vendor field, and this simulator writes that node last so the trigger fires after
+    every other historical leaf has settled.
 
   * There are NO methods. Every action the FLEX2 exposes is a writable Boolean you set to 1 --
     ESMScheduleAnalysis, GasCalibration, ClearWells. §6.1 of the Countess model doc argued that
@@ -456,14 +459,30 @@ class Branch:
         self.node = node
         self.leaves = leaves
 
-    async def apply(self, values: dict[str, object], ts: datetime) -> None:
+    async def apply(self, values: dict[str, object], ts: datetime,
+                    defer: tuple[str, ...] = ()) -> None:
         """Write the whole branch. Paths absent from `values` are cleared to Bad_NoData.
 
         This is what keeps absent-vs-zero correct by construction rather than by remembering:
         a module that did not run simply contributes no keys, and its leaves go Bad.
         Every leaf gets the same SourceTimestamp on purpose -- see the module docstring.
+
+        `defer` paths are written last. HistoricalSampleResults uses that for SampleTime so
+        an Ignition tag-change on that vendor field cannot fire before the rest of the result
+        is on the wire.
         """
+        deferred = set(defer)
         for path, leaf in self.leaves.items():
+            if path in deferred:
+                continue
+            if path in values:
+                await leaf.write(values[path], ts)
+            else:
+                await leaf.clear(ts)
+        for path in defer:
+            leaf = self.leaves.get(path)
+            if leaf is None:
+                continue
             if path in values:
                 await leaf.write(values[path], ts)
             else:
@@ -1413,8 +1432,11 @@ class Novaflex:
         ts = _now()
         values, errors = self._synthesize(ts, source, port, info)
 
-        # Order matters and is the contract: every result leaf, then State, then the counter.
-        # The historical tree carries the retain fields the live one does not.
+        # Order matters: every result leaf, then SampleTime last on the historical tree.
+        # Ignition publishes off HistoricalSampleResults/SampleTime (a vendor field), so that
+        # node has to move after the rest of the result is settled. The live SampleResults
+        # tree is not the trigger. ICC26Extensions/SampleCompleteCounter still increments
+        # after State for the address-space demo; the MQTT path does not read it.
         await self.sample_branch.apply(values, ts)
         historical = dict(values)
         follow = bool(info_raw.get(f"{command}/FollowWithRetain")) if \
@@ -1424,7 +1446,7 @@ class Novaflex:
             historical["StartTags/RetainVolume"] = float(
                 info_raw.get(f"{command}/RetainVolume") or 0.0)
             historical["RetainCount"] = int(info_raw.get(f"{command}/NumberOfRetains") or 0)
-        await self.historical_branch.apply(historical, ts)
+        await self.historical_branch.apply(historical, ts, defer=("SampleTime",))
 
         await self._consume()
         await self._flag_alerts(errors, ts)

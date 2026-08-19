@@ -33,24 +33,18 @@ more convincing with both on stage than with either alone.
 
 ## The contract
 
-Subscribe to **one** node — and note it is in the branch we added, because the vendor server has
-nothing to subscribe to:
+Subscribe to **one** vendor node — `HistoricalSampleResults/SampleTime`. The simulator writes
+it last, after every other historical leaf, so a tag-change is a settled result:
 
 ```
-nsu=http://icc26.demo/UA/NovaflexII/;s=ICC26Extensions->SampleCompleteCounter    UInt32
+nsu=http://icc26.demo/UA/NovaflexII/;s=OPCSystemObjects->HistoricalSampleResults->SampleTime
 ```
 
-Written **last**, after all 141 result leaves and after `State`. When it changes, read
-`ICC26Extensions->ResultJson` and publish once.
+Ignition: tag-change on `novaflex-01/result/sample_time` → Event Stream `03_opcua/novaflex-result`
+→ Transmission to `icc26/site1/qc/analyzers/novaflex-01/result`.
 
-```
-ICC26Extensions->ResultJson        the whole sample result, one String, cannot tear
-ICC26Extensions->QcCompleteCounter QC only — never moves the sample counter
-ICC26Extensions->State             0 Idle 1 Running 2 Completed 3 Aborted 4 Error
-                                   5 Calibrating 6 QualityControl 7 Maintenance
-ns=2;i=3000 SampleCompletedEventType   i=3001 SampleFailedEventType
-ns=2;i=3002 QcCompletedEventType
-```
+`ICC26Extensions` is still in the address space (counter, state, ResultJson) so the missing
+vendor trigger is visible on a browse. The MQTT path does not read it.
 
 The vendor data itself lives under `OPCSystemObjects->HistoricalSampleResults->…` — the manual's
 own recommendation over `SampleResults`, because the historical tree captures every analysis
@@ -189,9 +183,11 @@ this: 26 assertions, all green, 911 nodes across the three trees.
    ciphertext valid for the whole gateway. Drop the signature rather than trying to forge it —
    the resource genuinely was modified externally, and the gateway is fine being told so.
 2. **`bioanalyzer` UDT + `novaflex-01` instance** — written as files, see below.
-3. **Tag-change gateway event script** on `sample_complete_counter` — not built yet, same as the
-   Countess. Reads `result_json`, publishes once via Transmission (not Engine) to
-   `icc26/site1/qc/analyzers/novaflex-01/result`, `meta.mechanism = "opcua-event"`.
+3. **MQTT publish** — tag-change on `result/sample_time` (vendor `HistoricalSampleResults/SampleTime`)
+   hands the result folder to Event Stream `03_opcua/novaflex-result`. Transform
+   `opcua_event.build_novaflex_result` reads the historical UDT siblings and Transmission
+   publishes to `icc26/site1/qc/analyzers/novaflex-01/result`, `meta.mechanism = "opcua-event"`.
+   Does not use `ICC26Extensions`.
 
 ### The UDT
 
