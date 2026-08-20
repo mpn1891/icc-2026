@@ -4,6 +4,9 @@ Nova publishes off HistoricalSampleResults/SampleTime, a vendor field. The tag s
 that DateTime hands this module the result-folder path; we read the historical UDT siblings
 already bound and return one JSON document. Nothing under ICC26Extensions is read.
 
+meta.correlation_id is sample_id. Pattern 4 carries it through the LIMS and back out under
+mechanism=webhook, so one sample is traceable across two colours on the firehose.
+
 Jython 2.7: no f-strings, no type hints, integer division is floor division.
 """
 
@@ -118,6 +121,7 @@ def build_novaflex_result(result_folder):
         "meta": {
             "mechanism": MECHANISM,
             "ingest_ts": _iso(),
+            "correlation_id": _value(by_name["sample_id"]),
         },
         "values": {
             "sample_id": _value(by_name["sample_id"]),

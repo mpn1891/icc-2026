@@ -427,8 +427,56 @@ services:
     networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Remaining pattern services land here in steps 4–8:
-  #   lims             (patterns 4, 6, 7)  services/lims  — implementation TBD
+  # Pattern 4 — LIMS approval webhook
+  #
+  # Subscribes to icc26/site1/qc/analyzers/+/result as lims-bridge, holds the
+  # sample unapproved, and on a human Approve POSTs it to Ignition through a
+  # transactional outbox. Publishes nothing: publishTopics is empty, and
+  # Transmission is the publisher. The approval screen is this container on
+  # :8000, not Perspective — a LIMS screen should look like a LIMS.
+  #
+  # No depends_on: chariot. Reconnect-with-backoff is in-app, per the
+  # conventions. The gateway certificate is mounted and trusted; we do not
+  # disable TLS verification. See services/lims/README.md.
+  # ───────────────────────────────────────────────────────────────────────────
+  lims:
+    build: ./services/lims
+    container_name: icc26-lims
+    restart: unless-stopped
+    environment:
+      BROKER_HOST: chariot
+      MQTT_USERNAME: lims-bridge
+      MQTT_PASSWORD: lims-bridge
+      RESULT_TOPIC: icc26/site1/qc/analyzers/+/result
+      PGHOST: postgres
+      PGDATABASE: icc26
+      PGUSER: icc26
+      PGPASSWORD: ${ICC26_DB_PASSWORD:-icc26}
+      # HTTPS. Ignition redirects :8088 to :8043, so HTTP is just an extra hop.
+      # The mounted gateway cert is trusted; hostname check is off because the
+      # restored ssl.pfx SAN is localhost, not `ignition`. See services/lims.
+      WEBHOOK_URL: ${LIMS_WEBHOOK_URL:-https://ignition:8043/system/webdev/icc-2026/lims/sample-result}
+      WEBHOOK_SECRET: ${LIMS_WEBHOOK_SECRET:-icc26-webhook-secret}
+      WEBHOOK_MAX_ATTEMPTS: ${LIMS_WEBHOOK_MAX_ATTEMPTS:-5}
+      WEBHOOK_CA_FILE: /certs/icc26-ignition.crt
+      GENERATOR_INTERVAL_S: ${LIMS_GENERATOR_INTERVAL_S:-0}
+      LOG_LEVEL: ${LIMS_LOG_LEVEL:-INFO}
+      TZ: ${TZ:-America/Chicago}
+    ports:
+      - "${LIMS_PORT:-8000}:8000"
+    volumes:
+      - ./ignition/certificates/icc26-ignition.crt:/certs/icc26-ignition.crt:ro
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks: [icc26]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Remaining pattern services land here in steps 5–8:
   #   debezium         (pattern 5)  quay.io/debezium/server
   #
   # (services/sim-vibration/ is the retired pattern-1 vibration gateway. It is

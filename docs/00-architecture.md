@@ -7,6 +7,7 @@ add it here rather than in a status note.
 
 - What is true *right now* and what to do next: [`plans/00-status.md`](plans/00-status.md).
 - What is still to be built: [`plans/00-master-plan.md`](plans/00-master-plan.md).
+- Talk tracks, as they are written: [`04-lims-webhook.md`](04-lims-webhook.md).
 
 ---
 
@@ -45,7 +46,7 @@ carrying different mechanisms is a useful thing to be able to point at.
 | `opcua-novaflex` | 4841 | step 4 |
 | `sim-valve-mqtt` | 8085 (config page) | pattern 1 |
 | `sim-valve-spb` | 8086 (config page) | pattern 2 |
-| `lims` | 8000 (approval screen) | pattern 4 — planned |
+| `lims` | 8000 (approval screen) | pattern 4 — built |
 | `odoo` | 8069 | pattern 5 — planned |
 | `debezium` | 8083 | pattern 5 — planned |
 | `sim-particle-counter` | 5020 (Modbus TCP) | pattern 6 — planned |
@@ -54,7 +55,8 @@ carrying different mechanisms is a useful thing to be able to point at.
 | `opcua-dcs` | 4842 | pattern 7 — planned |
 
 The four `planned` services below `lims` were all decided on 2026-08-19 and none has a spec yet.
-Ports are provisional.
+Ports are provisional. `lims` is built: see [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md)
+and [`04-lims-webhook.md`](04-lims-webhook.md).
 
 **Patterns 1 and 2 are the same physical device in two firmwares** — a badge-operated smart
 sample valve assembly, one on `BR-201` speaking plain MQTT and one on `BR-202` speaking
@@ -96,9 +98,8 @@ released by a human, pushed to Ignition over HTTP.** See
 patterns depended on this; for one webhook, a small FastAPI service is the right size.
 
 The three retired surfaces (`GET /results?since_id=N`, a Debezium-tailed insert, and a query for
-the aggregation script) are recorded here because the reason they existed — convergence — is
-worth remembering, and because `02-schema.sql` and `04-cdc.sql` still carry comments written when
-they were live.
+the aggregation script) are retired, not pending. The comments in `02-schema.sql` and
+`04-cdc.sql` say so.
 
 ---
 
@@ -161,8 +162,12 @@ Postgres schema stays `mes.batch_event`: a database schema is a system-of-record
 that is exactly what it should be named after.
 
 > **Known remaining wart:** `qc/lims/sample-result` still puts a software system in the
-> line-or-cell slot. `qc` is a real area so the violation is smaller, and patterns 4/5/6 all key
-> off that one topic. Revisit when spec 04 is written.
+> line-or-cell slot. Revisited in spec 04 (2026-08-19) and **kept**. The better address is
+> under BR-201, naming the LIMS in the payload — the same rule `mes.batch_event` already
+> follows. The topic is referenced by an ACL, the firehose colouring and the runbook, and
+> the conference is four weeks out. The reversal made this *less* defensible, not more:
+> `qc/lims/` was easier to justify when three patterns keyed off one topic. Now one does,
+> and the calendar is what holds the address. Say so on stage.
 
 **Every topic here is device-addressed.** There is currently no exception, which was not true
 of the earlier vibration-gateway design and is worth knowing changed: that pattern had a
@@ -208,10 +213,11 @@ Consequences that are easy to miss:
 
 - The `lims-bridge` ACL no longer enforces convergence. It still exists, and it still earns its
   place — see the cycle hazard in [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md).
-- **`lims.sample_result` is no longer "the single most important table in the demo"**, whatever
-  the comment in `compose/postgres/initdb/02-schema.sql` says. Exactly one pattern touches it.
+- **`lims.sample_result` is no longer "the single most important table in the demo".** Exactly
+  one pattern touches it. The comment in `02-schema.sql` now says so.
 - **`mes.batch_event` has no consumer at all.** Odoo's manufacturing orders replace the
-  hand-made MES table, and `04-cdc.sql`'s publication needs revisiting with pattern 5.
+  hand-made MES table. `04-cdc.sql`'s publication still names both tables and says they have
+  no subscriber; retire it with pattern 5's spec.
 - Pattern 4's message can now be sample-shaped rather than row-shaped, because it no longer has
   to match a row-granular CDC stream. That is a simplification, not a loss.
 
@@ -261,10 +267,11 @@ properties. Nothing in the demo currently needs them: every pattern is one-way. 
 request/response pattern is ever added, this is the constraint it will run into first, and
 `meta.correlation_id` is the field already reserved in the envelope for it.
 
-**`meta.correlation_id` gets its first real user in pattern 4**, which carries the analyzer's
-`sample_id` through the LIMS and back out under a different mechanism, so one sample is traceable
-across two colours on the firehose. Pattern 7's AMS request would be the second, and the one that
-actually needs the MQTT 5 properties this broker does not have.
+**`meta.correlation_id` has a working first user in pattern 4.** The analyzer envelope stamps
+`sample_id` into it; the LIMS carries it through approval and the webhook republishes it under
+`mechanism=webhook`, so one sample is traceable across two colours on the firehose. Pattern 7's
+AMS request would be the second, and the one that actually needs the MQTT 5 properties this
+broker does not have.
 
 ### MQTT Engine has two ingest surfaces, and they produce different things
 
@@ -628,7 +635,9 @@ out-of-band observer the application knows nothing about.
 
 `lims.sample_result` and `mes.batch_event` are set to `REPLICA IDENTITY FULL` so Debezium
 receives complete row pre-images on UPDATE and DELETE. It costs WAL volume — fine for two
-demo tables, not something to enable blindly across a real database.
+demo tables, not something to enable blindly across a real database. Pattern 5 no longer
+tails either table (it tails Odoo); the setting stays until that spec retires the
+publication. `lims.webhook_delivery` is pattern 4's outbox and is not in the publication.
 
 ---
 

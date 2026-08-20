@@ -1,0 +1,25 @@
+{
+  "resource-type": "python-resource",
+  "enabled": true,
+  "requireAuth": false,
+  "requiredRoles": [],
+  "requiredSecurityLevels": [],
+  "requireHttps": false,
+  "contentType": "application/json",
+  "doGet": {
+    "enabled": true,
+    "require-https": false,
+    "require-auth": false,
+    "user-source": "",
+    "required-roles": "",
+    "max-retry-attempts": 3
+  },
+  "doPost": {
+    "enabled": true,
+    "require-https": false,
+    "require-auth": false,
+    "user-source": "",
+    "required-roles": "",
+    "max-retry-attempts": 3
+  }
+}

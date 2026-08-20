@@ -816,7 +816,7 @@ def _csv(value):
 
 def _ssl_subject_names(env):
     """Stable local names plus optional conference-network names from .env."""
-    dns_names = ["localhost"]
+    dns_names = ["localhost", "ignition", "icc26-ignition"]
     for name in (socket.gethostname(), socket.getfqdn()):
         if name and name.lower() not in [item.lower() for item in dns_names]:
             dns_names.append(name)

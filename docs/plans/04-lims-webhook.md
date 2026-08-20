@@ -5,12 +5,11 @@
 > own sources — see [`../00-architecture.md` § *Patterns 4, 5 and 6 used to share one
 > topic*](../00-architecture.md).
 >
-> That reversal took three of the LIMS's four contract surfaces with it. This pattern used to be
-> the hub of the demo and blocked three others; it is now a single-purpose webhook source that
-> blocks nothing. Everything cut is recorded in [Deviations](#deviations-knowingly) rather than
-> deleted, because the reasons are the interesting part.
->
-> **Nothing here is built yet.** This is a plan, not a record.
+> **Built 2026-08-20 and broker-verified the same day.** Talk track:
+> [`../04-lims-webhook.md`](../04-lims-webhook.md). Schema and the `lims-bridge` subscribe grant
+> take effect on an empty volume; on this checkout they were applied live (`migrate-04-lims.sql`
+> + Chariot `PUT /mqttusers/lims-bridge`) without a nuke. `python tasks.py nuke` then `seed`
+> remains the clean-room path — do it before pattern 5 initializes Odoo.
 
 ## Objective
 
@@ -326,11 +325,10 @@ bad sentence to say on a stage.
 `sample_id` is already unique per run and already the join key the LIMS uses, so it needs no new
 identifier. Then `python tasks.py scan`.
 
-**WebDev POST resource — UI first.** The 8.3 WebDev resource schema is not known here, so per
-`00-master-plan.md` § *Cross-cutting conventions*: create it in the Designer once, read what
-`git status` reveals under `ignition/projects/icc-2026/`, commit that, then parametrize. Do not
-hand-author it. The mount path in `WEBHOOK_URL` above is a guess and **must be confirmed against
-the running gateway** before the LIMS is pointed at it.
+**WebDev POST resource.** The 8.3 discriminator is `resource-type` in `config.json`, value
+`python-resource`. A guessed `resourceType: python` mounts the URL but every GET/POST returns
+`500 Unknown resource factory:` with an empty name. Method bodies live in `doGet.py` / `doPost.py`.
+`lims_webhook` uses `logger.infof` / `logger.warnf` — LoggerEx is not Python logging.
 
 Behaviour:
 
@@ -483,19 +481,17 @@ argument this pattern makes about durability.
 4. Say the line: what we just built to make a webhook trustworthy is a worse copy of the write-ahead
    log Postgres has had the whole time. Which is pattern 5.
 
-## Anticipated gotchas
+## Gotchas, as found
 
-Guesses, not findings — rewrite this table with what actually happens.
-
-| Expected symptom | Likely cause | First thing to try |
+| Symptom | Cause | What actually worked |
 |---|---|---|
-| Webhook POST fails with a TLS error | self-signed gateway certificate not trusted inside the container | Mount `ignition/certificates/icc26-ignition.crt` and set `SSL_CERT_FILE`; do not disable verification |
-| WebDev endpoint returns 404 | the mount path guessed in `WEBHOOK_URL` is wrong | Read the real path off the resource the Designer wrote, per the UI-then-commit rule |
-| Two rows per analyte after a reconnect | QoS 1 redelivery, and `uq_sample_analyte` missing because the volume was never nuked | Checkpoint 3 |
-| Nothing arrives from the analyzer, no error | `lims-bridge` subscribe grant not applied — `mqtt-users.json` seeds **on first run only** | `tasks.py nuke`; editing that file against an existing Chariot store does nothing |
-| Approve returns 200 but nothing publishes | `ign-transmission` is the publisher, not `lims-bridge`; check Transmission, not the LIMS | Gateway log, then Chariot's client list |
-| Duplicate messages after a restart | correct behaviour — an outbox is at-least-once. The `409` path is what makes it look exactly-once | Confirm the Ignition dedupe window, not the LIMS |
-| Everything stops, tags included | **the two-hour trial lapsed.** Check this before diagnosing anything | `GET /data/api/v1/trial` → `trialSecondsLeft` |
+| WebDev `402` | two-hour trial lapsed | `GET /data/api/v1/trial` → reset in Gateway UI → Config → Licensing. `tasks.py` must not write trial state |
+| WebDev `500 Unknown resource factory:` | `config.json` used `resourceType: python` | `"resource-type": "python-resource"` |
+| POST 500 after a successful publish | `logger.info("… %s", key)` | `logger.infof` / `logger.warnf` |
+| TLS error following `:8088` → `:8043` | self-signed cert, SAN is `localhost` only | mount the public cert, `CERT_REQUIRED`, `check_hostname = False` |
+| Two rows from a live Nova sample, not three | osmometer unfitted, `osmo` is null | a null analyte produces **no row**. `/trigger` synthesises all three |
+| Second `/trigger` in the same second is a no-op | sample id is `S-%Y%m%d-%H%M%S` | wait a second, or use a live analyzer sample |
+| `mqtt-users.json` edit does nothing | Chariot seeds users on first run only | `PUT /mqttusers/lims-bridge` against the running broker, or nuke |
 
 ## Deviations, knowingly
 

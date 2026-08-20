@@ -1,6 +1,6 @@
 # Status
 
-> **Updated 2026-08-19.** Conference is ~4 weeks out.
+> **Updated 2026-08-20.** Conference is ~4 weeks out.
 >
 > **The stale-image blocker is CLEARED.** A gateway rebuilt from the repo loads Cirrus **5.0.4**
 > Engine, Transmission and Distributor with no compatibility warnings. `tasks.py` now forces
@@ -11,9 +11,17 @@
 > passed. Findings live in [`01-native-mqtt.md`](01-native-mqtt.md) and
 > [`02-sparkplug-b.md`](02-sparkplug-b.md), each under *Ingest, as built*.
 >
-> **Pattern 3 Nova MQTT publish is built** (not yet run against a live gateway in this pass):
-> vendor `SampleTime` → Event Stream `03_opcua/novaflex-result` → Transmission. Countess publish
-> is still open.
+> **Pattern 3 is done on the Nova path** (broker-verified 2026-08-20): vendor `SampleTime` →
+> Event Stream `03_opcua/novaflex-result` → Transmission →
+> `icc26/site1/qc/analyzers/novaflex-01/result` with `meta.mechanism = "opcua-event"` and
+> `meta.correlation_id` = `sample_id` (broker-watched 2026-08-20, e.g. `S-00140`). Countess
+> stays in compose as a second designed OPC UA analyzer for the talk contrast; **MQTT publish
+> is intentionally not wired** — not an open Pattern 3 work item.
+>
+> **Pattern 4 is verified end-to-end** on this checkout. Ingest, reject, atomic
+> approve, webhook publish (`mechanism: webhook`), 409 replay, 401 wrong secret,
+> and outbox survival across `docker restart icc26-lims` all held. Talk track:
+> [`../04-lims-webhook.md`](../04-lims-webhook.md).
 
 What is true right now and what to do next. Durable knowledge does not live here — it lives in
 [`../00-architecture.md`](../00-architecture.md). Work still to be built lives in
@@ -30,30 +38,19 @@ topic*](../00-architecture.md) before touching any of them. In short: 5 becomes 
 waveform gated on DCS steady-state and requested by an asset management system**. Each mechanism
 now gets the source that genuinely forces it, and no two patterns carry the same data.
 
-**Four work items, and they are genuinely independent** — the old plan funnelled everything
-through pattern 4 because 5/6/7 read the LIMS. They no longer do.
+**Two work items remaining, and they are genuinely independent.**
 
-1. **Watch Nova's publish on the broker.** Authored, never seen: tag-change on
-   `result/sample_time` → Event Stream `03_opcua/novaflex-result` → Transmission.
-   `python tasks.py scan`, then the mosquitto check in
-   [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md) § 9. Pattern 4 consumes this
-   topic, so it is still the first thing to do — but it is no longer four patterns' critical path.
-2. **Build 08's fallback firehose.** Moved forward from last. It depends on no pattern, and it is
-   the only deliverable whose absence is visible from the audience.
-3. **Pattern 4**, per [`04-lims-webhook.md`](04-lims-webhook.md) — now a single-purpose webhook
-   source that blocks nothing.
-4. **Pattern 6's Modbus simulator.** The longest new build of the four; start it earliest.
+1. **Build 08's fallback firehose.** It depends on no pattern, and it is the only deliverable
+   whose absence is visible from the audience.
+2. **Pattern 6's Modbus simulator.** The longest new build of the remaining two; start it
+   earliest.
 
-**One `nuke` + `seed`** covers both of pattern 4's config changes — the `lims.sample_result`
-columns in `02-schema.sql` and the `lims-bridge` subscribe grant in `mqtt-users.json`. Neither
-takes effect against an existing volume. **Do it before Odoo is initialized**, because the same
-`nuke` destroys Odoo's database.
-
-Countess still needs its own publish on `count_completed_counter`; nothing depends on it.
+Countess MQTT publish on `count_completed_counter` is optional polish if wanted later; nothing
+depends on it, and Pattern 3 does not wait on it.
 
 Newly dead, and worth deleting rather than maintaining: `mes.batch_event` has no consumer at all
 (Odoo replaces the hand-made MES table), and `04-cdc.sql`'s publication points at two tables
-nothing reads. Retire both with pattern 5's spec.
+nothing reads. Comments in both SQL files now say so. Retire both with pattern 5's spec.
 
 `00-next-step.md` is **done** and kept only as the record of what was run. Everything durable
 from it has moved into [`../00-architecture.md`](../00-architecture.md) and the two pattern specs.
@@ -149,7 +146,9 @@ Do not `git commit` from inside the scratch clone, and do not `nuke` the main ch
 - **Never commit** `ignition/config/local/`, `ignition/config/resources/local/`,
   `valueStore.idb`, `.modl` files, or `.env`.
 - **Unknown gateway schemas: UI first, then read `git status`, then commit.** Known formats
-  (tags, project scripts, WebDev, Perspective views) can be authored as files.
+  (tags, project scripts, WebDev, Perspective views) can be authored as files. WebDev python
+  resources need `"resource-type": "python-resource"` in `config.json` — any other discriminator
+  mounts the URL and then 500s.
 - **On-disk config/project changes: `python tasks.py scan`**, not a container restart. Restart
   only if scan is unavailable (no API key) or you changed a container-consumed `.env` secret.
 - **Changed container-consumed `.env` secrets need `python tasks.py restart ignition`**, not

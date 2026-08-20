@@ -36,33 +36,58 @@ CREATE TABLE plant.batch (
 );
 
 -- ── lims: sample results ─────────────────────────────────────────────────────
--- The single most important table in the demo. Patterns 4 (webhook), 5 (CDC) and
--- 6 (poll) all surface rows from THIS table, by three different mechanisms, onto
--- ONE topic: icc26/site1/qc/lims/sample-result
+-- Pattern 4's holding area. Analyzer results land here as status='received'; a
+-- human Approve flips them to 'verified' and writes one outbox row in the same
+-- transaction. This is not "the single most important table in the demo" — that
+-- comment dated from the convergence design, when patterns 4, 5 and 6 all
+-- surfaced the same rows. Since 2026-08-19 only pattern 4 touches this table.
 --
--- `id` is a monotonic bigint on purpose — pattern 6 watermarks on it, and part of
--- that pattern's talk track is why an id watermark beats a timestamp watermark.
+-- `batch_id` is free text, not a FK. The analyzer names batches the LIMS may not
+-- have opened yet, and refusing the insert would drop a real result.
+-- `UNIQUE (sample_id, analyte)` is a demo simplification: a real LIMS repeats
+-- tests. It exists so QoS 1 redelivery is a no-op (ON CONFLICT DO NOTHING).
 CREATE TABLE lims.sample_result (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     sample_id     text NOT NULL,
-    batch_id      text REFERENCES plant.batch(batch_id),
+    batch_id      text,
     analyte       text NOT NULL,             -- 'glucose' | 'lactate' | 'osmolality' | …
     value         numeric(12,4) NOT NULL,
     uom           text NOT NULL,
-    collected_at  timestamptz NOT NULL,      -- when the sample was drawn
+    collected_at  timestamptz NOT NULL,      -- vendor SampleTime — the acquisition instant
     created_at    timestamptz NOT NULL DEFAULT now(),  -- when the row appeared
-    analyst       text
+    analyst       text,                      -- the approver, not the instrument operator
+    status        text NOT NULL DEFAULT 'received',  -- received | verified | rejected
+    verified_at   timestamptz,
+    CONSTRAINT uq_sample_analyte UNIQUE (sample_id, analyte)
 );
 
--- Pattern 6 polls `WHERE id > :watermark ORDER BY id`.
 CREATE INDEX ix_sample_result_id_created ON lims.sample_result (id, created_at);
--- Supports the timestamp-watermark variant, so the demo can show both and
--- contrast their failure modes side by side.
 CREATE INDEX ix_sample_result_created    ON lims.sample_result (created_at);
+CREATE INDEX ix_sample_result_status     ON lims.sample_result (status, collected_at);
+
+-- The outbox. One row per sample approved, not per result row: one approval is
+-- one delivery. Delivery state is not domain state, which is why this is a
+-- separate table. Pattern 5 used to tail sample_result; attempt counters on the
+-- result row would have made every retry a CDC event. That hazard is gone
+-- (pattern 5 moved to Odoo) and the table still earns its keep — you can query
+-- it, retry it, and put it on the approval screen.
+CREATE TABLE lims.webhook_delivery (
+    id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    sample_id   text NOT NULL UNIQUE,
+    payload     jsonb NOT NULL,          -- built at approval time, inside the transaction
+    attempts    int  NOT NULL DEFAULT 0,
+    state       text NOT NULL DEFAULT 'pending',  -- pending | delivered | abandoned
+    last_error  text,
+    next_try_at timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_webhook_delivery_due ON lims.webhook_delivery (state, next_try_at);
 
 -- ── mes: batch lifecycle events ──────────────────────────────────────────────
--- Pattern 5's other CDC source. Discrete state transitions, which is what CDC is
--- genuinely good at capturing.
+-- No consumer. Pattern 5 was going to CDC-tail this; it now tails Odoo instead.
+-- Kept so the physical model stays coherent and so pattern 5's spec can retire
+-- it on purpose rather than leaving a table that looks live. 04-cdc.sql still
+-- publishes it — retire that publication with the pattern-5 spec, not here.
 CREATE TABLE mes.batch_event (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     batch_id      text NOT NULL,

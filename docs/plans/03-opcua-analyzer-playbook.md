@@ -6,10 +6,12 @@
 > cost most of the build time and every one of them will repeat verbatim on the next analyzer.
 
 **Built:** simulated Thermo Fisher Countess 3 FL cell counter → OPC UA → Ignition UDT, and then
-a simulated Nova Biomedical BioProfile FLEX2 the same way. Nova MQTT publish is built: a
-tag-change on vendor `HistoricalSampleResults/SampleTime` hands the result folder to Event
-Stream `03_opcua/novaflex-result`, which reads the historical UDT tags and publishes through
-Transmission. **Not built yet:** the Countess publish (step 9).
+a simulated Nova Biomedical BioProfile FLEX2 the same way. **Pattern 3 MQTT publish is done on
+Nova** (broker-verified 2026-08-20): a tag-change on vendor
+`HistoricalSampleResults/SampleTime` hands the result folder to Event Stream
+`03_opcua/novaflex-result`, which reads the historical UDT tags and publishes through
+Transmission. **Countess publish is deferred** — it stays a live second OPC UA analyzer for the
+talk contrast; step 9 on Countess is optional polish, not required to call Pattern 3 done.
 
 | Artifact | Countess | Novaflex |
 |---|---|---|
@@ -178,8 +180,10 @@ before the rest of the result is on the wire. `ICC26Extensions` is still in the 
 so the missing vendor counter is visible; the MQTT path does not read it. QC is a separate
 event and is not on this stream.
 
-**Countess — not built.** Same idea, on `count_completed_counter` (that counter *is* part of
-the model we designed — there is no vendor server to stay faithful to).
+**Countess — deferred / not in scope for Pattern 3 completion.** Same idea would work on
+`count_completed_counter` (that counter *is* part of the model we designed — there is no vendor
+server to stay faithful to). The Countess stays in compose as an example designed UA server
+alongside Nova; MQTT publish is intentionally not wired. Optional later; nothing depends on it.
 
 Verify Nova: trigger `ESMScheduleAnalysis`, then
 
@@ -282,5 +286,5 @@ the field-table pattern (generalised into `_add_branch`), `_CommandHandler`, `_n
 Dockerfile, and the compose block. Every gotcha table below applied unchanged and cost no time
 the second run.
 
-The Novaflex OPC connection and UDT are built. MQTT publish is built off `SampleTime` (step 9).
-Countess still needs its publish script.
+The Novaflex OPC connection and UDT are built. MQTT publish is built off `SampleTime` (step 9)
+and was broker-verified 2026-08-20. Countess publish remains deferred — example UA server only.
