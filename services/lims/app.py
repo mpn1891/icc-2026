@@ -69,6 +69,14 @@ ANALYTES = [
     ("osmolality", "osmo", "mOsm/kg"),
 ]
 
+# In-process specs for the review grid. Demo values, chosen so a healthy FLEX2
+# sample lands in-spec and the OOS chip is reserved for a real excursion.
+TEST_CATALOG = {
+    "glucose": {"code": "CHEM-GLUC", "name": "Glucose", "lo": 1.0, "hi": 8.0, "uom": "g/L"},
+    "lactate": {"code": "CHEM-LAC", "name": "Lactate", "lo": None, "hi": 3.0, "uom": "g/L"},
+    "osmolality": {"code": "OSMO", "name": "Osmolality", "lo": 260.0, "hi": 340.0, "uom": "mOsm/kg"},
+}
+
 PAGE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 
 
@@ -712,12 +720,28 @@ def _read_page() -> str:
         return handle.read()
 
 
-def _fmt_ts(value) -> str:
+def _fmt_display_ts(value) -> str:
     if value is None:
-        return ""
+        return "—"
     if isinstance(value, datetime):
-        return _iso(value)
-    return str(value)
+        dt = value
+    else:
+        try:
+            dt = _parse_ts(value)
+        except Exception:
+            return str(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).strftime("%d-%b-%Y %H:%M")
+
+
+def _initials(name: str) -> str:
+    parts = [p for p in (name or "").replace(".", " ").split() if p]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
 
 
 def _esc(value) -> str:
@@ -787,11 +811,13 @@ def create_app(cfg: Config, store: Store, ingest: MqttIngest, drainer: Drainer,
         page = _read_page()
         page = page.replace("@@TOPIC@@", _esc(cfg.result_topic))
         page = page.replace("@@ANALYST@@", _esc(analyst))
+        page = page.replace("@@ANALYST_INITIALS@@", _esc(_initials(analyst)))
         page = page.replace("@@MQTT_LED@@", "on" if ingest.connected else "")
+        page = page.replace("@@MQTT_LABEL@@", "Online" if ingest.connected else "Offline")
         page = page.replace("@@DRAINER_LED@@", "on" if drainer.enabled.is_set() else "warn")
         page = page.replace(
             "@@DRAINER_LABEL@@",
-            "on" if drainer.enabled.is_set() else "DISABLED",
+            "Running" if drainer.enabled.is_set() else "Paused",
         )
         page = page.replace("@@PENDING_COUNT@@", str(len(pending)))
         page = page.replace("@@OUTBOX_COUNT@@", str(len(outbox)))
@@ -879,72 +905,166 @@ def create_app(cfg: Config, store: Store, ingest: MqttIngest, drainer: Drainer,
     return app
 
 
+def _fmt_result(value) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "" if value is None else str(value)
+    if number == int(number):
+        return str(int(number))
+    return "%.2f" % number
+
+
+def _spec_for(analyte: str, value) -> dict:
+    catalog = TEST_CATALOG.get(analyte, {
+        "code": (analyte or "").upper(),
+        "name": (analyte or "").title(),
+        "lo": None,
+        "hi": None,
+        "uom": "",
+    })
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = None
+    in_spec = True
+    if number is not None:
+        if catalog["lo"] is not None and number < catalog["lo"]:
+            in_spec = False
+        if catalog["hi"] is not None and number > catalog["hi"]:
+            in_spec = False
+    if catalog["lo"] is None and catalog["hi"] is None:
+        spec_text = "—"
+    elif catalog["lo"] is None:
+        spec_text = "≤ %s" % _fmt_result(catalog["hi"])
+    elif catalog["hi"] is None:
+        spec_text = "≥ %s" % _fmt_result(catalog["lo"])
+    else:
+        spec_text = "%s – %s" % (_fmt_result(catalog["lo"]), _fmt_result(catalog["hi"]))
+    return {
+        "code": catalog["code"],
+        "name": catalog["name"],
+        "uom": catalog["uom"],
+        "spec": spec_text,
+        "in_spec": in_spec,
+    }
+
+
 def _pending_html(pending: list[dict], analyst: str) -> str:
     if not pending:
-        return '<p class="empty">Nothing waiting. Trigger the analyzer, or synthesise a sample below.</p>'
-    rows = []
+        return (
+            '<p class="empty">No samples are waiting for review. '
+            "New FLEX2 results appear here when the analyzer posts a complete sample.</p>"
+        )
+    body = []
     for sample in pending:
-        analytes = ", ".join(
-            "%s %s %s" % (item["analyte"], item["value"], item["uom"])
-            for item in (sample["results"] or [])
-        )
-        rows.append(
-            "<tr>"
-            '<td class="mono">%s</td>'
-            '<td class="mono">%s</td>'
-            '<td class="mono">%s</td>'
-            "<td>%s</td>"
-            '<td><div class="actions">'
-            '<form method="post" action="/samples/%s/approve">'
-            '<input type="hidden" name="analyst" value="%s">'
-            '<button class="ok" type="submit">Approve</button></form>'
-            '<form method="post" action="/samples/%s/reject">'
-            '<input type="hidden" name="analyst" value="%s">'
-            '<button class="danger" type="submit">Reject</button></form>'
-            "</div></td>"
-            "</tr>" % (
-                _esc(sample["sample_id"]),
-                _esc(sample["batch_id"]),
-                _esc(_fmt_ts(sample["collected_at"])),
-                _esc(analytes),
-                _esc(sample["sample_id"]),
-                _esc(analyst),
-                _esc(sample["sample_id"]),
-                _esc(analyst),
+        results = sample["results"] or []
+        if not results:
+            results = [{"analyte": "", "value": None, "uom": ""}]
+        span = len(results)
+        oos = 0
+        first = True
+        for item in results:
+            spec = _spec_for(item.get("analyte"), item.get("value"))
+            if item.get("analyte") and not spec["in_spec"]:
+                oos += 1
+            row_class = "sample-start" if first else ("fail" if not spec["in_spec"] else "")
+            cells = ""
+            if first:
+                cells = (
+                    '<td class="sample-cell" rowspan="%s">'
+                    '<div class="sid">%s</div>'
+                    '<div class="smeta">%s</div>'
+                    '<div class="smeta">%s · FLEX2</div>'
+                    "@@FLAG@@"
+                    "</td>" % (
+                        span,
+                        _esc(sample["sample_id"]),
+                        _esc(sample["batch_id"]),
+                        _esc(_fmt_display_ts(sample["collected_at"])),
+                    )
+                )
+            cells += (
+                "<td>%s</td><td>%s</td>"
+                '<td class="num">%s</td><td>%s</td><td>%s</td>'
+                '<td><span class="disp %s">%s</span></td>' % (
+                    _esc(spec["code"]),
+                    _esc(spec["name"]),
+                    _esc(_fmt_result(item.get("value"))),
+                    _esc(item.get("uom") or spec["uom"]),
+                    _esc(spec["spec"]),
+                    "in" if spec["in_spec"] else "out",
+                    "In spec" if spec["in_spec"] else "OOS",
+                )
             )
+            if first:
+                cells += (
+                    '<td class="action-cell" rowspan="%s"><div class="actions">'
+                    '<form method="post" action="/samples/%s/approve">'
+                    '<input type="hidden" name="analyst" value="%s">'
+                    '<button class="ok" type="submit">e-Sign &amp; release</button></form>'
+                    '<form method="post" action="/samples/%s/reject">'
+                    '<input type="hidden" name="analyst" value="%s">'
+                    '<button class="danger" type="submit">Return to lab</button></form>'
+                    "</div></td>" % (
+                        span,
+                        _esc(sample["sample_id"]),
+                        _esc(analyst),
+                        _esc(sample["sample_id"]),
+                        _esc(analyst),
+                    )
+                )
+            body.append('<tr class="%s">%s</tr>' % (row_class, cells))
+            first = False
+        flag = (
+            '<div class="smeta oos">%s of %s tests OOS</div>' % (oos, len(results))
+            if oos
+            else '<div class="smeta">In specification</div>'
         )
+        # The first row was emitted before oos was fully known. Patch the marker.
+        if body:
+            body[-span] = body[-span].replace("@@FLAG@@", flag, 1)
     return (
         "<table><thead><tr>"
-        "<th>Sample</th><th>Batch</th><th>Collected</th><th>Analytes</th><th></th>"
-        "</tr></thead><tbody>%s</tbody></table>" % "".join(rows)
+        "<th>Sample</th><th>Test</th><th>Name</th><th>Result</th>"
+        "<th>Units</th><th>Specification</th><th>Disposition</th><th></th>"
+        "</tr></thead><tbody>%s</tbody></table>"
+        '<p class="meaning">21 CFR 11 signature meaning: I have reviewed these results '
+        "and they are suitable for use.</p>" % "".join(body)
     )
 
 
 def _outbox_html(outbox: list[dict]) -> str:
     if not outbox:
-        return '<p class="empty">No deliveries yet.</p>'
+        return '<p class="empty">No transmissions in the current session.</p>'
+    labels = {
+        "pending": "Queued",
+        "delivered": "Sent",
+        "abandoned": "Failed",
+    }
     rows = []
     for item in outbox:
-        error = item["last_error"] or ""
+        state = item["state"] or ""
         rows.append(
             "<tr>"
-            '<td class="mono">%s</td>'
-            '<td><span class="pill %s">%s</span></td>'
-            '<td class="mono">%s</td>'
             "<td>%s</td>"
-            '<td class="mono">%s</td>'
+            '<td><span class="chip %s">%s</span></td>'
+            '<td class="num">%s</td>'
+            "<td>%s</td>"
+            "<td>%s</td>"
             "</tr>" % (
                 _esc(item["sample_id"]),
-                _esc(item["state"]),
-                _esc(item["state"]),
+                _esc(state),
+                _esc(labels.get(state, state)),
                 item["attempts"],
-                _esc(error),
-                _esc(_fmt_ts(item["updated_at"])),
+                _esc(item["last_error"] or "—"),
+                _esc(_fmt_display_ts(item["updated_at"])),
             )
         )
     return (
         "<table><thead><tr>"
-        "<th>Sample</th><th>State</th><th>Attempts</th><th>Last error</th><th>Updated</th>"
+        "<th>Sample</th><th>Interface</th><th>Attempts</th>"
+        "<th>Last message</th><th>Updated</th>"
         "</tr></thead><tbody>%s</tbody></table>" % "".join(rows)
     )
 

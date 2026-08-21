@@ -1,189 +1,479 @@
 <!DOCTYPE html>
 <!--
-  The LIMS approval screen. Served by services/lims itself, not by Perspective:
-  a LIMS screen should look like a LIMS, and it keeps this pattern off Ignition's
-  critical path. Same CSS tokens as the two valve config pages so the demo reads
-  as one house; the content is a pending queue, an outbox, and two buttons.
-
-  No external assets — the demo has to run with networking disabled.
+  QC result-review screen, served by this container rather than Perspective:
+  a LIMS has to look like a LIMS. Chrome is LabWare-web (navy app bar, explorer,
+  worklist, e-sign, status bar); the canvas is closer to a modern ELN so it
+  does not read as a 2003 thick client. No external assets.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QC Sample Release &mdash; LIMS</title>
+<title>Result Review — LIMS — ICC Site 1</title>
 <style>
   :root {
-    --bg: #12161c;
-    --panel: #1a2028;
-    --panel-2: #202834;
-    --line: #2d3846;
-    --ink: #e6edf5;
-    --muted: #8d9bad;
-    --accent: #3fa7ff;
-    --ok: #37c98b;
-    --warn: #e8b44a;
-    --bad: #e8615a;
-    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+    --navy: #0b365c;
+    --navy-2: #124a78;
+    --menu: #0e3f6b;
+    --link: #0b5cab;
+    --teal: #0f6e68;
+    --canvas: #d7dee5;
+    --panel: #fff;
+    --line: #c3ccd4;
+    --line-2: #e4eaef;
+    --ink: #1b242c;
+    --muted: #5a6874;
+    --row: #f5f8fa;
+    --ok: #1b6b45;
+    --ok-bg: #e7f5ee;
+    --warn: #8a5a00;
+    --warn-bg: #f8efd8;
+    --bad: #b42318;
+    --bad-bg: #f8e8e6;
+    --sans: "Segoe UI", Tahoma, Arial, sans-serif;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
-    margin: 0; padding: 0 0 3rem;
-    background: var(--bg); color: var(--ink);
-    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font: 13px/1.4 var(--sans);
   }
-  header {
-    background: linear-gradient(180deg, #1d2530, #161c24);
+  button, input { font: inherit; }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .app {
+    min-height: 100%;
+    display: grid;
+    grid-template-rows: 48px 28px 1fr 24px;
+    grid-template-columns: 232px 1fr;
+    grid-template-areas:
+      "top top"
+      "menubar menubar"
+      "nav main"
+      "status status";
+  }
+
+  .top {
+    grid-area: top;
+    background: var(--navy);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 0 14px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 218px;
+  }
+  .mark {
+    width: 26px; height: 26px;
+    border: 1.5px solid #8ec4e8;
+    display: grid;
+    place-items: center;
+    font: 700 12px/1 var(--sans);
+    letter-spacing: .02em;
+  }
+  .brand-name { font-size: 14px; font-weight: 600; }
+  .brand-name span { display: block; font-size: 10px; font-weight: 400; color: #a9c7de; }
+  .search {
+    width: 240px;
+    height: 26px;
+    background: #082844;
+    border: 1px solid #2a5a84;
+    color: #d5e6f2;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+  .search::placeholder { color: #7ea0b8; }
+  .top-meta {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 12px;
+    color: #d5e6f2;
+  }
+  .env {
+    border: 1px solid #4a8bb0;
+    color: #cfe8f7;
+    padding: 2px 7px;
+    font-size: 11px;
+  }
+  .userchip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .avatar {
+    width: 24px; height: 24px;
+    background: #1d6aa0;
+    display: grid; place-items: center;
+    font-size: 11px; font-weight: 600;
+  }
+
+  .menubar {
+    grid-area: menubar;
+    background: var(--menu);
+    color: #d7e6f2;
+    display: flex;
+    align-items: stretch;
+    padding: 0 8px;
+    border-bottom: 1px solid #082844;
+    font-size: 12px;
+  }
+  .menubar span {
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    cursor: default;
+  }
+  .menubar span.current {
+    background: #165585;
+    color: #fff;
+  }
+
+  nav {
+    grid-area: nav;
+    background: #eef2f5;
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    padding: 10px 0 0;
+  }
+  .nav-group {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--muted);
+    padding: 10px 16px 4px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    color: var(--ink);
+    cursor: default;
+  }
+  .nav-item.current {
+    background: #d6e6f4;
+    box-shadow: inset 3px 0 0 var(--link);
+    font-weight: 600;
+  }
+  .nav-item .count {
+    margin-left: auto;
+    background: var(--navy);
+    color: #fff;
+    min-width: 18px;
+    text-align: center;
+    font-size: 11px;
+    padding: 0 5px;
+  }
+  .nav-foot {
+    margin-top: auto;
+    border-top: 1px solid var(--line);
+    padding: 10px 12px 12px;
+    background: #e6ebf0;
+  }
+  .nav-foot h3 {
+    margin: 0 0 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .nav-foot .if-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .nav-foot form { margin: 0 0 4px; }
+  .nav-foot button { width: 100%; }
+
+  main {
+    grid-area: main;
+    overflow: auto;
+    padding: 14px 18px 24px;
+  }
+  .crumb {
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .crumb b { color: var(--ink); font-weight: 600; }
+  .pagehead {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+  .pagehead h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .pagehead p {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .signon {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 8px 10px;
+    display: flex;
+    align-items: end;
+    gap: 8px;
+  }
+  .signon label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 3px;
+  }
+  .signon input[type=text] {
+    width: 160px;
+    height: 28px;
+    border: 1px solid #9aa8b4;
+    padding: 0 8px;
+    background: #fff;
+  }
+  .signon input[type=text]:focus { outline: 1px solid var(--link); border-color: var(--link); }
+
+  .msg {
+    margin: 0 0 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .msg.ok { background: var(--ok-bg); border-color: #b7dcc8; color: var(--ok); }
+  .msg.err { background: var(--bad-bg); border-color: #e3b6b2; color: var(--bad); }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    margin-bottom: 14px;
+  }
+  .panel > h2 {
+    margin: 0;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 600;
     border-bottom: 1px solid var(--line);
-    padding: 1rem 1.5rem;
+    background: #f3f6f8;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
-  .wrap { max-width: 1100px; margin: 0 auto; }
-  .badge-variant {
-    display: inline-block; font: 600 11px/1 var(--mono); letter-spacing: .12em;
-    text-transform: uppercase; padding: .4rem .6rem; border-radius: 3px;
-    background: #23405c; color: #9ed0ff; border: 1px solid #2f5a80;
+  .panel > h2 .hint {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--muted);
   }
-  h1 { font-size: 1.25rem; margin: .6rem 0 .2rem; font-weight: 600; }
-  .sub { color: var(--muted); font-size: .85rem; }
-  .sub code { font-family: var(--mono); color: #b9c7d8; }
-  .led { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%;
-         background: var(--bad); margin-right: .35rem; vertical-align: baseline; }
-  .led.on { background: var(--ok); }
-  .led.warn { background: var(--warn); }
 
-  main { padding: 1.5rem; }
-  section {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-    margin-bottom: 1.25rem;
+  .empty { margin: 0; padding: 18px 12px; color: var(--muted); }
+
+  .sid { font-weight: 700; color: var(--link); }
+  .smeta { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .oos { color: var(--bad); font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 5px 10px; vertical-align: top; }
+  th {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    border-bottom: 1px solid var(--line);
+    background: #eef2f5;
   }
-  section > h2 {
-    font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
-    margin: 0; padding: .8rem 1.1rem; border-bottom: 1px solid var(--line); font-weight: 600;
+  td { border-bottom: 1px solid var(--line-2); border-right: 1px solid var(--line-2); }
+  td:last-child { border-right: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+  tr.fail td { background: #fdf4f3; }
+  tr.sample-start td { background: var(--row); }
+  td.sample-cell {
+    width: 200px;
+    background: var(--row);
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
   }
-  .body { padding: 1.1rem; }
-  label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .3rem; }
-  input[type=text] {
-    width: 16rem; max-width: 100%; padding: .55rem .6rem; background: #0e1319; color: var(--ink);
-    border: 1px solid var(--line); border-radius: 4px; font-family: var(--mono);
-    font-size: .88rem;
+  td.action-cell {
+    width: 148px;
+    background: var(--row);
+    border-bottom: 1px solid var(--line);
   }
-  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .action-cell .actions { flex-direction: column; align-items: stretch; }
+  .action-cell button { width: 100%; }
+
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  form { margin: 0; }
   button {
-    padding: .45rem .9rem; border-radius: 4px; border: 1px solid #2f6ea8;
-    background: #1d5488; color: #eaf4ff; font-size: .84rem; cursor: pointer;
+    height: 28px;
+    padding: 0 11px;
+    border: 1px solid #9aa8b4;
+    background: #f4f6f8;
+    color: var(--ink);
+    cursor: pointer;
   }
-  button:hover { background: #23639e; }
-  button.ghost { background: var(--panel-2); border-color: var(--line); color: var(--ink); }
-  button.ghost:hover { background: #2a3442; }
-  button.danger { background: #5a2422; border-color: #7a3532; color: #f0c4c1; }
-  button.danger:hover { background: #6b2c2a; }
-  button.ok { background: #1d5a42; border-color: #2a7a58; color: #c6f0dc; }
-  button.ok:hover { background: #246e51; }
-  .actions { display: flex; gap: .4rem; flex-wrap: wrap; }
-  .msg { margin: 0 0 1.1rem; font-size: .85rem; padding: .6rem .75rem; border-radius: 4px; }
-  .msg.ok { background: #14352a; color: #8fe3ba; border: 1px solid #235c46; }
-  .msg.err { background: #3a1d1c; color: #f0a09b; border: 1px solid #6b3230; }
+  button:hover { background: #e8edf1; }
+  button.ok {
+    background: var(--teal);
+    border-color: #0c5c57;
+    color: #fff;
+  }
+  button.ok:hover { background: #0c5f5a; }
+  button.danger {
+    background: #fff;
+    border-color: #c98984;
+    color: var(--bad);
+  }
+  button.danger:hover { background: var(--bad-bg); }
+  button.ghost { background: #fff; }
 
-  table { width: 100%; border-collapse: collapse; font-size: .84rem; }
-  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line);
-           vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: .72rem; text-transform: uppercase;
-       letter-spacing: .07em; }
-  tr:last-child td { border-bottom: none; }
-  td.mono { font-family: var(--mono); }
-  .empty { color: var(--muted); font-size: .85rem; margin: 0; }
-  .pill { font-family: var(--mono); font-size: .78rem; padding: .1rem .4rem; border-radius: 3px;
-          background: var(--panel-2); border: 1px solid var(--line); }
-  .pill.pending { color: var(--warn); border-color: #4a3a20; }
-  .pill.delivered { color: var(--ok); border-color: #235c46; }
-  .pill.abandoned { color: var(--bad); border-color: #6b3230; }
-  .pill.received { color: #9ed0ff; }
-  .pill.verified { color: var(--ok); }
-  .pill.rejected { color: var(--bad); }
+  .chip {
+    display: inline-block;
+    font-size: 11px;
+    padding: 1px 7px;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+  .chip.pending { background: var(--warn-bg); border-color: #e0c784; color: var(--warn); }
+  .chip.delivered { background: var(--ok-bg); border-color: #b7dcc8; color: var(--ok); }
+  .chip.abandoned { background: var(--bad-bg); border-color: #e3b6b2; color: var(--bad); }
+  .disp.in { color: var(--ok); font-weight: 600; }
+  .disp.out { color: var(--bad); font-weight: 600; }
 
-  .toolbar { display: flex; gap: 1rem; align-items: end; flex-wrap: wrap; }
-  .sim { border-color: #4a3a20; }
-  .sim > h2 { color: var(--warn); border-color: #4a3a20; }
-  .sim-note { color: var(--muted); font-size: .8rem; margin: 0 0 .9rem; }
-  footer { color: var(--muted); font-size: .78rem; text-align: center; margin-top: 1.5rem; }
+  .status {
+    grid-area: status;
+    background: #eceff2;
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 12px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    background: var(--bad);
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+  .dot.on { background: var(--ok); }
+  .dot.warn { background: var(--warn); }
+  .meaning {
+    font-size: 11px;
+    color: var(--muted);
+    padding: 0 12px 10px;
+  }
 </style>
 </head>
 <body>
+<div class="app">
 
-<header><div class="wrap">
-  <span class="badge-variant">Pattern 4 &middot; webhook</span>
-  <h1>QC Sample Release</h1>
-  <p class="sub">
-    <span class="led @@MQTT_LED@@"></span>broker
-    &nbsp;&middot;&nbsp;
-    <span class="led @@DRAINER_LED@@"></span>outbox drainer @@DRAINER_LABEL@@
-    &nbsp;&middot;&nbsp;
-    subscribe <code>@@TOPIC@@</code>
-    &nbsp;&middot;&nbsp;
-    publish <em>nothing</em>
-  </p>
-</div></header>
-
-<main><div class="wrap">
-@@FLASH@@
-
-<section>
-  <h2>Analyst</h2>
-  <div class="body">
-    <form method="get" action="/" class="toolbar">
-      <div>
-        <label for="analyst">Signed off by</label>
-        <input id="analyst" name="analyst" type="text" value="@@ANALYST@@" autocomplete="username">
+  <header class="top">
+    <div class="brand">
+      <div class="mark">L</div>
+      <div class="brand-name">LIMS Web<span>ICC Biologics · Site 1</span></div>
+    </div>
+    <input class="search" type="search" placeholder="Search samples, batches, tests…" aria-label="Search">
+    <div class="top-meta">
+      <span class="env">Production</span>
+      <span>Quality Control</span>
+      <div class="userchip">
+        <div class="avatar">@@ANALYST_INITIALS@@</div>
+        <div>@@ANALYST@@<br><span style="color:#a9c7de">QC Reviewer</span></div>
       </div>
-      <button type="submit" class="ghost">Set</button>
-    </form>
-    <p class="empty" style="margin-top:.8rem">Approve stamps this name onto the rows and into the webhook envelope. It is the approver, not the instrument operator.</p>
-  </div>
-</section>
+    </div>
+  </header>
 
-<section>
-  <h2>Pending release &mdash; @@PENDING_COUNT@@</h2>
-  <div class="body">
-@@PENDING@@
+  <div class="menubar">
+    <span>File</span>
+    <span>Sample</span>
+    <span>Test</span>
+    <span class="current">Results</span>
+    <span>Reports</span>
+    <span>Window</span>
+    <span>Help</span>
   </div>
-</section>
 
-<section>
-  <h2>Outbox &mdash; @@OUTBOX_COUNT@@</h2>
-  <div class="body">
-    <p class="empty" style="margin-bottom:.9rem">
-      One row per approved sample. The payload was built inside the same transaction that
-      flipped the result rows, so a restart cannot leave a verified sample with nobody
-      obliged to deliver it.
-    </p>
-@@OUTBOX@@
-  </div>
-</section>
-
-<section class="sim">
-  <h2>Stage controls</h2>
-  <div class="body">
-    <p class="sim-note">
-      Disable the drainer to show a naive webhook losing data: Approve still writes the
-      outbox, nothing is POSTed, the backbone stays silent. Re-enable (or restart this
-      container) and the queued rows drain. <code>POST /trigger</code> invents a sample
-      without waiting on the analyzer.
-    </p>
-    <div class="actions">
-      <form method="post" action="/webhook/disable"><button class="danger" type="submit">Disable drainer</button></form>
-      <form method="post" action="/webhook/enable"><button class="ok" type="submit">Enable drainer</button></form>
+  <nav>
+    <div class="nav-group">Sample management</div>
+    <div class="nav-item">Sample login</div>
+    <div class="nav-item">Sample browse</div>
+    <div class="nav-group">Testing</div>
+    <div class="nav-item">Worklist</div>
+    <div class="nav-item">Result entry</div>
+    <div class="nav-group">Quality</div>
+    <div class="nav-item current">Result review <span class="count">@@PENDING_COUNT@@</span></div>
+    <div class="nav-item">Certificates of analysis</div>
+    <div class="nav-group">Lab</div>
+    <div class="nav-item">Instruments</div>
+    <div class="nav-item">Inventory</div>
+    <div class="nav-foot">
+      <h3>Lab utilities</h3>
+      <div class="if-row">
+        <span>Instrument I/F</span>
+        <span><i class="dot @@MQTT_LED@@"></i>@@MQTT_LABEL@@</span>
+      </div>
+      <div class="if-row">
+        <span>Outbound I/F</span>
+        <span><i class="dot @@DRAINER_LED@@"></i>@@DRAINER_LABEL@@</span>
+      </div>
+      <form method="post" action="/webhook/disable"><button class="danger" type="submit">Pause outbound</button></form>
+      <form method="post" action="/webhook/enable"><button class="ok" type="submit">Resume outbound</button></form>
       <form method="post" action="/trigger">
         <input type="hidden" name="analyst" value="@@ANALYST@@">
-        <button class="ghost" type="submit">Synthesise a sample</button>
+        <button class="ghost" type="submit">Manual sample login</button>
       </form>
     </div>
-  </div>
-</section>
+  </nav>
 
-<footer>
-  <code>lims-bridge</code> may subscribe to analyzer results and may not publish.
-  The same ACL file that stops the valve leaving upstream stops this service talking to itself.
-</footer>
-</div></main>
+  <main>
+    <div class="crumb">Home / Quality Control / <b>Result Review</b></div>
+    <div class="pagehead">
+      <div>
+        <h1>Result review</h1>
+        <p>In-process chemistry · BioProfile FLEX2 · batch release to manufacturing</p>
+      </div>
+      <form method="get" action="/" class="signon">
+        <div>
+          <label for="analyst">Signed on as</label>
+          <input id="analyst" name="analyst" type="text" value="@@ANALYST@@" autocomplete="username">
+        </div>
+        <button type="submit" class="ghost">Change user</button>
+      </form>
+    </div>
+
+    @@FLASH@@
+
+    <section class="panel">
+      <h2>Pending review <span class="hint">@@PENDING_COUNT@@ sample(s) · e-sign required before release</span></h2>
+      @@PENDING@@
+    </section>
+
+    <section class="panel">
+      <h2>Release transmissions <span class="hint">@@OUTBOX_COUNT@@ · MES / historian interface</span></h2>
+      @@OUTBOX@@
+    </section>
+  </main>
+
+  <footer class="status">
+    <span>@@ANALYST@@ · QC Reviewer</span>
+    <span>ICC Site 1 · Production</span>
+    <span>LIMS Web 8.4</span>
+    <span style="margin-left:auto">Instrument I/F <i class="dot @@MQTT_LED@@"></i> · Outbound <i class="dot @@DRAINER_LED@@"></i></span>
+  </footer>
+</div>
 </body>
 </html>
