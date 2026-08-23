@@ -14,10 +14,10 @@ PostgreSQL 17, all under `docker compose`, all version controlled.
 | 1 | Native MQTT pub/sub | Smart sample valve assembly — RFID badge scan opens a bioreactor sample valve | services built |
 | 2 | Sparkplug B edge node | **The same valve assembly**, other firmware — birth/death, RBE, self-describing metrics | services built |
 | 3 | OPC UA → MQTT | Nova Flex analyzer; Ignition publishes on sample-complete | step 4 |
-| 4 | Webhook / Push API | Event-capable but non-MQTT system POSTing to Ignition | step 5 |
-| 5 | CDC / log tailing | Postgres WAL → Debezium → Ignition | step 6 |
-| 6 | Poll / diff | REST and SQL polled on an incrementing high-water mark | step 7 |
-| 7 | Scripted aggregation | Gateway script joining Postgres + REST + tags into one publish | step 8 |
+| 4 | Webhook / Push API | NovaFlex HTTPS POST into an Ignition Event Stream (same analyzer as pattern 3) | rebuild pending |
+| 5 | CDC / log tailing | Turbidity meter local Postgres → Debezium → MQTT | planned |
+| 6 | Poll / watermark | Same turbidity database, JDBC `id > last` | planned |
+| 7 | TBD | Designated cut | not scoped |
 
 **Patterns 1 and 2 are one device in two firmwares**, which is the point of running both: a
 badge-operated sample valve on `BR-201` speaking plain MQTT, and the identical assembly on
@@ -232,7 +232,8 @@ Makefile          2-line Linux/macOS forwarder (make up)
 
 **Which doc to read:** [`docs/00-architecture.md`](docs/00-architecture.md) for how anything
 works and why; [`docs/plans/00-status.md`](docs/plans/00-status.md) for what is true today and
-what to do next; [`docs/plans/`](docs/plans/) for per-pattern build specs.
+what to do next; [`docs/plans/`](docs/plans/) for per-pattern build specs;
+[`docs/extra/`](docs/extra/) for Countess, LIMS, and other sources we kept but are not using.
 
 ## Topic namespace
 

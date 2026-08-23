@@ -712,12 +712,23 @@ def _read_page() -> str:
         return handle.read()
 
 
-def _fmt_ts(value) -> str:
+def _fmt_ui_ts(value) -> str:
+    """LabWare-style display timestamp. APIs stay ISO."""
     if value is None:
         return ""
     if isinstance(value, datetime):
-        return _iso(value)
+        dt = value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return dt.strftime("%d-%b-%Y %H:%M:%S")
     return str(value)
+
+
+def _fmt_num(value) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    text = ("%.4f" % number).rstrip("0").rstrip(".")
+    return text or "0"
 
 
 def _esc(value) -> str:
@@ -792,6 +803,10 @@ def create_app(cfg: Config, store: Store, ingest: MqttIngest, drainer: Drainer,
         page = page.replace(
             "@@DRAINER_LABEL@@",
             "on" if drainer.enabled.is_set() else "DISABLED",
+        )
+        page = page.replace(
+            "@@DRAINER_ALARM@@",
+            "" if drainer.enabled.is_set() else "alarm",
         )
         page = page.replace("@@PENDING_COUNT@@", str(len(pending)))
         page = page.replace("@@OUTBOX_COUNT@@", str(len(outbox)))
@@ -880,72 +895,102 @@ def create_app(cfg: Config, store: Store, ingest: MqttIngest, drainer: Drainer,
 
 
 def _pending_html(pending: list[dict], analyst: str) -> str:
+    headers = "".join(
+        "<th>%s<span class='uom'>%s</span></th>" % (_esc(name.title()), _esc(uom))
+        for name, _path, uom in ANALYTES
+    )
     if not pending:
-        return '<p class="empty">Nothing waiting. Trigger the analyzer, or synthesise a sample below.</p>'
-    rows = []
-    for sample in pending:
-        analytes = ", ".join(
-            "%s %s %s" % (item["analyte"], item["value"], item["uom"])
-            for item in (sample["results"] or [])
+        colspan = 5 + len(ANALYTES)
+        body = (
+            '<tr class="empty-row"><td colspan="%s">'
+            "No samples pending review. Log a sample, or wait for the analyzer."
+            "</td></tr>" % colspan
         )
-        rows.append(
-            "<tr>"
-            '<td class="mono">%s</td>'
-            '<td class="mono">%s</td>'
-            '<td class="mono">%s</td>'
-            "<td>%s</td>"
-            '<td><div class="actions">'
-            '<form method="post" action="/samples/%s/approve">'
-            '<input type="hidden" name="analyst" value="%s">'
-            '<button class="ok" type="submit">Approve</button></form>'
-            '<form method="post" action="/samples/%s/reject">'
-            '<input type="hidden" name="analyst" value="%s">'
-            '<button class="danger" type="submit">Reject</button></form>'
-            "</div></td>"
-            "</tr>" % (
-                _esc(sample["sample_id"]),
-                _esc(sample["batch_id"]),
-                _esc(_fmt_ts(sample["collected_at"])),
-                _esc(analytes),
-                _esc(sample["sample_id"]),
-                _esc(analyst),
-                _esc(sample["sample_id"]),
-                _esc(analyst),
+    else:
+        rows = []
+        for sample in pending:
+            by_name = {
+                item["analyte"]: item for item in (sample["results"] or [])
+            }
+            cells = []
+            for name, _path, uom in ANALYTES:
+                item = by_name.get(name)
+                if item is None:
+                    cells.append('<td class="empty-cell">—</td>')
+                else:
+                    cells.append(
+                        '<td class="num">%s<span class="uom">%s</span></td>'
+                        % (_esc(_fmt_num(item["value"])), _esc(item.get("uom") or uom))
+                    )
+            rows.append(
+                "<tr>"
+                '<td class="mono">%s</td>'
+                '<td><span class="pill received">Recd</span></td>'
+                '<td class="mono">%s</td>'
+                "%s"
+                '<td class="mono">%s</td>'
+                '<td><div class="actions">'
+                '<form method="post" action="/samples/%s/approve">'
+                '<input type="hidden" name="analyst" value="%s">'
+                '<button class="ok" type="submit">Approve</button></form>'
+                '<form method="post" action="/samples/%s/reject">'
+                '<input type="hidden" name="analyst" value="%s">'
+                '<button class="danger" type="submit">Reject</button></form>'
+                "</div></td>"
+                "</tr>" % (
+                    _esc(sample["sample_id"]),
+                    _esc(sample["batch_id"]),
+                    "".join(cells),
+                    _esc(_fmt_ui_ts(sample["collected_at"])),
+                    _esc(sample["sample_id"]),
+                    _esc(analyst),
+                    _esc(sample["sample_id"]),
+                    _esc(analyst),
+                )
             )
-        )
+        body = "".join(rows)
     return (
-        "<table><thead><tr>"
-        "<th>Sample</th><th>Batch</th><th>Collected</th><th>Analytes</th><th></th>"
-        "</tr></thead><tbody>%s</tbody></table>" % "".join(rows)
+        '<table class="grid"><thead><tr>'
+        "<th>Sample Number</th><th>Status</th><th>Batch</th>"
+        "%s"
+        "<th>Login Date</th><th></th>"
+        "</tr></thead><tbody>%s</tbody></table>" % (headers, body)
     )
 
 
 def _outbox_html(outbox: list[dict]) -> str:
     if not outbox:
-        return '<p class="empty">No deliveries yet.</p>'
-    rows = []
-    for item in outbox:
-        error = item["last_error"] or ""
-        rows.append(
-            "<tr>"
-            '<td class="mono">%s</td>'
-            '<td><span class="pill %s">%s</span></td>'
-            '<td class="mono">%s</td>'
-            "<td>%s</td>"
-            '<td class="mono">%s</td>'
-            "</tr>" % (
-                _esc(item["sample_id"]),
-                _esc(item["state"]),
-                _esc(item["state"]),
-                item["attempts"],
-                _esc(error),
-                _esc(_fmt_ts(item["updated_at"])),
-            )
+        body = (
+            '<tr class="empty-row"><td colspan="5">'
+            "No records found."
+            "</td></tr>"
         )
+    else:
+        rows = []
+        for item in outbox:
+            error = item["last_error"] or ""
+            rows.append(
+                "<tr>"
+                '<td class="mono">%s</td>'
+                '<td><span class="pill %s">%s</span></td>'
+                '<td class="num">%s</td>'
+                "<td>%s</td>"
+                '<td class="mono">%s</td>'
+                "</tr>" % (
+                    _esc(item["sample_id"]),
+                    _esc(item["state"]),
+                    _esc(item["state"]),
+                    item["attempts"],
+                    _esc(error),
+                    _esc(_fmt_ui_ts(item["updated_at"])),
+                )
+            )
+        body = "".join(rows)
     return (
-        "<table><thead><tr>"
-        "<th>Sample</th><th>State</th><th>Attempts</th><th>Last error</th><th>Updated</th>"
-        "</tr></thead><tbody>%s</tbody></table>" % "".join(rows)
+        '<table class="grid"><thead><tr>'
+        "<th>Sample Number</th><th>Status</th><th>Attempts</th>"
+        "<th>Last Error</th><th>Updated</th>"
+        "</tr></thead><tbody>%s</tbody></table>" % body
     )
 
 

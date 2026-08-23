@@ -12,9 +12,9 @@ CREATE SCHEMA IF NOT EXISTS mes   AUTHORIZATION icc26;
 CREATE SCHEMA IF NOT EXISTS plant AUTHORIZATION icc26;
 
 -- ── plant: physical model ────────────────────────────────────────────────────
--- Mirrors the ISA-95 topic namespace (see docs/00-architecture.md). Kept here so
--- pattern 7's aggregation script has real equipment metadata to join against
--- rather than hardcoded strings.
+-- Mirrors the ISA-95 topic namespace (see docs/00-architecture.md). Equipment
+-- ids here are the same strings that appear in topics. Pattern 7 is TBD; this
+-- table is still the physical model, not an aggregation join.
 CREATE TABLE plant.equipment (
     equipment_id  text PRIMARY KEY,          -- e.g. 'BR-201', 'sample-valve-01'
     site          text NOT NULL,             -- 'site1'
@@ -36,11 +36,10 @@ CREATE TABLE plant.batch (
 );
 
 -- ── lims: sample results ─────────────────────────────────────────────────────
--- Pattern 4's holding area. Analyzer results land here as status='received'; a
--- human Approve flips them to 'verified' and writes one outbox row in the same
--- transaction. This is not "the single most important table in the demo" — that
--- comment dated from the convergence design, when patterns 4, 5 and 6 all
--- surfaced the same rows. Since 2026-08-19 only pattern 4 touches this table.
+-- Leftover. Pattern 4 was a LIMS until 2026-08-23; these tables stay until that
+-- rebuild unwires them. Analyzer results land as status='received'; a human
+-- Approve flips them to 'verified' and writes one outbox row in the same
+-- transaction. The talk no longer uses this.
 --
 -- `batch_id` is free text, not a FK. The analyzer names batches the LIMS may not
 -- have opened yet, and refusing the insert would drop a real result.
@@ -69,7 +68,7 @@ CREATE INDEX ix_sample_result_status     ON lims.sample_result (status, collecte
 -- one delivery. Delivery state is not domain state, which is why this is a
 -- separate table. Pattern 5 used to tail sample_result; attempt counters on the
 -- result row would have made every retry a CDC event. That hazard is gone
--- (pattern 5 moved to Odoo) and the table still earns its keep — you can query
+-- (pattern 5 moved off this table) and the table still earns its keep — you can query
 -- it, retry it, and put it on the approval screen.
 CREATE TABLE lims.webhook_delivery (
     id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -84,7 +83,7 @@ CREATE TABLE lims.webhook_delivery (
 CREATE INDEX ix_webhook_delivery_due ON lims.webhook_delivery (state, next_try_at);
 
 -- ── mes: batch lifecycle events ──────────────────────────────────────────────
--- No consumer. Pattern 5 was going to CDC-tail this; it now tails Odoo instead.
+-- No consumer. Pattern 5 was going to CDC-tail this; it no longer does.
 -- Kept so the physical model stays coherent and so pattern 5's spec can retire
 -- it on purpose rather than leaving a table that looks live. 04-cdc.sql still
 -- publishes it — retire that publication with the pattern-5 spec, not here.

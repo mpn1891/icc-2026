@@ -43,6 +43,11 @@ nsu=http://icc26.demo/UA/NovaflexII/;s=OPCSystemObjects->HistoricalSampleResults
 Ignition: tag-change on `novaflex-01/result/sample_time` → Event Stream `03_opcua/novaflex-result`
 → Transmission to `icc26/site1/qc/analyzers/novaflex-01/result`.
 
+**Pattern 4 (planned):** the same simulator will HTTPS POST that completed sample to an Ignition
+Event Stream. Same topic, `mechanism=webhook`. See
+[`docs/plans/04-novaflex-webhook.md`](../../docs/plans/04-novaflex-webhook.md). OPC UA is
+pattern 3; the POST is pattern 4. They can run together.
+
 `ICC26Extensions` is still in the address space (counter, state, ResultJson) so the missing
 vendor trigger is visible on a browse. The MQTT path does not read it.
 

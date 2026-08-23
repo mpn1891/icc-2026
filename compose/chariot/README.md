@@ -22,7 +22,7 @@ slide and because the asymmetries are the interesting part:
 | `sample-valve-01` | Pattern 1 smart sample valve assembly, plain MQTT | Publish only, and only into `upstream` — see below |
 | `sample-valve-02` | Pattern 2 the same assembly, Sparkplug B | Publishes its own group; subscribes only NCMD/DCMD |
 | `analyzer-bridge` | Pattern 3, reserved | Only if the Nova Flex demo ever publishes without routing through Ignition |
-| `lims-bridge` | Pattern 4 LIMS | Subscribe-only, `icc26/site1/qc/analyzers/+/result`. Empty publish grant is the cycle-hazard lock |
+| `lims-bridge` | Pattern 4 LIMS (leftover) | Subscribe-only, `icc26/site1/qc/analyzers/+/result`. Empty publish grant was the cycle-hazard lock. **Drop when the LIMS is unwired** — pattern 4 no longer subscribes |
 | `observer` | Read-only | Firehose view, `mosquitto_sub`, MQTT Explorer |
 
 **The two valve accounts are the ACL half of the pattern 1 / pattern 2 comparison, and it is
@@ -47,12 +47,10 @@ is a lateral-movement path, and the ACL is where you close it. This is also why 
 an empty `publishTopics` array: it is safe to hand out and safe to leave connected during the
 talk.
 
-**`lims-bridge` publishes nothing.** Pattern 4's only output is an HTTP callback into
-Ignition; Transmission publishes the released sample as `ign-transmission`. The empty
-publish grant is load-bearing: this is the first component that both consumes the
-backbone and causes publishes onto it, and the ACL is what stops that being a loop.
-The analyzer-result subscribe grant is the other half — `mqtt-users.json` seeds on
-first run only, so changing it against an existing Chariot store does nothing.
+**`lims-bridge` is leftover.** It publishes nothing, and pattern 4 no longer
+subscribes either. Drop the user when the LIMS is unwired. `mqtt-users.json`
+seeds on first run only, so changing it against an existing Chariot store does
+nothing.
 
 ## Server settings
 

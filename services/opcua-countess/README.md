@@ -1,9 +1,11 @@
-# opcua-countess — pattern 3 source
+# opcua-countess — Extra (not the talk)
 
 A simulated Thermo Fisher Countess 3 FL automated cell counter, served over OPC UA.
+Pattern 3 on stage is the NovaFlex. This container is kept as the designed-address-space
+contrast. Docs: [`docs/extra/`](../../docs/extra/README.md).
 
 The address space implements
-[`docs/reference/countess-3fl-opcua-model.md`](../../docs/reference/countess-3fl-opcua-model.md),
+[`docs/extra/countess-3fl-opcua-model.md`](../../docs/extra/countess-3fl-opcua-model.md),
 which maps all 71 columns of Appendix E of the instrument's user guide (MAN0019567) into an
 information model. Read that first — it carries the reasoning and the provenance note. **The
 real instrument has no OPC UA server**; it writes CSV to USB, SMB or Thermo Fisher Connect.

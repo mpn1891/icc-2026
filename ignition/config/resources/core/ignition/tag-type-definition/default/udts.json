@@ -1425,7 +1425,7 @@
                 "tags": [
                   {
                     "dataType": "String",
-                    "documentation": "Bad_NoData whenever slot 2 is empty, which is the demo default. Bad is the correct answer here, not 0 - see docs/reference/countess-3fl-opcua-model.md section 8.",
+                    "documentation": "Bad_NoData whenever slot 2 is empty, which is the demo default. Bad is the correct answer here, not 0 - see docs/extra/countess-3fl-opcua-model.md section 8.",
                     "name": "cube_name",
                     "opcItemPath": {
                       "bindType": "parameter",

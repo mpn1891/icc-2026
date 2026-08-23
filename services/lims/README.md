@@ -1,9 +1,10 @@
-# lims — pattern 4, approval webhook
+# lims — Extra (not the talk)
 
 A FastAPI LIMS that **subscribes** to analyzer results, holds them unapproved, and
-POSTs a released sample to Ignition over HTTP. It publishes nothing onto the
-backbone; Transmission does that. See
-[`docs/plans/04-lims-webhook.md`](../../docs/plans/04-lims-webhook.md).
+POSTs a released sample to Ignition over HTTP. Pattern 4 on stage is a NovaFlex HTTPS
+POST, not this service. As-built docs:
+[`docs/extra/lims-webhook-spec.md`](../../docs/extra/lims-webhook-spec.md).
+Live pattern 4: [`docs/plans/04-novaflex-webhook.md`](../../docs/plans/04-novaflex-webhook.md).
 
 ```
 http://localhost:8000/     approval screen

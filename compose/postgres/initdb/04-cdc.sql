@@ -11,11 +11,9 @@
 \connect icc26
 
 -- This publication still names two tables nothing currently reads. Pattern 5
--- moved to Odoo's own database on 2026-08-19, so neither lims.sample_result nor
--- mes.batch_event has a CDC consumer. Kept as a reviewable artifact until the
--- pattern-5 spec retires it; do not treat a row appearing here as a live
--- integration. wal_level=logical stays — that is a server start parameter and
--- Odoo will need it.
+-- tails database `turbidity`, not these. Neither lims.sample_result nor
+-- mes.batch_event has a CDC consumer. Kept as a reviewable artifact until
+-- spec 05 retires it; do not treat a row appearing here as a live integration.
 CREATE PUBLICATION icc26_cdc FOR TABLE lims.sample_result, mes.batch_event;
 
 -- REPLICA IDENTITY FULL makes Postgres write the complete pre-image of a row into
