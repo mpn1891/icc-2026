@@ -5,17 +5,18 @@
 > (`docs/plans/01…08-*.md`) and handed to an agent or teammate one at a time.
 >
 > [`../00-architecture.md`](../00-architecture.md) is settled truth. It is *usually* not changed
-> from here — but it was on **2026-08-19** (shared-topic set-piece dropped) and again on
-> **2026-08-23**, when patterns 5, 6 and 7 were re-sourced and pattern 4 gained a pass/fail
-> disposition. Read those sections before touching 04, 05, 06 or 07.
+> from here — but it was on **2026-08-19** (shared-topic set-piece dropped), again on
+> **2026-08-23** (patterns 5, 6 and 7 re-sourced, pattern 4 gained a pass/fail disposition), and
+> again alongside this revision, when patterns 5–7 were given the explicit qualified-window /
+> excursion logic the through line needs. Read those sections before touching 04, 05, 06 or 07.
 > Where a per-pattern file disagrees with its summary here, **the per-pattern file is newer.**
 
 Seven data-transaction/event patterns on Ignition 8.3.8 + Cirrus 5.0.4 + Chariot + Postgres 17,
 config-as-code via bind-mounted `ignition/config` + `ignition/projects`. Two or three teammates
 clone, run, and collaborate via push/pull. Conference is ~4 weeks out.
 
-All seven `meta.mechanism` values still have exactly one user each. Patterns 1–6 still carry
-different data; pattern 7 is the join of several of them into one aggregate document. The
+All seven `meta.mechanism` values still have exactly one user each. Patterns 1–6 each carry a
+different signal; pattern 7 is the join of several of them into one composite document. The
 namespace still must not leak the mechanism.
 
 Locked in: GitHub private repo under Matt's account; mixed Windows + macOS/Linux team; FastAPI
@@ -25,6 +26,26 @@ stub for LIMS; demo-grade committed credentials are acceptable.
 resources (exact paths where known, UI-then-commit where schemas are unknown), MQTT user +
 topics, empirical checkpoints, copy-pasteable verification, and "update the `docs/0N-*.md`
 talk-track doc" as the closing step.
+
+## Demo through line
+
+**"Becoming Event-Driven in Operational Technology with Ignition."** All seven patterns draw
+from **a single fed-batch bioprocess run.** Each pattern contributes one signal from that batch;
+the audience watches one event get assembled across seven demos, not seven unrelated vignettes.
+Full narrative in [`../demo-through-line.md`](../demo-through-line.md) (merged from the source
+doc — see that file for segment structure, presenter framing and the closing beat). Pattern
+numbering below is fixed and referenced from there; **do not renumber.**
+
+**The GxP through line:** contemporaneous record of a sampling event, and whether that sample
+was pulled inside the qualified phase window.
+
+**The composite event (pattern 7 payoff):**
+> Sample pulled outside qualified phase window with concurrent environmental excursion.
+
+Each pattern segment runs **intro (business context) → demo → risk/complexity in GxP → a
+positive closing message** — the upbeat beat after the risk speaker is deliberate, so no segment
+(and not the talk overall) ends on risk. The **GxP hook** line in each spec below is that
+segment's risk beat.
 
 ## Cross-cutting conventions
 
@@ -79,6 +100,15 @@ spec-mandated versus hand-rolled — the topic, the datatypes, the units, the lo
 the death certificate, one protocol giving you all five and the other giving you three form
 fields and a wiki page.
 
+**Signal contributed to the spine:** sample actuation event (pattern 1) and device liveness /
+session state (pattern 2) — pattern 7 reads pattern 1's `sample-valve-01` event for *when
+material left the reactor*.
+
+**GxP hooks:** Pattern 1 — the record originates at the point of action; no transcription, no
+intermediary. Pattern 2 — you can prove the valve was alive when it said nothing; consider
+dropping the connection on one valve mid-sampling-window in the demo and let the death
+certificate fire. Silence becomes evidence.
+
 **03 — OPC UA → MQTT** — no dependencies. **Both servers built, and written up in
 [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md), which supersedes this entry.**
 
@@ -106,6 +136,12 @@ shape for Countess on `count_completed_counter`. Verify Nova: one message per co
 sample, never per-value, nothing on abort/fail/QC. Talk point: event-on-completion, keyed
 off the field the vendor actually ships.
 
+**Signal contributed to the spine:** viable cell density / viability reading — pattern 7 reads
+Nova's result for *when the sample was actually run* (`meta.correlation_id` = `sample_id`).
+
+**GxP hook:** a qualified instrument, read by a platform, one-way — the change-control boundary
+is explicit: the instrument is untouched, the gateway does the work.
+
 **04 — LIMS approval webhook (`services/lims` + WebDev)** — **built 2026-08-20.**
 **Written up in [`04-lims-webhook.md`](04-lims-webhook.md), which supersedes this entry
 except for the remaining delta below.** Do not "fix" the built shape back toward an older
@@ -117,76 +153,118 @@ outbox row and land on `icc26/site1/qc/lims/sample-result` with `analyst` and
 `values.disposition` ∈ `pass | fail`. Reject is no longer silent — pattern 7 listens for the
 review, not only for a pass. The rest of the contract is unchanged.
 
-**05 — CDC on our own batch table** — decided 2026-08-23, no spec yet.
+**Signal contributed to the spine:** assay result, already carrying business meaning — this is
+the analyst review that triggers pattern 7's join.
+
+**GxP hook:** an authenticated inbound connection, and the result — an analyst's disposition on
+a sample already drawn — arrives out of sequence with the physical event it describes. Contrast
+the payload against the tag-change data pattern 3 emits; the semantic gap is visible in one
+screenshot.
+
+**05 — CDC on our own batch table, standing in for a BES** — decided 2026-08-23, refined here to
+carry the qualified-window flag pattern 7 needs.
+
 A **very simple batch engine inside Ignition**: a gateway timer, started and stopped from
-enable/disable tags, auto-cycles `BR-201` through `CIP → SIP → INOC → GROWTH → HARVEST`.
-The timer writes the bioreactor UDT (add an operation/phase tag to the existing
-`bioreactor` type) and inserts `mes.batch_event` in the same step. The sequencer publishes
-**nothing** onto MQTT.
+enable/disable tags, auto-cycles `BR-201` through `CIP → SIP → INOC → GROWTH → HARVEST`. The
+timer writes the bioreactor UDT (add an operation/phase tag to the existing `bioreactor` type)
+and inserts `mes.batch_event` in the same step. The sequencer publishes **nothing** onto MQTT.
+
+**Qualified sampling window (new):** the batch protocol qualifies sampling for **`GROWTH`
+only** — a real bioprocess constraint: pulling material during `CIP`/`SIP` risks the sample
+line, and `INOC`/`HARVEST` are outside the characterized production phase. `mes.batch_event`
+already carries `phase`; add `payload.qualified_window := (phase = 'GROWTH')` at insert time so
+the flag travels with the row Debezium tails, rather than being recomputed downstream.
 
 Debezium tails **our** Postgres — `quay.io/debezium/server:3.x`, pgoutput, user `cdc`,
 publication on `mes.batch_event` only (drop `lims.sample_result` from `04-cdc.sql`).
-HTTP sink → WebDev (`cdc-sink`) → envelope `mechanism=cdc` →
-`icc26/site1/upstream/br-201/batch/event`. Named volume for offsets.
+HTTP sink → WebDev (`cdc-sink`) → envelope `mechanism=cdc`, `values.phase`,
+`values.qualified_window` → `icc26/site1/upstream/br-201/batch/event`. Named volume for offsets.
 
-Talk point, said honestly: **CDC's textbook case is an application you do not own.** This
-engine is one we do own, and it is a stand-in for an MES we would not patch to emit events.
-The demonstration is still the observer: the writer does not know MQTT exists, the `cdc`
-role is not `icc26`, and disabling Debezium leaves the reactor cycling with a silent topic.
-That is the failure demo — not a fake ERP UI.
+**GxP hook:** reading a validated system's internals without its owner in the loop. State it
+plainly and hand it to the risk speaker — the honest framing is that this timer stands in for a
+Batch Execution System we would not patch to emit events: the writer does not know MQTT exists,
+the `cdc` role is not `icc26`, and disabling Debezium leaves the reactor cycling with a silent
+topic. That is the failure demo, not a fake ERP UI.
 
 The JDBC datasource `ICC26` is now on the critical path (the timer writes the table). It is
 not in the repo yet; **UI first, then commit.**
 
 Verify: flip the enable tag → phase tags advance on a dwell → a row appears in
-`mes.batch_event` → a message on `batch/event` within ~1 s. Stop Debezium, leave the timer
-running, show the gap.
+`mes.batch_event` with `qualified_window` set correctly → a message on `batch/event` within
+~1 s. Stop Debezium, leave the timer running, show the gap.
 
-**06 — Poll of a MET ONE environmental analyzer** — decided 2026-08-23, no spec yet.
+**06 — Poll of a MET ONE environmental analyzer** — decided 2026-08-23, refined here to carry
+the excursion flag pattern 7 needs.
+
 A simulated Hach MET ONE particle counter beside `BR-201`, speaking an **HTTP API** (not
 Modbus). New service `services/sim-metone`. The exact routes and record shape are **TBD** —
-vendor API docs will be dropped in; until then treat it as "a pull API that returns
-completed particle-count analysis events with a timestamp and channel counts," watermarked
-on record id or analysis time.
+vendor API docs will be dropped in; until then treat it as "a pull API that returns completed
+particle-count analysis events with a timestamp and channel counts," watermarked on record id
+or analysis time.
 
-An Ignition gateway timer polls that API. **On a new analysis, the script submits the
-payload to an Event Stream** (`06_poll/metone-result`), which publishes through
-Transmission to `icc26/site1/upstream/br-201/particle-counter-01/result` with
-`mechanism=poll`. Same relay shape as pattern 3; the acquisition is the poll.
+**Excursion status (new):** the simulator (or the Ignition poll script, at ingest) compares the
+returned channel counts against a configured cleanroom-grade limit and sets
+`values.status ∈ normal | excursion`. This is what through-line calls "environmental excursion
+status" — it must exist on the wire, not just be inferable from raw counts, so pattern 7 can
+key off it directly.
 
-Do not invent a Modbus device connection or a rotate-buffer checkbox for this revision.
-Those were the 2026-08-19 plan. The talk is now: an environmental instrument that only
-offers a pull API, so Ignition has to notice that an analysis happened.
+An Ignition gateway timer polls that API. On a new analysis, the script submits the payload to
+an Event Stream (`06_poll/metone-result`), which publishes through Transmission to
+`icc26/site1/upstream/br-201/particle-counter-01/result` with `mechanism=poll`. Same relay
+shape as pattern 3; the acquisition is the poll.
 
-Verify: one HTTP analysis → one Event Stream fire → one MQTT message. Stall the poll and
-show a missed (or late) analysis.
+Do not invent a Modbus device connection or a rotate-buffer checkbox for this revision. Those
+were the 2026-08-19 plan. The talk is now: an environmental instrument that only offers a pull
+API, so Ignition has to notice that an analysis happened — and a poll interval that can hide a
+transient excursion between polls.
 
-**07 — Scripted aggregation: the sample chain** — decided 2026-08-23, no spec yet.
-**This is the designated cut** if the schedule bites: it is the join of 01, 03, 04, 05 and
-06, and it cannot start until those four sources exist.
+**GxP hook:** a characterized detection gap. Not fatal on its own, but it goes in the
+assessment — show the polling interval, then ask what could have happened between polls.
+
+Verify: one HTTP analysis → one Event Stream fire → one MQTT message, `status` correct against
+the configured limit. Stall the poll and show a missed (or late) analysis.
+
+**07 — Scripted aggregation: the composite GxP event** — decided 2026-08-23, reframed here
+around the through line's payoff. **This is the designated cut** if the schedule bites: it is
+the join of 01, 03, 04, 05 and 06, and it cannot start until those four sources exist.
 
 A gateway script **listens for the pattern-4 LIMS review** on MQTT (`qc/lims/sample-result`,
-pass or fail). On that message it builds one composite document,
-`mechanism=aggregate`, on `icc26/site1/upstream/br-201/sample-chain/event`:
+pass or fail). On that message it builds one composite document, `mechanism=aggregate`, on
+`icc26/site1/upstream/br-201/sample-chain/event`:
 
 | Section | Source | What it answers |
 |---|---|---|
-| Valve open | pattern 1 event (`sample-valve-01`) | when material left the reactor |
-| Analysis complete | pattern 3 Nova result | when the sample was run; **duration outside = open → analysis** |
-| Reactor operation | pattern 5 batch/phase at sample time | CIP / SIP / INOC / GROWTH / HARVEST when the valve opened |
-| Environment | pattern 6 MET ONE | **the nearest particle-count analysis to the Nova timestamp** |
+| Sample actuation + device liveness | pattern 1 / 2 event (`sample-valve-01`) | when material left the reactor |
+| VCD reading + assay result | pattern 3 Nova result + pattern 4 review | when the sample was run, and its disposition |
+| Batch phase and qualified window | pattern 5 `batch/event` at sample time | `phase` and `qualified_window` when the valve opened |
+| Environmental excursion status | pattern 6 MET ONE, nearest reading to the Nova timestamp | `status` at (or nearest) the sample instant |
 
-Always publish. A dirty or missing MET ONE reading is a finding in the document, not a
-refusal. `meta.correlation_id` is the `sample_id` already stamped in 3 and 4, so one
-sample is four colours on the firehose (opcua-event, webhook, and whatever 5/6 contributed)
-plus the aggregate.
+The script derives two flags from those sections — `values.outside_qualified_window` (pattern
+5's `qualified_window` was `false` at the sample-open instant) and
+`values.environmental_excursion` (pattern 6's nearest reading was `status = excursion`). **Always
+publish**, whatever the flags say: a dirty or missing MET ONE reading is a finding in the
+document, not a refusal. When both flags are `true`, the payload *is* the through line's
+composite event —
 
-This is a real join, not the old "same LIMS row three ways." Pattern 7 no longer uses a
-webhook, a waveform, or `cmd`/`response`. `downstream` still has no user; `utilities`
-still has none.
+> Sample pulled outside qualified phase window with concurrent environmental excursion.
 
-Verify: badge the valve, complete a Nova sample, review it in the LIMS → one aggregate
-message carrying duration, operation, and the nearest MET ONE record.
+— the moment no single source system could have produced on its own. `meta.correlation_id` is
+the `sample_id` already stamped in 3 and 4, so one sample is four colours on the firehose
+(opcua-event, webhook, and whatever 5/6 contributed) plus the aggregate.
+
+Pattern 7 no longer uses a webhook, a waveform, or `cmd`/`response`. `downstream` still has no
+user; `utilities` still has none.
+
+**Framing:** no single source knows this. Four systems each hold a fragment that means nothing
+alone. Patterns 1–6 are about acquisition; pattern 7 is about meaning.
+
+**GxP hook:** derived data with disposition consequence — the heaviest item on the list, and the
+right one to end on.
+
+Verify: badge the valve during `GROWTH` with a clean MET ONE reading → aggregate publishes with
+both flags `false`. Then badge it during `CIP`/`HARVEST`, or with a forced MET ONE excursion (or
+both) → aggregate publishes with the relevant flag(s) `true`, reproducing the composite event
+above on demand for rehearsal.
 
 **08 — Presentation + runbook** — **start the fallback firehose now, not last.**
 Perspective: overview page, one page per pattern, and the **firehose** colored by
@@ -194,17 +272,20 @@ Perspective: overview page, one page per pattern, and the **firehose** colored b
 Chariot WS :8090 as `observer`, embedded in Perspective (offline-safe; riskiest UI piece);
 fallback = Engine-subscribed wildcard → gateway script appends to a dataset tag →
 Perspective table. `docs/demo-runbook.md` (planned — write with this spec): T-15 dual-trial
-checklist, per-pattern trigger + recovery.
+checklist, per-pattern trigger + recovery, and the upbeat closing line assigned per segment (see
+[`../demo-through-line.md`](../demo-through-line.md) § Open items).
 
-There is **no shared "LIMS result" page with mechanism toggles** — that set-piece is gone.
-Each of 04/05/06 gets its own page. Pattern 7's page *is* the join: one sample's valve,
-analysis, review, batch phase and env reading on one screen. Runbook choreography is
-per-pattern failure (webhook without an outbox, CDC with Debezium down, a poll that
-stalls, an aggregate whose MET ONE nearest-neighbour is missing or dirty).
+There is **no shared "LIMS result" page with mechanism toggles** — that set-piece is gone. Each
+of 04/05/06 gets its own page. Pattern 7's page *is* the join: one sample's valve, analysis,
+review, batch phase and env reading on one screen, with the two derived flags shown plainly.
+Runbook choreography is per-pattern failure (webhook without an outbox, CDC with Debezium down,
+a poll that stalls, an aggregate whose MET ONE nearest-neighbour is missing or dirty) — **and**
+one rehearsed run of the full composite event, since that is the talk's payoff moment, not just
+another failure demo.
 
 **Build the fallback firehose in the next working session.** It is the only deliverable whose
-absence is visible from the audience, it is the one piece with no dependencies on any pattern, and
-scheduling it last means it competes with whatever is running late.
+absence is visible from the audience, it is the one piece with no dependencies on any pattern,
+and scheduling it last means it competes with whatever is running late.
 
 Two notes for patterns 1 and 2 specifically. Their Perspective page is mostly **a link to the
 two device config pages on 8085 and 8086** — the comparison is between those two screens, and
@@ -214,20 +295,29 @@ envelope, by design. Either colour it by topic prefix as a special case, or say 
 the one pattern which needed no agreement is the one that does not fit the field invented to
 track agreements.
 
+## Closing beat
+
+After the final risk segment (pattern 7's):
+
+> That composite event took days to surface in a paper-and-review world. The room just watched
+> it surface in seconds, from systems nobody had to requalify.
+
 ## Execution order
 
-**Rewritten 2026-08-23.** Patterns 1–3 stay as built. Pattern 4 is built minus pass/fail.
-Pattern 7 is the only join, so it is last of the seven.
+**Rewritten 2026-08-23; qualified-window / excursion flags layered in without changing waves.**
+Patterns 1–3 stay as built. Pattern 4 is built minus pass/fail. Pattern 7 is the only join, so
+it is last of the seven.
 
 - **Wave 0** — done. 01, 02, 03 built and broker-verified; 04 built minus disposition.
 - **Wave 1**, independent of each other:
   - **04 pass/fail.** Small: both review outcomes publish `disposition` + `analyst`.
     Pattern 7 cannot listen until this lands.
   - **08's fallback firehose.** No dependencies, and the only thing the audience sees.
-  - **05** — timer + `mes.batch_event` + Debezium. JDBC datasource first.
-  - **06** — MET ONE HTTP simulator + poll script + Event Stream. Longest new service;
-    start it once the API notes arrive, or stub the routes.
-- **Wave 2**: 07 (the sample-chain aggregate — needs 01, 03, 04, 05, 06), 08's primary firehose.
+  - **05** — timer + `mes.batch_event` (with `qualified_window`) + Debezium. JDBC datasource
+    first.
+  - **06** — MET ONE HTTP simulator (with `status` excursion flag) + poll script + Event
+    Stream. Longest new service; start it once the API notes arrive, or stub the routes.
+- **Wave 2**: 07 (the composite aggregate — needs 01, 03, 04, 05, 06), 08's primary firehose.
 - **Wave 3**: runbook, dual-trial rehearsal, the offline run.
 - Each wave ends with: `tasks.py health` green, pattern verification passes, `git status` shows
   only intended files, push.
@@ -243,9 +333,24 @@ first connects, or drop the slot and reconnect.
    batch engine that keeps cycling while Debezium is down; a poll that stalls and misses an
    analysis; an aggregate that still publishes when the nearest MET ONE is missing.
    A mechanism shown only working is a mechanism nobody can judge.
-3. End-to-end: all seven mechanisms firing → firehose shows seven colors; one sample's
+3. **The composite event itself.** Force `outside_qualified_window` and `environmental_excursion`
+   both `true` in one rehearsal run and confirm the aggregate payload reads exactly as the
+   through line states it. This is the one verification step the audience's payoff depends on.
+4. End-to-end: all seven mechanisms firing → firehose shows seven colors; one sample's
    valve → Nova → LIMS review → aggregate on the same `correlation_id`. Run once with
    networking disabled to prove offline viability.
-4. **A subscriber cannot tell how anything arrived.** Read the topic list to somebody who has not
+5. **A subscriber cannot tell how anything arrived.** Read the topic list to somebody who has not
    seen the build and ask them which patterns use CDC. That, not the old switch-over, is now how
    the namespace claim gets tested.
+
+## Open items for the master plan
+
+Carried over from the through-line source doc, still open:
+
+- Confirm demo asset availability for each pattern (live vs. recorded vs. simulated) — `06`'s
+  MET ONE simulator is the long pole; vendor API notes are still TBD.
+- Assign the upbeat closing line for each of the seven segments (only the overall closing beat,
+  above, is written).
+- Confirm which presenter owns intro / demo / risk per pattern.
+- Decide how much Ignition 8.3 Event Streams weight sits in pattern 3 vs. pattern 7 (both now
+  use the Event Stream → Transmission relay shape; worth naming explicitly on stage once).
