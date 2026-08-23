@@ -83,32 +83,42 @@ API in production; here it would have made the two patterns incomparable" is a g
 ## The chain
 
 ```
-sim-apconnect ──INSERT──▶ database `apconnect`.measurement
-                              │
-                              │  JDBC, user `ignition`, SELECT only
-                              ▼
-                    Ignition timer script
-                    WHERE measurement_no > {watermark}
-                              │
-                              ▼
-                    Transmission  (ign-transmission)
-                              │
+measure_now tag ──tag-change script──POST /measure──▶ sim-apconnect
+(the operator prop)                                        │ INSERT
+                                                           ▼
+                                 database `apconnect`.measurement
+                                                           │
+                                                           │ JDBC, user `ignition`, SELECT only
+                                                           ▼
+                                     Ignition timer script, every 60 s
+                                     WHERE measurement_no > {watermark}
+                                                           │
+                                                           ▼
+                                     Transmission  (ign-transmission)
+                                                           │
             icc26/site1/downstream/tff-301/turbidity-01/telemetry   (mechanism: poll)
 ```
 
 No new container. The writer is pattern 5's.
 
+Ignition appears **twice and for two unrelated reasons**: once as the operator's button, which is a
+stage prop, and once as the poller, which is the pattern. Ignition never writes to the `apconnect`
+database — the trigger is an HTTP call to the simulator, so the SELECT-only grant stands and
+checkpoint 10 still has to pass.
+
 ## No gateway UI
 
 **Decided 2026-08-23: everything in this pattern is authored as files.** No "UI first, then commit"
-steps. Two of the three Ignition resources have a known on-disk shape; the third does not, and that
-is the one risk in this spec.
+steps. Two of the four Ignition resources have a known on-disk shape; the two gateway events do not,
+and they are the risk in this spec. Both fall back the same way — see *Gateway events* below — so if
+one needs a UI round-trip, do both in the same trip.
 
 | Resource | On-disk shape | Confidence |
 |---|---|---|
 | Database connection `APCONNECT` | `database-connection/pg_db/` is committed and works | **High.** Copy it |
 | Memory tags | `tag-definition/default/icc26/site1/...` is committed and works | **High.** Copy the folder pattern |
 | Gateway timer | `ignition/projects/icc-2026/ignition/timer/` **exists but is empty** | **Low.** Inferred |
+| Gateway tag-change script | no such folder on disk at all | **Low.** Inferred |
 
 Apply with `python tasks.py scan`, not a restart.
 
@@ -145,8 +155,13 @@ be less noisy than the demo wants.
 `ignition`. The existing `pg_db` connection points at database `postgres` and is leftover; do not
 reuse it and do not delete it.
 
-**Timer, not Modbus.** Period **2 s** — slow enough to see on stage, fast enough that a 15 s stall
-drops a handful of measurements.
+**Timer, not Modbus. Period 60 s.** One poll a minute. This is not a compromise for the demo, it is
+the demo: a minute of lag between a completed measurement and its arrival on the backbone is what
+polling actually costs, and it is *visible* next to CDC, which publishes within milliseconds of the
+same INSERT. A 2 s timer would have hidden the very thing the pattern is about.
+
+It also makes the stall demo trivial to run: measurements are operator-triggered, so you press the
+button three times and the audience watches nothing happen until the tick.
 
 **Publish through Transmission**, envelope matching pattern 5 except `mechanism=poll`.
 `meta.ingest_ts` is the poll instant; `ts` is `completed_ts`. The lag is the point. `seq` is
@@ -165,6 +180,15 @@ keys. Never `0`. Same rule as patterns 3, 4 and 5.
 **Batch the query, publish one message per row.** Cap at 100 per tick so a long stall does not freeze
 the gateway. Leftover rows drain on subsequent ticks — that burst *is* the catch-up visual.
 
+**Measurements are operator-triggered, and the operator is a tag.** `measure_now`
+(Boolean, default false) is a one-shot: a gateway tag-change script fires on the rising edge, POSTs
+to `http://sim-apconnect:8080/measure`, and writes the tag back to false so it can be pressed again.
+The simulator does not free-run — see spec 05, *How a measurement gets made*.
+
+This is a stage prop and should be described as one. A real Haze 3001 is started by a person at the
+instrument, not by the historian. What it buys is that every row on stage exists because somebody
+caused it, which makes a missing row impossible to miss.
+
 **Stall is a memory tag**, `poll_enabled` (Boolean, default true). The timer always fires; the script
 returns immediately when the flag is false.
 
@@ -179,7 +203,8 @@ JDBC is written above.
 2. Datasource `APCONNECT` authored as files. `python tasks.py scan`. Gateway Status → Databases shows
    it valid.
 3. Memory tags authored as files. Script module `poll_turbidity`.
-4. Gateway timer authored as files, 2 s → `poll_turbidity.tick()`.
+4. Gateway events authored as files: the 60 s timer → `poll_turbidity.tick()`, and the tag-change
+   script on `measure_now` → `poll_turbidity.measure_now()`.
 5. Failure demo against live CDC (spec 05 checkpoint 9).
 6. Talk track + status.
 
@@ -195,7 +220,8 @@ JDBC is written above.
 | `…/downstream/tff-301/turbidity-01/tags.json` | **new.** The three memory tags |
 | `ignition/projects/icc-2026/ignition/script-python/poll_turbidity/code.py` | **new.** Poll loop, Variant projection, envelope, Transmission publish |
 | `ignition/projects/icc-2026/ignition/script-python/poll_turbidity/resource.json` | **new.** Copy the shape from `opcua_event/resource.json` |
-| `ignition/projects/icc-2026/ignition/timer/poll-turbidity/` | **new, inferred shape.** 2 s, `poll_turbidity.tick()` |
+| `ignition/projects/icc-2026/ignition/timer/poll-turbidity/` | **new, inferred shape.** 60 s, `poll_turbidity.tick()` |
+| Gateway tag-change script on `measure_now` | **new, inferred shape.** Rising edge → `poll_turbidity.measure_now()` |
 | `services/sim-apconnect/` | already required by pattern 5; no extra output |
 
 No MQTT user to add. Publish is `ign-transmission`, which already has `icc26/#`.
@@ -213,9 +239,15 @@ level, and a JSON array of tag objects in the leaf.
   { "name": "poll_enabled",   "tagType": "AtomicTag", "valueSource": "memory",
     "dataType": "Boolean", "value": true },
   { "name": "poll_jump",      "tagType": "AtomicTag", "valueSource": "memory",
+    "dataType": "Boolean", "value": false },
+  { "name": "measure_now",    "tagType": "AtomicTag", "valueSource": "memory",
     "dataType": "Boolean", "value": false }
 ]
 ```
+
+`measure_now` is the operator prop: write `true`, the tag-change script fires and writes it back to
+`false`. Keep it in the same folder as the poll tags so one Perspective screen or one tag browser
+folder is the whole stage control surface.
 
 The committed examples are all `UdtInstance`, so the plain-memory-tag keys above are **inferred**.
 If `scan` rejects them, the fix is one tag created in the UI and then read back off disk — do that
@@ -241,6 +273,10 @@ TAG_ROOT = "[default]icc26/site1/downstream/tff-301/turbidity-01/"
 WATERMARK_TAG = TAG_ROOT + "poll_watermark"
 ENABLED_TAG = TAG_ROOT + "poll_enabled"
 JUMP_TAG = TAG_ROOT + "poll_jump"
+MEASURE_TAG = TAG_ROOT + "measure_now"
+
+# The simulator's trigger endpoint. In-network name and port, not the host mapping.
+MEASURE_URL = "http://sim-apconnect:8080/measure"
 
 # Must stay identical to VARIANT_MAP in services/cdc-mapper/app.py. Two copies,
 # on purpose -- no shared library across Jython and CPython -- so change both.
@@ -270,6 +306,29 @@ def _project_values(raw):
         if val is not None:
             out[key] = float(val)
     return out
+
+def measure_now():
+    """Rising edge on measure_now: ask the instrument's application to file one
+    measurement, then reset the tag so it can be pressed again.
+
+    This is a stage prop for 'an operator pressed Start'. It is deliberately an
+    HTTP call to the simulator and NOT an INSERT: Ignition holds SELECT only on
+    the apconnect catalog, and that has to stay true (checkpoint 10).
+    """
+    logger = system.util.getLogger(LOGGER_NAME)
+    try:
+        client = system.net.httpClient(timeout=5000)
+        resp = client.post(MEASURE_URL, headers={"Content-Type": "application/json"},
+                           data="{}")
+        if resp.good:
+            logger.info("measure_now: simulator filed a measurement -- %s" % resp.body)
+        else:
+            logger.warn("measure_now: simulator returned %d" % resp.statusCode)
+    except Exception:
+        # The button failing is not the demo. Log it and let the operator retry.
+        logger.warn("measure_now: could not reach the simulator", sys.exc_info()[1])
+    finally:
+        system.tag.writeBlocking([MEASURE_TAG], [False])
 
 def tick():
     logger = system.util.getLogger(LOGGER_NAME)
@@ -338,25 +397,39 @@ hand over a `PGobject` — call `str()` on it before decoding if `jsonDecode` co
 The `poll_jump` branch is deliberately **live code**, not a comment. It is a stage control: show
 catch-up first, then flip the flag, stall, resume, and watch the numbers skip. CDC still has them.
 
-### Gateway timer — the one inferred resource
+### Gateway events — the two inferred resources
 
-`ignition/projects/icc-2026/ignition/timer/` exists in the committed tree and is empty, so the
-resource type is right and the on-disk schema is unknown. Author
+**Timer `poll-turbidity`.** `ignition/projects/icc-2026/ignition/timer/` exists in the committed tree
+and is empty, so the resource type is right and the on-disk schema is unknown. Author
 `ignition/projects/icc-2026/ignition/timer/poll-turbidity/` with a `code.py` calling
 `poll_turbidity.tick()` and a `resource.json` mirroring the shape used by other project resources
-(`scope`, `version`, `files`, `attributes`), plus whatever config file the pattern of sibling
-resource types suggests — a `config.json` carrying delay, and a fixed-delay vs fixed-rate choice, is
-the likely shape.
+(`scope`, `version`, `files`, `attributes`), plus whatever config file the sibling resource types
+suggest — a `config.json` carrying a **60000 ms** delay and a fixed-delay vs fixed-rate choice is the
+likely shape. Prefer **fixed delay**: a 60 s poll that overruns should not stack up.
 
-**Expect this one to need a correction.** It is the only resource here with no committed example.
-Two fallbacks, in order of preference:
+**Tag-change script on `measure_now`.** There is no gateway tag-change folder on disk at all, so both
+the folder name and the schema are unknown. The likely path is
+`ignition/projects/icc-2026/ignition/tag-change/measure-now/`, with a `code.py` body of
 
-1. Create the timer once in Gateway → Config → Gateway Events, read what the gateway wrote to disk,
-   and commit that — a one-time UI action that then makes the file authoritative forever.
-2. Drive `tick()` from an Event Stream scheduled source if that schema turns out to be pleasanter,
-   and note the choice as-built.
+```python
+if currentValue.value and not (previousValue and previousValue.value):
+    poll_turbidity.measure_now()
+```
 
-Do not attach this to a Perspective session.
+and a config naming the tag path and enabling *change on value*, not on quality or timestamp.
+
+**Expect both to need a correction.** They are the only resources here with no committed example.
+Fallbacks, in order of preference:
+
+1. Create both once in Gateway → Config → Gateway Events, read what the gateway wrote to disk, and
+   commit that — one UI trip that makes the files authoritative forever. Do both in the same trip.
+2. For the timer only: drive `tick()` from an Event Stream scheduled source if that schema turns out
+   to be pleasanter, and note the choice as-built.
+3. For the trigger only: fall back to the simulator's own **measure now** button on :8087. The demo
+   still works, you just lose the Ignition-side control. Do not fall back to letting the simulator
+   free-run.
+
+Do not attach either to a Perspective session.
 
 ## Ignition resources
 
@@ -365,7 +438,8 @@ Do not attach this to a Perspective session.
 | JDBC `APCONNECT` | **Files.** Copy `pg_db`, change the URL, keep the `password` blob verbatim |
 | Memory tags | **Files.** Mirror `tag-definition/default/icc26/site1/qc/analyzers/` |
 | Script `poll_turbidity` | Files + `python tasks.py scan` |
-| Gateway timer | **Files, inferred.** See above |
+| Gateway timer, 60 s | **Files, inferred.** See above |
+| Gateway tag-change on `measure_now` | **Files, inferred.** See above |
 
 Existing `pg_db` (`jdbc:postgresql://postgres:5432/postgres`) stays. It is not this pattern. Status
 already notes that `ICC26` on `icc26` is leftover.
@@ -410,8 +484,9 @@ Identical to pattern 5 except `mechanism` and `ingest_ts`.
 }
 ```
 
-`ingest_ts` minus `ts` is the poll lag. On a 2 s timer it is ~0–2 s. After a stall it is the stall
-length. That is the slide.
+`ingest_ts` minus `ts` is the poll lag. On a 60 s timer it is 0–60 s; after a stall it is the stall
+length. That is the slide — and it is why the period is a minute rather than two seconds. Put the
+same measurement's `cdc` envelope beside it and the CDC `ingest_ts` is milliseconds after `ts`.
 
 ## Empirical checkpoints
 
@@ -419,33 +494,44 @@ length. That is the slide.
 measurement` returns a growing number while the sim runs. If the connection is faulted with an
 authentication error, the copied password blob did not decrypt — see *The datasource password trick*.
 
-**2 — Poll with Debezium off.** Stop `icc26-debezium` and `icc26-cdc-mapper`. Let the sim run. Poll
-publishes `mechanism=poll`, `measurement_no` contiguous, `seq == values.measurement_no`.
+**2 — The trigger works.** Write `measure_now` true in the tag browser. It flips back to false on
+its own, the simulator log shows a filed measurement, and a new row appears in `psql` — **before**
+any poll has run. If the tag stays true, the tag-change script did not load; see the fallbacks.
 
-**3 — The two documents match.** Turn Debezium back on. For one measurement, capture both messages
-and diff them. Everything must be equal except `meta.mechanism` and `meta.ingest_ts`. Any other
-difference is a projection bug in one of the two `VARIANT_MAP`s.
+**3 — Poll with Debezium off.** Stop `icc26-debezium` and `icc26-cdc-mapper`. Trigger three
+measurements. Within 60 s the poll publishes three messages, `mechanism=poll`, `measurement_no`
+contiguous, `seq == values.measurement_no`.
 
-**4 — Stall, catch-up.** Set `poll_enabled` false. Watch `measurement_no` advance in `psql`. Set it
-true. A burst of late messages, numbers contiguous with the last pre-stall one, `ingest_ts` clustered
-now, `ts` spread across the stall. **No gaps.**
+**4 — The two documents match, and the lag is visible.** Turn Debezium back on. Trigger one
+measurement and capture both messages. Everything must be equal except `meta.mechanism` and
+`meta.ingest_ts`. Any other difference is a projection bug in one of the two `VARIANT_MAP`s.
 
-**5 — Stall, jump.** Set `poll_jump` true, stall, resume. Numbers skip. Say: that is the other
-implementation, and it is one flag.
+The `cdc` message arrives within milliseconds of the button. The `poll` message arrives at the next
+tick, up to a minute later, carrying the **same** `ts`. That gap, on one measurement, on one topic,
+is the whole comparison.
 
-**6 — CDC still had them.** With Debezium on during the stall, the missing poll numbers are on the
-same topic as `mechanism=cdc`. Two colours, one address. A subscriber cannot tell from the topic
+**5 — Stall, catch-up.** Set `poll_enabled` false. Trigger four measurements — you know exactly how
+many, which is the point of a manual trigger. Set `poll_enabled` true. Four late messages, numbers
+contiguous with the last pre-stall one, `ingest_ts` clustered now, `ts` spread across the stall.
+**No gaps.**
+
+**6 — Stall, jump.** Set `poll_jump` true, stall, trigger four more, resume. Numbers skip and the
+four are never published. Say: that is the other implementation, and it is one flag.
+
+**7 — CDC still had them.** With Debezium on during the stall, the four missing poll numbers are on
+the same topic as `mechanism=cdc`. Two colours, one address. A subscriber cannot tell from the topic
 which is which.
 
-**7 — A failed measurement carries no reading.** Force a `FAILURE` from :8087. The poll message has
+**8 — A failed measurement carries no reading.** Force a `FAILURE` from :8087. The poll message has
 `status: "FAILURE"` and no `haze_ebc` key. Matches spec 05 checkpoint 6.
 
-**8 — Gateway restart.** Restart Ignition. The memory watermark is 0. The next tick replays from the
+**9 — Gateway restart.** Restart Ignition. The memory watermark is 0. The next tick replays from the
 beginning (duplicates) unless you re-seed. That is at-least-once, and it is honest. Do not "fix" it
-in v1.
+in v1. Note the 60 s period means you wait up to a minute to see this.
 
-**9 — SELECT only.** As `ignition`, `INSERT INTO measurement …` must fail. If it succeeds, the grant
-is wrong and the demo is lying about being an observer.
+**10 — SELECT only.** As `ignition`, `INSERT INTO measurement …` must fail. If it succeeds, the grant
+is wrong and the demo is lying about being an observer. The `measure_now` trigger must not have
+weakened this: it POSTs to the simulator, it does not write to the database.
 
 ## Verification (copy-paste)
 
@@ -474,7 +560,8 @@ Deviations table, at minimum:
 - **JDBC poll chosen over AP Connect's own REST watermark** (`apc_FromMeasurementCompletionNo` +
   `dataRevision`), and why.
 - Whether the copied datasource password blob decrypted, or a UI retype was needed.
-- The gateway timer's real on-disk schema, once known — and whether it took a UI round-trip.
+- The two gateway events' real on-disk schemas, once known — and whether they took a UI round-trip.
+- Whether the 60 s period held, or the stage wanted it faster or slower.
 - Whether the memory-tag JSON keys were right first time.
 - Timer vs Event Stream scheduled source; memory vs durable watermark; catch-up vs jump as the
   default.

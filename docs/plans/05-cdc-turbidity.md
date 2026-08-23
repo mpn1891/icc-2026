@@ -107,16 +107,20 @@ the honest thing to say if asked.
 ## The chain
 
 ```
-sim-apconnect ──INSERT──▶ database `apconnect`.measurement   (the application's own store)
-                              │
-                              │  pgoutput, user `cdc`, publication `apconnect_cdc`
-                              ▼
-                        Debezium Server
-                              │  native change events on an internal topic
-                              ▼
-                        cdc-mapper  (thin envelope projector)
-                              │
-                              ▼
+operator presses Start ──POST /measure──▶ sim-apconnect
+(a Boolean tag in Ignition, spec 06)              │
+                                                  │ INSERT
+                                                  ▼
+                        database `apconnect`.measurement   (the application's own store)
+                                                  │
+                                                  │ pgoutput, user `cdc`, publication `apconnect_cdc`
+                                                  ▼
+                                            Debezium Server
+                                                  │ native change events, internal topic
+                                                  ▼
+                                            cdc-mapper   (thin envelope projector)
+                                                  │
+                                                  ▼
             icc26/site1/downstream/tff-301/turbidity-01/telemetry   (mechanism: cdc)
 ```
 
@@ -174,11 +178,41 @@ Physical address: downstream TFF skid `tff-301`, meter `turbidity-01`. First use
 Seed `plant.equipment` with both ids, **lowercase**, matching the topic tokens (`BR-201` in the
 current seed is an existing wart; do not add another).
 
+## How a measurement gets made
+
+**Default: nothing happens until an operator asks for one.** A Haze 3001 does not free-run; a
+person loads a sample and presses Start, and one completed measurement is filed. The simulator
+matches that, and the demo is better for it — every row on stage exists because somebody caused it.
+
+Two triggers, and neither is a timer inside the simulator:
+
+| Trigger | Where | Notes |
+|---|---|---|
+| `POST /measure` | `sim-apconnect` HTTP, port 8080 in-network / **8087** on the host | The real trigger. Optional JSON body `{"status": "FAILURE"}` to file a failed measurement |
+| The **measure now** button | the :8087 config page | The same endpoint, for when you are standing at the laptop |
+
+**Spec 06 adds the operator-facing control:** a Boolean tag
+`[default]icc26/site1/downstream/tff-301/turbidity-01/measure_now`, and a gateway tag-change script
+that POSTs to `/measure` and writes the tag back to false. That tag is the stage prop standing in
+for the person at the instrument. It lives in 06 because 06 owns the Ignition-side resources.
+
+**Build pattern 5 so it does not need any of that.** `POST /measure` and the page button are
+self-contained, so this spec is testable with `curl` before Ignition has a tag.
+
+**Ignition never writes to the `apconnect` database.** The trigger is an HTTP call to the
+simulator, which does the INSERT as the application would. The SELECT-only grant in
+`05-apconnect.sql` stands, and checkpoint 9 of spec 06 still has to pass.
+
+A free-running mode still exists for soak-testing: `INSERT_PERIOD_S` greater than zero makes the
+simulator file a measurement on an interval. **It defaults to 0, which is off.** Do not turn it on
+for the talk.
+
 ## Build order
 
 1. **Nuke** (empty Postgres volume). `initdb/` will not re-run otherwise.
 2. Role + database + table + publication + grants.
-3. `sim-apconnect` inserting on an interval. Prove with `psql` before Debezium exists.
+3. `sim-apconnect` filing a measurement on `POST /measure`. Prove with `curl` and `psql`
+   before Debezium exists.
 4. MQTT users `debezium` + `cdc-mapper`.
 5. Debezium Server + mapper. Prove catch-up.
 6. Pattern 6's JDBC poll (separate spec, same volume).
@@ -350,10 +384,13 @@ services/sim-apconnect/
     README.md
 ```
 
-Config page (host **8087**): EBC setpoint, noise amplitude, insert period, a "measure now" button,
-a status override so `CANCELED` / `FAILURE` rows can be produced on demand, and the last
-`measurement_no` written. Optional stall checkbox is **not** here — stalling the writer is not the
-demo; stalling pattern 6's timer is.
+Config page (host **8087**): EBC setpoint, noise amplitude, a **measure now** button, a status
+override so `CANCELED` / `FAILURE` rows can be produced on demand, the free-run interval (0 = off,
+and 0 is the default), and the last `measurement_no` written. Optional stall checkbox is **not**
+here — stalling the writer is not the demo; stalling pattern 6's timer is.
+
+`POST /measure` is the same code path as the button and is what spec 06's tag-change script calls.
+Return the new `measurement_no` and `id` in the response so a caller can log what it caused.
 
 ```python
 # app.py sketch
@@ -367,7 +404,8 @@ class Config:
         self.device_id = _env("DEVICE_ID", "turbidity-01")
         self.instrument_serial = _env("INSTRUMENT_SERIAL", "83012345")
         self.instrument_type = _env("INSTRUMENT_TYPE", "DMA 5002")
-        self.period_s = _env_float("INSERT_PERIOD_S", 2.0)
+        # 0 disables free-running. The default trigger is POST /measure.
+        self.period_s = _env_float("INSERT_PERIOD_S", 0.0)
         self.ebc_setpoint = _env_float("EBC_SETPOINT", 4.0)
         self.ebc_noise = _env_float("EBC_NOISE", 0.3)
         self.http_port = _env_int("HTTP_PORT", 8080)
@@ -558,7 +596,7 @@ is not a field device). Duplicate the ~20-line envelope helper; no shared lib.
       PGDATABASE: apconnect
       PGUSER: apconnect
       PGPASSWORD: apconnect
-      INSERT_PERIOD_S: ${APCONNECT_INSERT_PERIOD_S:-2}
+      INSERT_PERIOD_S: ${APCONNECT_INSERT_PERIOD_S:-0}   # 0 = trigger-only; see "How a measurement gets made"
       EBC_SETPOINT: ${APCONNECT_EBC_SETPOINT:-4.0}
       HTTP_PORT: 8080
       PYTHONIOENCODING: utf-8
@@ -657,9 +695,16 @@ haze keys at all**. Absent, not zero. Pattern 6 must behave identically.
 **1 — Schema exists after nuke.** `SHOW wal_level;` → `logical`. `\l` lists `apconnect`.
 `\d measurement` in that database. `SELECT * FROM pg_publication;` → `apconnect_cdc` only.
 
-**2 — Simulator writes.** Config page on :8087.
+**2 — Simulator writes, and only when asked.** With the stack up and nothing triggered, the table
+stays empty. Then:
+
+```
+curl -s -X POST http://localhost:8087/measure
+```
+
 `SELECT measurement_no, id, status, completed_ts, result_values->0 FROM measurement ORDER BY measurement_no DESC LIMIT 5;`
-Numbers contiguous, GUIDs distinct, first Variant is `Haze/Haze` in EBC near the setpoint.
+One new row per call, numbers contiguous, GUIDs distinct, first Variant is `Haze/Haze` in EBC near
+the setpoint. Press the page button and confirm it is the same path.
 
 **3 — Debezium slot.** `SELECT slot_name, active FROM pg_replication_slots;` → `debezium_apconnect`,
 `t`. Chariot client list shows `debezium`.
@@ -676,8 +721,9 @@ Record as-built if you choose to publish updates.
 **6 — A failed measurement carries no reading.** Force a `FAILURE` from the config page. The UNS
 message has `status: "FAILURE"` and **no** `haze_ebc` key. Not `0`.
 
-**7 — Catch-up.** Stop Debezium. Insert several rows (or let the sim run). Start Debezium. Those
-`measurement_no`s appear on the topic, in order, no gaps. That is the WAL argument.
+**7 — Catch-up.** Stop Debezium. Trigger four or five measurements. Start Debezium. Those
+`measurement_no`s appear on the topic, in order, no gaps. That is the WAL argument — and with a
+manual trigger you know exactly how many should arrive, so a gap is unmissable.
 
 **8 — Non-ASCII survives.** `cell_temperature_c` exists and the `°C` unit did not mangle anywhere
 in the chain. Check the mapper log, not just the final envelope.
