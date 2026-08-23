@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<!--
+  AP Connect's operator page, simulated.
+
+  This is NOT a field device's commissioning page -- put it next to 8085 and the difference
+  is the point of patterns 5 and 6. There is no topic box here, no QoS, no retained flag, no
+  broker at all, because AP Connect has none of those things and never will. The only way its
+  data reaches the backbone is for somebody to read its database behind its back.
+
+  The one control that matters is "Measure now", which is the same POST /measure that spec
+  06's Ignition tag-change script calls. Everything else on this page is a simulator knob.
+
+  No external assets of any kind -- the demo has to run with networking disabled.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AP Connect &mdash; Haze 3001 measurements</title>
+<style>
+  :root {
+    --bg: #12161c;
+    --panel: #1a2028;
+    --panel-2: #202834;
+    --line: #2d3846;
+    --ink: #e6edf5;
+    --muted: #8d9bad;
+    --accent: #3fa7ff;
+    --ok: #37c98b;
+    --warn: #e8b44a;
+    --bad: #e8615a;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 0 3rem;
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    background: linear-gradient(180deg, #1d2530, #161c24);
+    border-bottom: 1px solid var(--line);
+    padding: 1rem 1.5rem;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  .badge-variant {
+    display: inline-block; font: 600 11px/1 var(--mono); letter-spacing: .12em;
+    text-transform: uppercase; padding: .4rem .6rem; border-radius: 3px;
+    background: #23405c; color: #9ed0ff; border: 1px solid #2f5a80;
+  }
+  h1 { font-size: 1.25rem; margin: .6rem 0 .2rem; font-weight: 600; }
+  .sub { color: var(--muted); font-size: .85rem; }
+  .sub code { font-family: var(--mono); color: #b9c7d8; }
+  .led { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%;
+         background: var(--bad); margin-right: .35rem; vertical-align: baseline; }
+  .led.on { background: var(--ok); }
+
+  main { padding: 1.5rem; }
+  section {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    margin-bottom: 1.25rem;
+  }
+  section > h2 {
+    font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    margin: 0; padding: .8rem 1.1rem; border-bottom: 1px solid var(--line); font-weight: 600;
+  }
+  .body { padding: 1.1rem; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .9rem; align-items: end; }
+  .grid.two { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 640px) { .grid, .grid.two { grid-template-columns: 1fr; } }
+  label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .3rem; }
+  input[type=text], select {
+    width: 100%; padding: .55rem .6rem; background: #0e1319; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px; font-family: var(--mono);
+    font-size: .88rem;
+  }
+  input[type=text]:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button {
+    margin-top: 1rem; padding: .55rem 1.1rem; border-radius: 4px; border: 1px solid #2f6ea8;
+    background: #1d5488; color: #eaf4ff; font-size: .88rem; cursor: pointer;
+  }
+  button:hover { background: #23639e; }
+  button.ghost { background: var(--panel-2); border-color: var(--line); color: var(--ink); }
+  button.ghost:hover { background: #2a3442; }
+  button.big { font-size: 1rem; padding: .8rem 1.6rem; }
+  button[disabled] { opacity: .5; cursor: default; }
+  .msg { margin-top: .9rem; font-size: .85rem; padding: .6rem .75rem; border-radius: 4px;
+         display: none; }
+  .msg.ok { display: block; background: #14352a; color: #8fe3ba; border: 1px solid #235c46; }
+  .msg.err { display: block; background: #3a1d1c; color: #f0a09b; border: 1px solid #6b3230; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line);
+           vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .72rem; text-transform: uppercase;
+       letter-spacing: .07em; }
+  tr:last-child td { border-bottom: none; }
+  td.mono { font-family: var(--mono); color: #9ed0ff; word-break: break-all; }
+  .pill { font-family: var(--mono); font-size: .78rem; padding: .1rem .4rem; border-radius: 3px;
+          background: var(--panel-2); border: 1px solid var(--line); }
+
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem;
+        font-size: .86rem; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-family: var(--mono); word-break: break-all; }
+
+  .sim { border-color: #4a3a20; }
+  .sim > h2 { color: var(--warn); border-color: #4a3a20; }
+  .sim-note { color: var(--muted); font-size: .8rem; margin: 0 0 .9rem; }
+  .state-line { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line);
+                font-family: var(--mono); font-size: .86rem; }
+  .state-line .v { color: var(--accent); }
+  .warnstrip { color: var(--warn); font-size: .82rem; margin-top: .8rem; display: none; }
+  footer { color: var(--muted); font-size: .78rem; text-align: center; margin-top: 1.5rem; }
+</style>
+</head>
+<body>
+
+<header><div class="wrap">
+  <span class="badge-variant">Patterns 5 &amp; 6 &middot; the application</span>
+  <h1>AP Connect &mdash; Haze 3001 measurements</h1>
+  <p class="sub">
+    <span id="db-led" class="led"></span><span id="db-text">checking store</span>
+    &middot; catalog <code id="db-name">&hellip;</code>
+    &middot; <code id="db-host">&hellip;</code>
+    &middot; module <code>Haze 3001</code> on <code id="inst-type">&hellip;</code>
+    s/n <code id="inst-serial">&hellip;</code>
+  </p>
+</div></header>
+
+<main class="wrap">
+
+  <section>
+    <h2>Measure</h2>
+    <div class="body">
+      <p class="sim-note">
+        A Haze 3001 does not free-run. A person loads a sample and presses Start, and one
+        completed measurement is filed. This button is that person &mdash; and so is
+        <code>POST /measure</code>, which is the same code path.
+      </p>
+      <button type="button" class="big" id="measure">Measure now</button>
+      <button type="button" class="ghost big" id="measure-fail"
+              style="margin-left:.5rem">File a FAILURE</button>
+      <div id="measure-msg" class="msg"></div>
+      <div class="state-line">
+        last <span class="v" id="last-no">&mdash;</span>
+        &middot; id <span class="v" id="last-id">&mdash;</span>
+        &middot; status <span class="v" id="last-status">&mdash;</span>
+        &middot; completed <span class="v" id="last-ts">&mdash;</span>
+      </div>
+      <div class="state-line" style="border-top:none;padding-top:.2rem">
+        rows in <code>measurement</code> <span class="v" id="row-count">&mdash;</span>
+        &middot; highest <code>measurement_no</code> <span class="v" id="max-no">&mdash;</span>
+        &middot; filed this session <span class="v" id="filed">&mdash;</span>
+      </div>
+      <div class="warnstrip" id="store-error"></div>
+    </div>
+  </section>
+
+  <section class="sim">
+    <h2>Simulator controls &mdash; not part of AP Connect</h2>
+    <div class="body">
+      <p class="sim-note">
+        A real install has an instrument here. These fields stand in for what the filtrate
+        was actually doing.
+      </p>
+      <form id="cfg">
+        <div class="grid">
+          <div>
+            <label for="ebc_setpoint">Haze setpoint (EBC)</label>
+            <input type="text" id="ebc_setpoint" name="ebc_setpoint" spellcheck="false"
+                   autocomplete="off">
+          </div>
+          <div>
+            <label for="ebc_noise">Noise amplitude (EBC)</label>
+            <input type="text" id="ebc_noise" name="ebc_noise" spellcheck="false"
+                   autocomplete="off">
+          </div>
+          <div>
+            <label for="period_s">Free-run interval (s) &mdash; 0 is off</label>
+            <input type="text" id="period_s" name="period_s" spellcheck="false"
+                   autocomplete="off">
+          </div>
+        </div>
+        <div class="grid two" style="margin-top:.9rem">
+          <div>
+            <label for="status_override">Status override</label>
+            <select id="status_override" name="status_override"></select>
+          </div>
+          <div>
+            <label for="sample_name">Sample name</label>
+            <input type="text" id="sample_name" name="sample_name" spellcheck="false"
+                   autocomplete="off">
+          </div>
+        </div>
+        <button type="submit">Apply</button>
+        <div id="msg" class="msg"></div>
+      </form>
+      <p class="sim-note" style="margin:.9rem 0 0">
+        <strong>Free-run is a soak-test setting, not the talk.</strong> Leave it at 0: the
+        catch-up demo depends on knowing exactly how many measurements should have arrived.
+        <strong>Status override</strong> forces every subsequent measurement, including the
+        free-running ones &mdash; <code>CANCELED</code> and <code>FAILURE</code> file a row
+        with no haze values at all, which is the absent-not-zero checkpoint.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>What this application is, and is not</h2>
+    <div class="body">
+      <dl class="kv">
+        <dt>Vendor</dt><dd id="app-vendor">&hellip;</dd>
+        <dt>Store</dt><dd id="app-engine">&hellip;</dd>
+        <dt>Instrument alias</dt><dd id="inst-alias">&hellip;</dd>
+        <dt>Operator</dt><dd id="inst-operator">&hellip;</dd>
+        <dt>Physical address</dt><dd id="inst-address">&hellip;</dd>
+        <dt>MQTT</dt><dd>none. There is no broker connection in this service</dd>
+      </dl>
+      <p class="sim-note" style="margin:.9rem 0 0">
+        Everything the backbone knows about this instrument, it learned by reading this
+        application's database without asking &mdash; Debezium tailing the write-ahead log
+        (pattern 5, <code>mechanism: cdc</code>) and Ignition polling over JDBC (pattern 6,
+        <code>mechanism: poll</code>). Both land on
+        <code>icc26/site1/downstream/tff-301/turbidity-01/telemetry</code>, and a subscriber
+        cannot tell from the topic which is which.
+      </p>
+    </div>
+  </section>
+
+  <footer>icc-2026 &middot; docs/plans/05-cdc-turbidity.md &middot;
+    docs/reference/apconnect-haze3001-model.md</footer>
+</main>
+
+<script>
+"use strict";
+var $ = function (id) { return document.getElementById(id); };
+var dirty = false;      // never overwrite what someone is halfway through typing
+var statusesBuilt = false;
+
+function esc(s) {
+  return String(s === null || s === undefined ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderStatic(s) {
+  $("db-name").textContent = s.application.database;
+  $("db-host").textContent = s.application.host + " as " + s.application.user;
+  $("inst-type").textContent = s.instrument.host_type;
+  $("inst-serial").textContent = s.instrument.serial;
+  $("app-vendor").textContent = s.application.vendor + " " + s.application.name +
+    " " + s.application.version;
+  $("app-engine").textContent = s.application.engine;
+  $("inst-alias").textContent = s.instrument.alias;
+  $("inst-operator").textContent = s.instrument.operator;
+  $("inst-address").textContent = "site1 / downstream / " + s.instrument.cell + " / " +
+    s.instrument.device_id;
+
+  if (!statusesBuilt) {
+    var html = "<option value=''>none &mdash; file a normal SUCCESS</option>";
+    for (var i = 0; i < s.statuses.length; i++) {
+      html += "<option value='" + esc(s.statuses[i]) + "'>" + esc(s.statuses[i]) +
+        "</option>";
+    }
+    $("status_override").innerHTML = html;
+    statusesBuilt = true;
+  }
+}
+
+function renderConfig(s) {
+  if (dirty) { return; }
+  $("ebc_setpoint").value = s.config.ebc_setpoint;
+  $("ebc_noise").value = s.config.ebc_noise;
+  $("period_s").value = s.config.period_s;
+  $("status_override").value = s.config.status_override || "";
+  $("sample_name").value = s.config.sample_name;
+}
+
+function renderRuntime(s) {
+  var up = !!s.store.reachable;
+  $("db-led").className = "led" + (up ? " on" : "");
+  $("db-text").textContent = up ? "store connected" : "store unreachable";
+
+  $("row-count").textContent = s.store.row_count === null ? "?" : s.store.row_count;
+  $("max-no").textContent = s.store.last_measurement_no === null
+    ? "?" : s.store.last_measurement_no;
+  $("filed").textContent = s.runtime.filed_this_session;
+
+  var last = s.runtime.last;
+  $("last-no").textContent = last ? last.measurement_no : "—";
+  $("last-id").textContent = last ? last.id : "—";
+  $("last-status").textContent = last ? last.status : "—";
+  $("last-ts").textContent = last ? last.completed_ts : "—";
+
+  var err = s.store.error || s.runtime.last_error;
+  var strip = $("store-error");
+  strip.style.display = err ? "block" : "none";
+  strip.textContent = err ? "store: " + err : "";
+}
+
+function apply(s) { renderStatic(s); renderConfig(s); renderRuntime(s); }
+
+function refresh() {
+  fetch("/api/state").then(function (r) { return r.json(); }).then(apply)
+    .catch(function () { $("db-text").textContent = "application unreachable"; });
+}
+
+function post(path, body) {
+  return fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {})
+  }).then(function (r) { return r.json(); });
+}
+
+["ebc_setpoint", "ebc_noise", "period_s", "status_override", "sample_name"]
+  .forEach(function (id) {
+    $(id).addEventListener("input", function () { dirty = true; });
+    $(id).addEventListener("change", function () { dirty = true; });
+  });
+
+$("cfg").addEventListener("submit", function (e) {
+  e.preventDefault();
+  post("/api/config", {
+    ebc_setpoint: $("ebc_setpoint").value,
+    ebc_noise: $("ebc_noise").value,
+    period_s: $("period_s").value,
+    status_override: $("status_override").value,
+    sample_name: $("sample_name").value
+  }).then(function (r) {
+    var msg = $("msg");
+    msg.className = "msg " + (r.ok ? "ok" : "err");
+    msg.textContent = r.message;
+    if (r.ok) { dirty = false; }
+    if (r.state) { apply(r.state); }
+  });
+});
+
+// Both buttons hit POST /measure -- the same endpoint spec 06's tag-change script calls.
+// One code path, so the button cannot drift from the API.
+function trigger(body, button) {
+  button.disabled = true;
+  post("/measure", body).then(function (r) {
+    var msg = $("measure-msg");
+    msg.className = "msg " + (r.ok ? "ok" : "err");
+    msg.textContent = r.ok
+      ? "filed measurement_no " + r.measurement_no + " (" + r.status + "), id " + r.id
+      : r.message;
+    refresh();
+  }).catch(function () {
+    var msg = $("measure-msg");
+    msg.className = "msg err";
+    msg.textContent = "the application did not answer";
+  }).then(function () { button.disabled = false; });
+}
+
+$("measure").addEventListener("click", function () { trigger({}, $("measure")); });
+$("measure-fail").addEventListener("click", function () {
+  trigger({ status: "FAILURE" }, $("measure-fail"));
+});
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>
