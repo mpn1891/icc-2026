@@ -7,7 +7,8 @@ add it here rather than in a status note.
 
 - What is true *right now* and what to do next: [`plans/00-status.md`](plans/00-status.md).
 - What is still to be built: [`plans/00-master-plan.md`](plans/00-master-plan.md).
-- Talk tracks, as they are written: [`04-lims-webhook.md`](04-lims-webhook.md).
+- Talk tracks, as they are written: [`04-novaflex-webhook.md`](04-novaflex-webhook.md).
+- Kept but not the talk: [`extra/README.md`](extra/README.md) (LIMS, Countess, other dropped sources).
 
 ---
 
@@ -17,46 +18,49 @@ add it here rather than in a status note.
                      ┌──────────────────────────────┐
    pattern 1  ──────▶│                              │◀────── pattern 2  (the SAME valve,
    pattern 3  ──────▶│   Chariot MQTT Server        │                    Sparkplug B)
-   pattern 6  ──────▶│   :1883 / :8090(ws) / :8081  │◀────── pattern 7  (scripted aggregate)
+   pattern 5  ──────▶│   :1883 / :8090(ws) / :8081  │
                      └──────────────┬───────────────┘
                                     │
                           MQTT Engine / Transmission
                                     │
-   pattern 4 (webhook) ──▶ ┌────────┴─────────┐
-   pattern 5 (CDC/HTTP) ─▶ │  Ignition 8.3.8  │──── JDBC ────▶ PostgreSQL 17
-   pattern 7 (webhook) ──▶ │  + Cirrus 5.0.4  │                (wal_level=logical)
-                           └──────────────────┘                   │          │
-                                                            Debezium    Odoo (own database,
-                                                             Server      pattern 5's source)
+   pattern 4 (HTTPS POST) ──▶ ┌────────┴─────────┐
+   pattern 6 (JDBC poll)  ──▶ │  Ignition 8.3.8  │──── JDBC ────▶ PostgreSQL 17
+                              │  + Cirrus 5.0.4  │                (wal_level=logical)
+                              └──────────────────┘                   │
+                                                               database `turbidity`
+                                                               Debezium Server
+                                                               (pattern 5 → MQTT)
 ```
 
 Patterns 1 and 2 are one smart sample valve assembly in two firmwares, in their own containers.
-Everything else publishes through Ignition.
+Pattern 5 (Debezium MQTT sink) publishes onto Chariot as an out-of-band observer. Patterns 3, 4
+and 6 publish through Ignition. Pattern 7 is TBD.
 
-Note that pattern 7 also arrives by webhook, and is not pattern 4. **The transport is not the
-mechanism**: an inbound HTTP callback from an asset management system triggers a *scripted
-aggregation*, which is what `meta.mechanism` records. Two patterns sharing a transport and
-carrying different mechanisms is a useful thing to be able to point at.
+Pattern 4 is an HTTPS POST from the NovaFlex into an Event Stream, not a LIMS. **The transport
+is not the mechanism**: HTTP in, MQTT out, `meta.mechanism = "webhook"`. Pattern 3 is the same
+instrument over OPC UA onto the same topic.
 
 | Service | Host ports | Built in |
 |---|---|---|
 | `postgres` | 5432 | step 1 |
 | `ignition` | 8088, 8043 | step 1 |
 | `chariot` | 1883, 8883, 8090, 8081, 8444 | step 1 |
-| `opcua-novaflex` | 4841 | step 4 |
 | `sim-valve-mqtt` | 8085 (config page) | pattern 1 |
 | `sim-valve-spb` | 8086 (config page) | pattern 2 |
-| `lims` | 8000 (approval screen) | pattern 4 — built |
-| `odoo` | 8069 | pattern 5 — planned |
-| `debezium` | 8083 | pattern 5 — planned |
-| `sim-particle-counter` | 5020 (Modbus TCP) | pattern 6 — planned |
-| `sim-vibration` | — | pattern 7 — planned, resurrected |
-| `ams` | 8001 | pattern 7 — planned |
-| `opcua-dcs` | 4842 | pattern 7 — planned |
+| `opcua-novaflex` | 4841 | pattern 3 (OPC UA) and pattern 4 (planned HTTPS POST) |
+| `opcua-countess` | 4840 | **Extra — not the talk.** Still in compose. Docs: [`extra/`](extra/README.md) |
+| `lims` | 8000 (approval screen) | **Extra — not the talk.** Still in compose until pattern 4 is rebuilt. Docs: [`extra/lims-webhook-spec.md`](extra/lims-webhook-spec.md) |
+| `sim-turbidity` | config page TBD | patterns 5 and 6 — planned. Writes only to database `turbidity` |
+| `debezium` | 8083 | pattern 5 — planned, tails `turbidity` |
+| `sim-vibration` | — | retired (was pattern 1, then a pattern-7 candidate). On disk, unwired |
+| `ams` | — | **not planned.** Pattern 7 is TBD |
+| `opcua-dcs` | — | **not planned.** Pattern 7 is TBD |
+| `sim-particle-counter` | — | **not planned.** Pattern 6 is the turbidity database, not Modbus |
 
-The four `planned` services below `lims` were all decided on 2026-08-19 and none has a spec yet.
-Ports are provisional. `lims` is built: see [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md)
-and [`04-lims-webhook.md`](04-lims-webhook.md).
+**Odoo was the 2026-08-19 candidate for pattern 5 and was dropped 2026-08-20** — do not add
+it back. Pattern 5's source is now the turbidity meter's local database. Pattern 4's current
+LIMS implementation is superseded; the rebuild is [`plans/04-novaflex-webhook.md`](plans/04-novaflex-webhook.md).
+Pattern 7 is TBD and is the designated cut.
 
 **Patterns 1 and 2 are the same physical device in two firmwares** — a badge-operated smart
 sample valve assembly, one on `BR-201` speaking plain MQTT and one on `BR-202` speaking
@@ -86,28 +90,27 @@ ordering dependency, and bisecting gets painful. Compose also builds from the tr
 offline. The usual reason to reach for a split, "the gateway writes noise into my repo", is
 solved by `.gitignore` instead: only `data/config` and `data/projects` are committed.
 
-### LIMS contract — one surface, not four
+### Pattern 4 is a NovaFlex HTTPS POST, not a LIMS
 
-`lims` served four patterns under the original convergence design. **Since 2026-08-19 it serves
-exactly one**, and the other three surfaces have no consumers: pattern 5 moved to Odoo, pattern 6
-to a particle counter, pattern 7 to condition monitoring.
+`lims` served four patterns under the original convergence design, then one (a human-approved
+sample result) from 2026-08-19. **On 2026-08-23 that last surface left the talk.** Pattern 4 is
+now the same NovaFlex as pattern 3, imagined with no OPC UA and no MQTT — only an HTTPS POST
+into an Ignition Event Stream. See [`plans/04-novaflex-webhook.md`](plans/04-novaflex-webhook.md).
 
-What remains is the only surface with a consumer: **a sample result, received off the backbone,
-released by a human, pushed to Ignition over HTTP.** See
-[`plans/04-lims-webhook.md`](plans/04-lims-webhook.md). SENAITE was under consideration when four
-patterns depended on this; for one webhook, a small FastAPI service is the right size.
+The FastAPI LIMS, its outbox, `lims-bridge`, and `qc/lims/sample-result` stay in the tree until
+the rebuild unwires them. They are not the talk. SENAITE is not coming back.
 
-The three retired surfaces (`GET /results?since_id=N`, a Debezium-tailed insert, and a query for
-the aggregation script) are retired, not pending. The comments in `02-schema.sql` and
-`04-cdc.sql` say so.
+The three earlier retired surfaces (`GET /results?since_id=N`, a Debezium-tailed insert, and a
+query for the aggregation script) stay retired. The comments in `02-schema.sql` and `04-cdc.sql`
+still say so; pattern 5's spec retires the publication itself.
 
 ---
 
 ## Topic namespace
 
 Organized by **ISA-95 physical hierarchy, never by ingestion mechanism.** A subscriber must
-not have to know *how* data arrived in order to find it. If the LIMS migrates from polling
-to CDC, nothing downstream should break.
+not have to know *how* data arrived in order to find it. If the turbidity meter moves from
+polling to CDC, nothing downstream should break.
 
 ```
 icc26/{site}/{area}/{line-or-cell}/{device}/{message_type}
@@ -117,12 +120,9 @@ icc26/{site}/{area}/{line-or-cell}/{device}/{message_type}
 icc26/site1/upstream/br-201/sample-valve-01/event      # 1  badge scan + sample complete
 icc26/site1/upstream/br-201/sample-valve-01/state      # 1  valve position, retained; also the LWT
 icc26/site1/upstream/br-201/sample-valve-01/telemetry  # 1  line pressure / temp, every 5 s
-icc26/site1/qc/analyzers/novaflex-01/result            # 3
-icc26/site1/qc/lims/sample-result                      # 4  (only pattern 4, since 2026-08-19)
-icc26/site1/upstream/br-201/batch/event                # 5  Odoo manufacturing orders
-icc26/site1/upstream/br-201/particle-counter-01/telemetry  # 6  provisional
-icc26/site1/downstream/tff-301/vibration-01/waveform   # 7  provisional
-icc26/site1/downstream/tff-301/asset-summary           # 7  provisional, the aggregate document
+icc26/site1/qc/analyzers/novaflex-01/result            # 3 and 4  (opcua-event | webhook)
+icc26/site1/downstream/tff-301/turbidity-01/telemetry  # 5 and 6  (cdc | poll)
+# pattern 7 TBD — no topic until it has a spec
 
 spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|NDEATH}/SAMPLE-VALVE-02             # 2 — spec-mandated
 spBv1.0/ICC26-Site1-UPSTREAM/{DBIRTH|DDATA|DDEATH}/SAMPLE-VALVE-02/SV-202 # 2 — spec-mandated
@@ -144,15 +144,13 @@ network's permission to open is a sample valve that stops working when the netwo
 no other pattern has yet needed to address a device. They stay in the set as the names to
 reach for rather than inventing new ones later.
 
-**Pattern 7 will be the first user of the pair**, if it lands as scoped: an asset management
-system asking for a vibration reading is a genuine request/response, and it is also the first
-thing in this stack that will meet the MQTT 3.1.1 constraint below as a live problem rather than
-a footnote.
+**Pattern 7 was going to be the first user of the pair.** It is TBD as of 2026-08-23, and these
+names stay unused until a spec claims them. MQTT 3.1.1's missing response-topic properties remain
+a footnote until then.
 
-The last three topics above are **provisional** — patterns 6 and 7 have no spec yet, and a topic
-is settled when its spec is written. Two things about them are worth noting now: pattern 7 gives
-`downstream` its first user, so the area list stops being aspirational; and `utilities` still has
-none.
+The turbidity topic is **settled in spec 05/06**, not provisional. It is also **`downstream`'s
+first user**, so the area list stops being aspirational. `utilities` still has none. Pattern 7
+has no topic until it has a spec.
 
 **There is no `mes` area, deliberately.** An MES is a piece of software, not a place, and an
 area slot filled with a system name is the same mistake as organising by ingestion mechanism —
@@ -161,13 +159,11 @@ produced it (`upstream/br-201/batch/event`) and names its source system in the p
 Postgres schema stays `mes.batch_event`: a database schema is a system-of-record namespace, and
 that is exactly what it should be named after.
 
-> **Known remaining wart:** `qc/lims/sample-result` still puts a software system in the
-> line-or-cell slot. Revisited in spec 04 (2026-08-19) and **kept**. The better address is
-> under BR-201, naming the LIMS in the payload — the same rule `mes.batch_event` already
-> follows. The topic is referenced by an ACL, the firehose colouring and the runbook, and
-> the conference is four weeks out. The reversal made this *less* defensible, not more:
-> `qc/lims/` was easier to justify when three patterns keyed off one topic. Now one does,
-> and the calendar is what holds the address. Say so on stage.
+> **Wart, retired 2026-08-23:** `qc/lims/sample-result` put a software system in the
+> line-or-cell slot. It existed because pattern 4 was a LIMS. Pattern 4 now publishes the
+> NovaFlex result onto the analyzer topic, so the wart goes away with the LIMS rather than
+> being renamed. Leave the ACL and firehose colouring until the rebuild unwires them; do
+> not spend calendar on a tidy-up of a topic we are deleting.
 
 **Every topic here is device-addressed.** There is currently no exception, which was not true
 of the earlier vibration-gateway design and is worth knowing changed: that pattern had a
@@ -185,41 +181,36 @@ is the point of running both.
 Equipment ids in `plant.equipment` (see `compose/postgres/initdb/03-seed.sql`) are the same
 strings that appear in topics. Keep it that way.
 
-### Patterns 4, 5 and 6 used to share one topic. Reversed 2026-08-19
+### Shared sources, as of 2026-08-23
 
-The original design had all three carrying the same logical data — one LIMS sample result —
-acquired three different ways and landing identically, so that disabling the webhook and enabling
-CDC on stage changed nothing but `meta.mechanism`. **That is no longer the design**, and the
-reasoning for the reversal matters more than the reversal:
+**2026-08-19** dropped the LIMS triple (webhook + CDC + poll of one table). That reversal
+stands: nobody webhooks, tails *and* polls the same table in production.
 
-**Nobody webhooks, tails and polls the same table in production. You pick one.** The convergence
-demo was a pedagogical device, and a well-informed audience would recognise it as one. Each
-mechanism now gets the source that genuinely forces it: an ERP whose schema you do not own and
-cannot make emit events (CDC), an instrument with no push capability whatsoever (poll), and a
-LIMS release that a human has to sign (webhook). "Seven integration problems and the mechanism
-each one actually demands" is a harder talk to give and a more credible one.
+**2026-08-23** walks the "never share a source" part back, once, for a reason:
 
-**What was given up:** a very good set-piece, and the ability to prove the interchangeability
-claim in one gesture.
+| Patterns | Shared thing | Why it is honest |
+|---|---|---|
+| 3 and 4 | NovaFlex result, **same topic** | Two vendor surfaces on one instrument (OPC UA vs HTTPS POST). The namespace must not leak which one fired |
+| 5 and 6 | Turbidity meter **database**, same topic | The instrument only writes locally. CDC vs poll *is* the Monday-morning choice |
+| 4 vs 5/6 | nothing | Different instruments. The webhook is not the turbidity table |
 
-**What was not given up, and is the part worth protecting:** the namespace still must not leak
-the mechanism. That principle is *more* strongly demonstrated by seven unrelated sources than by
-one table, because with seven genuinely different systems the temptation to sort topics by how
-their data arrived is far stronger — and a subscriber reading the namespace still cannot tell
-which topic is fed by CDC and which by a Modbus poll loop. The demonstration changed; the rule
-did not.
+The rule worth protecting did not change: **the namespace still must not leak the mechanism.**
+A subscriber reading `…/novaflex-01/result` or `…/turbidity-01/telemetry` cannot tell how the
+document arrived. `meta.mechanism` carries that, and the firehose colours by it.
+
+What 2026-08-19 gave up (the LIMS switch-over set-piece) stays given up. What 2026-08-19
+rejected about turbidity (continuous value, deadband overlaps Sparkplug RBE) was about the
+*signal*. The poll problem we need is the *store*: an identity column and a timer you can stall.
+That is why turbidity comes back as a database, not as a 4–20 mA loop.
 
 Consequences that are easy to miss:
 
-- The `lims-bridge` ACL no longer enforces convergence. It still exists, and it still earns its
-  place — see the cycle hazard in [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md).
-- **`lims.sample_result` is no longer "the single most important table in the demo".** Exactly
-  one pattern touches it. The comment in `02-schema.sql` now says so.
-- **`mes.batch_event` has no consumer at all.** Odoo's manufacturing orders replace the
-  hand-made MES table. `04-cdc.sql`'s publication still names both tables and says they have
-  no subscriber; retire it with pattern 5's spec.
-- Pattern 4's message can now be sample-shaped rather than row-shaped, because it no longer has
-  to match a row-granular CDC stream. That is a simplification, not a loss.
+- **`lims-bridge` is leftover.** The cycle hazard was load-bearing when the LIMS subscribed
+  and caused publishes. Pattern 4 no longer subscribes. Drop the user when the LIMS is unwired.
+- **`lims.sample_result` and `mes.batch_event` have no talk consumer.** Pattern 5 tails
+  `turbidity.reading`. Retire `04-cdc.sql`'s publication with that spec.
+- Pattern 4's message is analyzer-shaped because it *is* an analyzer result, sharing pattern
+  3's topic rather than a LIMS topic. The `qc/lims/` wart dies with the rebuild.
 
 ### Payload envelope
 
@@ -263,15 +254,15 @@ device's config page covering *all* its messages.
 
 **Chariot is MQTT 3.1.1**, so there are no MQTT 5 response-topic or correlation-data
 properties. Nothing in the demo currently needs them: every pattern is one-way. Patterns 1 and
-2 are publish-only field devices, and patterns 3–7 are Ignition publishing outward. If a
-request/response pattern is ever added, this is the constraint it will run into first, and
-`meta.correlation_id` is the field already reserved in the envelope for it.
+2 are publish-only field devices. Patterns 3, 4 and 6 publish outward through Ignition.
+Pattern 5's preferred path is Debezium's MQTT sink (Ignition is not in the publish path).
+Pattern 7 is TBD. If a request/response pattern is ever added, this is the constraint it will
+run into first, and `meta.correlation_id` is the field already reserved in the envelope for it.
 
-**`meta.correlation_id` has a working first user in pattern 4.** The analyzer envelope stamps
-`sample_id` into it; the LIMS carries it through approval and the webhook republishes it under
-`mechanism=webhook`, so one sample is traceable across two colours on the firehose. Pattern 7's
-AMS request would be the second, and the one that actually needs the MQTT 5 properties this
-broker does not have.
+**`meta.correlation_id` is `sample_id` on the NovaFlex.** Pattern 3 stamps it; pattern 4 stamps
+the same value on the HTTPS path. One sample, two colours, one topic. That is the first real
+user, and it does not need MQTT 5. Pattern 7 would have been the request/response user; it is
+TBD.
 
 ### MQTT Engine has two ingest surfaces, and they produce different things
 
@@ -627,17 +618,18 @@ Three roles, deliberately separate:
 | Role | Purpose |
 |---|---|
 | `ignition` | Gateway's JDBC target — historian, audit log |
-| `icc26` | Demo data (`lims`, `mes`, `plant` schemas) |
-| `cdc` | Debezium's login, has `REPLICATION` |
+| `icc26` | Demo data (`lims`, `mes`, `plant` schemas). `lims` is leftover until pattern 4's rebuild |
+| `turbidity` | **Planned.** Instrument catalog for patterns 5 and 6 — a database the meter owns, not a schema in `icc26` |
+| `cdc` | Debezium's login, has `REPLICATION`. Will be granted on `turbidity`, not used on `icc26` |
 
 `cdc` being distinct from the application user is part of pattern 5's point: CDC is an
-out-of-band observer the application knows nothing about.
+out-of-band observer the application knows nothing about. The turbidity simulator writes as
+role `turbidity`; Debezium reads as `cdc`; Ignition polls as a SELECT-only JDBC user.
 
-`lims.sample_result` and `mes.batch_event` are set to `REPLICA IDENTITY FULL` so Debezium
-receives complete row pre-images on UPDATE and DELETE. It costs WAL volume — fine for two
-demo tables, not something to enable blindly across a real database. Pattern 5 no longer
-tails either table (it tails Odoo); the setting stays until that spec retires the
-publication. `lims.webhook_delivery` is pattern 4's outbox and is not in the publication.
+`lims.sample_result` and `mes.batch_event` are still `REPLICA IDENTITY FULL` and still named
+in `04-cdc.sql`. Nothing reads that publication. Pattern 5's spec retires it and puts
+`REPLICA IDENTITY FULL` on `turbidity.reading` instead. `lims.webhook_delivery` was pattern
+4's outbox; it is leftover with the LIMS.
 
 ---
 

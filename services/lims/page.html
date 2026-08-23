@@ -1,479 +1,635 @@
 <!DOCTYPE html>
 <!--
-  QC result-review screen, served by this container rather than Perspective:
-  a LIMS has to look like a LIMS. Chrome is LabWare-web (navy app bar, explorer,
-  worklist, e-sign, status bar); the canvas is closer to a modern ELN so it
-  does not read as a 2003 thick client. No external assets.
+  The LIMS approval screen. Served by services/lims itself, not by Perspective:
+  a LIMS screen should look like a LIMS, and it keeps this pattern off Ignition's
+  critical path.
+
+  Visual language is the LabWare Windows client — navy caption, menu/toolbar,
+  Explorer tree, spreadsheet grid, status bar — so it is immediately not SCADA.
+  It is not a LabWare product; no vendor assets. No external stylesheets or
+  fonts: the demo has to run with networking disabled.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Result Review — LIMS — ICC Site 1</title>
+<title>Sample Manager &mdash; LIMS</title>
 <style>
   :root {
-    --navy: #0b365c;
-    --navy-2: #124a78;
-    --menu: #0e3f6b;
-    --link: #0b5cab;
-    --teal: #0f6e68;
-    --canvas: #d7dee5;
-    --panel: #fff;
-    --line: #c3ccd4;
-    --line-2: #e4eaef;
-    --ink: #1b242c;
-    --muted: #5a6874;
-    --row: #f5f8fa;
-    --ok: #1b6b45;
-    --ok-bg: #e7f5ee;
-    --warn: #8a5a00;
-    --warn-bg: #f8efd8;
-    --bad: #b42318;
-    --bad-bg: #f8e8e6;
-    --sans: "Segoe UI", Tahoma, Arial, sans-serif;
+    --navy: #0a3a66;
+    --navy-2: #0d4d86;
+    --navy-deep: #072844;
+    --teal: #0e8a8a;
+    --chrome: #d4dce4;
+    --chrome-2: #c3ced8;
+    --menu: #e8eef3;
+    --panel: #ffffff;
+    --line: #8a9aab;
+    --line-2: #b7c4d0;
+    --shadow: #7a8a99;
+    --ink: #1b2833;
+    --muted: #5b6d7d;
+    --select: #0d5ea8;
+    --select-text: #ffffff;
+    --alt: #eef3f8;
+    --ok: #2c7a4b;
+    --ok-bg: #d7eedf;
+    --warn: #b47a12;
+    --warn-bg: #f6e6c2;
+    --bad: #b33a32;
+    --bad-bg: #f3d4d2;
+    --info: #ffffe1;
+    --mono: Tahoma, "Segoe UI", Arial, sans-serif;
+    --grid: Tahoma, "Segoe UI", Arial, sans-serif;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
     margin: 0;
-    background: var(--canvas);
+    background: #5a6a78;
     color: var(--ink);
-    font: 13px/1.4 var(--sans);
+    font: 13px/1.35 var(--grid);
+    overflow: hidden;
   }
-  button, input { font: inherit; }
-  a { color: var(--link); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-
   .app {
-    min-height: 100%;
-    display: grid;
-    grid-template-rows: 48px 28px 1fr 24px;
-    grid-template-columns: 232px 1fr;
-    grid-template-areas:
-      "top top"
-      "menubar menubar"
-      "nav main"
-      "status status";
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--chrome);
+    border: 1px solid var(--navy-deep);
   }
 
-  .top {
-    grid-area: top;
-    background: var(--navy);
-    color: #fff;
+  /* ── title bar ─────────────────────────────────────────── */
+  .titlebar {
     display: flex;
     align-items: center;
-    gap: 18px;
-    padding: 0 14px;
+    gap: .6rem;
+    height: 36px;
+    padding: 0 .45rem 0 .55rem;
+    background: linear-gradient(180deg, #1a6aa8 0%, var(--navy-2) 48%, var(--navy) 100%);
+    color: #fff;
+    user-select: none;
+    flex: 0 0 auto;
   }
   .brand {
     display: flex;
     align-items: center;
-    gap: 10px;
-    min-width: 218px;
+    gap: .45rem;
+    flex: 0 0 auto;
   }
   .mark {
-    width: 26px; height: 26px;
-    border: 1.5px solid #8ec4e8;
-    display: grid;
-    place-items: center;
-    font: 700 12px/1 var(--sans);
-    letter-spacing: .02em;
+    width: 22px; height: 22px;
+    border-radius: 3px;
+    background: linear-gradient(160deg, #1ec4c4, var(--teal) 55%, #0a5e6e);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.35);
+    position: relative;
+    flex: 0 0 auto;
   }
-  .brand-name { font-size: 14px; font-weight: 600; }
-  .brand-name span { display: block; font-size: 10px; font-weight: 400; color: #a9c7de; }
-  .search {
-    width: 240px;
-    height: 26px;
-    background: #082844;
-    border: 1px solid #2a5a84;
-    color: #d5e6f2;
-    padding: 0 8px;
-    font-size: 12px;
+  .mark::before {
+    content: "L";
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font: 700 13px/1 Tahoma, sans-serif;
+    color: #fff;
   }
-  .search::placeholder { color: #7ea0b8; }
-  .top-meta {
-    margin-left: auto;
+  .brand-name {
+    font: 700 13px/1.1 Tahoma, sans-serif;
+    letter-spacing: .04em;
+  }
+  .brand-name span {
+    display: block;
+    font: 400 9px/1 Tahoma, sans-serif;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    opacity: .85;
+  }
+  .win-title {
+    flex: 1 1 auto;
+    font: 600 13px/1 Tahoma, sans-serif;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: .95;
+  }
+  .user-form {
     display: flex;
     align-items: center;
-    gap: 14px;
-    font-size: 12px;
-    color: #d5e6f2;
-  }
-  .env {
-    border: 1px solid #4a8bb0;
-    color: #cfe8f7;
-    padding: 2px 7px;
+    gap: .3rem;
     font-size: 11px;
   }
-  .userchip {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  .user-form label { color: #d7e8f7; }
+  .user-form input {
+    width: 9.5rem;
+    height: 22px;
+    padding: 0 .35rem;
+    border: 1px solid #072844;
+    background: #f4f8fb;
+    color: var(--ink);
+    font: 12px Tahoma, sans-serif;
   }
-  .avatar {
-    width: 24px; height: 24px;
-    background: #1d6aa0;
-    display: grid; place-items: center;
-    font-size: 11px; font-weight: 600;
+  .user-form input:focus { outline: 1px solid #7ec8ff; }
+  .winbtns { display: flex; gap: 2px; margin-left: .3rem; }
+  .winbtns i {
+    display: block;
+    width: 22px; height: 18px;
+    background: linear-gradient(180deg, #67a7d4, #2d6ea3);
+    border: 1px solid #083258;
+    color: #fff;
+    font: 11px/16px Tahoma, sans-serif;
+    text-align: center;
+    font-style: normal;
   }
 
-  .menubar {
-    grid-area: menubar;
-    background: var(--menu);
-    color: #d7e6f2;
+  /* ── menu + toolbar ────────────────────────────────────── */
+  .menubar, .toolbar {
     display: flex;
-    align-items: stretch;
-    padding: 0 8px;
-    border-bottom: 1px solid #082844;
-    font-size: 12px;
+    align-items: center;
+    flex: 0 0 auto;
+    background: var(--menu);
+    border-bottom: 1px solid var(--line);
+  }
+  .menubar {
+    height: 22px;
+    padding: 0 .15rem;
+    gap: 0;
   }
   .menubar span {
-    padding: 0 12px;
+    padding: .15rem .55rem;
+    color: var(--ink);
+    font-size: 12px;
+  }
+  .menubar span::first-letter { text-decoration: underline; }
+  .toolbar {
+    height: 36px;
+    padding: 0 .4rem;
+    gap: .25rem;
+    background: linear-gradient(180deg, #f4f7fa, var(--chrome));
+  }
+  .toolbar .sep {
+    width: 1px; height: 22px;
+    background: var(--line);
+    margin: 0 .3rem;
+    box-shadow: 1px 0 0 #fff;
+  }
+  button, .btn {
+    font: 12px/1 Tahoma, sans-serif;
+    color: var(--ink);
+    background: linear-gradient(180deg, #f7fafc, #d5dee6);
+    border: 1px solid var(--line);
+    border-top-color: #f4f8fb;
+    border-left-color: #f4f8fb;
+    box-shadow: 1px 1px 0 var(--shadow);
+    padding: .28rem .55rem;
+    cursor: pointer;
     display: inline-flex;
     align-items: center;
+    gap: .3rem;
+    text-decoration: none;
+  }
+  button:hover, .btn:hover { background: linear-gradient(180deg, #fff, #e3ebf2); }
+  button:active, .btn:active {
+    box-shadow: none;
+    border-color: var(--shadow) #f4f8fb #f4f8fb var(--shadow);
+  }
+  button.ok {
+    background: linear-gradient(180deg, #e5f6ea, #b7dcc4);
+    border-color: #6a9e7a;
+    color: #1b4d2c;
+  }
+  button.ok:hover { background: linear-gradient(180deg, #f0faf3, #c5e6d0); }
+  button.danger {
+    background: linear-gradient(180deg, #fbe8e6, #e8c0bc);
+    border-color: #b07a74;
+    color: #6a221c;
+  }
+  button.danger:hover { background: linear-gradient(180deg, #fff0ee, #f0cdc9); }
+  button.ghost { color: var(--ink); }
+  .ico {
+    width: 14px; height: 14px;
+    display: inline-block;
+    background: var(--navy-2);
+    border-radius: 2px;
+    position: relative;
+    flex: 0 0 auto;
+  }
+  .ico.log { background: var(--teal); }
+  .ico.log::after { content: "+"; position: absolute; inset: 0; color: #fff; font: 700 12px/14px Tahoma; text-align: center; }
+  .ico.refresh { background: var(--navy-2); }
+  .ico.refresh::after { content: "↻"; position: absolute; inset: 0; color: #fff; font: 11px/14px Tahoma; text-align: center; }
+  .ico.find { background: #8a6a20; }
+  .ico.find::after { content: "?"; position: absolute; inset: 0; color: #fff; font: 700 11px/14px Tahoma; text-align: center; }
+
+  /* ── workspace ─────────────────────────────────────────── */
+  .workspace {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: 228px 5px 1fr;
+    min-height: 0;
+    background: var(--chrome);
+    padding: 4px;
+    gap: 0;
+  }
+  .splitter {
+    background: var(--chrome-2);
+    border-left: 1px solid #f0f4f7;
+    border-right: 1px solid var(--line);
     cursor: default;
   }
-  .menubar span.current {
-    background: #165585;
-    color: #fff;
-  }
-
-  nav {
-    grid-area: nav;
-    background: #eef2f5;
-    border-right: 1px solid var(--line);
+  .explorer, .work {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 10px 0 0;
   }
-  .nav-group {
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--muted);
-    padding: 10px 16px 4px;
-  }
-  .nav-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 16px;
-    color: var(--ink);
-    cursor: default;
-  }
-  .nav-item.current {
-    background: #d6e6f4;
-    box-shadow: inset 3px 0 0 var(--link);
-    font-weight: 600;
-  }
-  .nav-item .count {
-    margin-left: auto;
-    background: var(--navy);
+  .caption {
+    flex: 0 0 auto;
+    height: 22px;
+    padding: 0 .55rem;
+    background: linear-gradient(180deg, var(--navy-2), var(--navy));
     color: #fff;
-    min-width: 18px;
-    text-align: center;
-    font-size: 11px;
-    padding: 0 5px;
+    font: 700 11px/22px Tahoma, sans-serif;
+    letter-spacing: .04em;
+    text-transform: uppercase;
   }
-  .nav-foot {
-    margin-top: auto;
-    border-top: 1px solid var(--line);
-    padding: 10px 12px 12px;
-    background: #e6ebf0;
-  }
-  .nav-foot h3 {
-    margin: 0 0 8px;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--muted);
-  }
-  .nav-foot .if-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 12px;
-    margin-bottom: 8px;
-  }
-  .nav-foot form { margin: 0 0 4px; }
-  .nav-foot button { width: 100%; }
-
-  main {
-    grid-area: main;
+  .explorer .tree {
+    flex: 1 1 auto;
     overflow: auto;
-    padding: 14px 18px 24px;
-  }
-  .crumb {
-    color: var(--muted);
-    font-size: 12px;
-    margin-bottom: 8px;
-  }
-  .crumb b { color: var(--ink); font-weight: 600; }
-  .pagehead {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 12px;
-  }
-  .pagehead h1 {
     margin: 0;
-    font-size: 20px;
-    font-weight: 600;
-  }
-  .pagehead p {
-    margin: 3px 0 0;
-    color: var(--muted);
+    padding: .4rem .15rem .6rem;
+    list-style: none;
     font-size: 12px;
   }
-  .signon {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    padding: 8px 10px;
-    display: flex;
-    align-items: end;
-    gap: 8px;
-  }
-  .signon label {
-    display: block;
-    font-size: 11px;
-    color: var(--muted);
-    margin-bottom: 3px;
-  }
-  .signon input[type=text] {
-    width: 160px;
-    height: 28px;
-    border: 1px solid #9aa8b4;
-    padding: 0 8px;
-    background: #fff;
-  }
-  .signon input[type=text]:focus { outline: 1px solid var(--link); border-color: var(--link); }
-
-  .msg {
-    margin: 0 0 12px;
-    padding: 8px 10px;
-    border: 1px solid var(--line);
-    background: var(--panel);
-  }
-  .msg.ok { background: var(--ok-bg); border-color: #b7dcc8; color: var(--ok); }
-  .msg.err { background: var(--bad-bg); border-color: #e3b6b2; color: var(--bad); }
-
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    margin-bottom: 14px;
-  }
-  .panel > h2 {
-    margin: 0;
-    padding: 8px 12px;
-    font-size: 13px;
-    font-weight: 600;
-    border-bottom: 1px solid var(--line);
-    background: #f3f6f8;
+  .tree ul { list-style: none; margin: 0; padding: 0 0 0 1.05rem; }
+  .tree li { margin: 0; }
+  .tree .node {
     display: flex;
     align-items: center;
-    gap: 8px;
-  }
-  .panel > h2 .hint {
-    margin-left: auto;
-    font-size: 11px;
-    font-weight: 400;
-    color: var(--muted);
-  }
-
-  .empty { margin: 0; padding: 18px 12px; color: var(--muted); }
-
-  .sid { font-weight: 700; color: var(--link); }
-  .smeta { color: var(--muted); font-size: 11px; margin-top: 2px; }
-  .oos { color: var(--bad); font-weight: 600; }
-
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 5px 10px; vertical-align: top; }
-  th {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--muted);
-    border-bottom: 1px solid var(--line);
-    background: #eef2f5;
-  }
-  td { border-bottom: 1px solid var(--line-2); border-right: 1px solid var(--line-2); }
-  td:last-child { border-right: none; }
-  td.num { font-variant-numeric: tabular-nums; }
-  tr.fail td { background: #fdf4f3; }
-  tr.sample-start td { background: var(--row); }
-  td.sample-cell {
-    width: 200px;
-    background: var(--row);
-    border-right: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
-  }
-  td.action-cell {
-    width: 148px;
-    background: var(--row);
-    border-bottom: 1px solid var(--line);
-  }
-  .action-cell .actions { flex-direction: column; align-items: stretch; }
-  .action-cell button { width: 100%; }
-
-  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-  form { margin: 0; }
-  button {
-    height: 28px;
-    padding: 0 11px;
-    border: 1px solid #9aa8b4;
-    background: #f4f6f8;
+    gap: .35rem;
+    padding: .18rem .4rem;
     color: var(--ink);
-    cursor: pointer;
+    text-decoration: none;
+    border: 1px solid transparent;
   }
-  button:hover { background: #e8edf1; }
-  button.ok {
-    background: var(--teal);
-    border-color: #0c5c57;
-    color: #fff;
+  .tree .node:hover { background: var(--alt); }
+  .tree .node.active {
+    background: var(--select);
+    color: var(--select-text);
+    border-color: var(--navy-deep);
   }
-  button.ok:hover { background: #0c5f5a; }
-  button.danger {
-    background: #fff;
-    border-color: #c98984;
-    color: var(--bad);
+  .tree .node.active .count { background: #fff; color: var(--navy); }
+  .folder, .leaf {
+    width: 14px; height: 12px;
+    flex: 0 0 auto;
+    border-radius: 1px 1px 0 0;
   }
-  button.danger:hover { background: var(--bad-bg); }
-  button.ghost { background: #fff; }
+  .folder {
+    background: linear-gradient(180deg, #f6d36a, #e0a020);
+    box-shadow: 0 0 0 1px #b8860b;
+    position: relative;
+  }
+  .folder::before {
+    content: "";
+    position: absolute; top: -3px; left: 0;
+    width: 7px; height: 3px;
+    background: #f6d36a;
+    border: 1px solid #b8860b;
+    border-bottom: 0;
+    border-radius: 1px 1px 0 0;
+  }
+  .leaf {
+    background: #f4f8fb;
+    border: 1px solid var(--line);
+    height: 14px;
+    border-radius: 1px;
+  }
+  .leaf::after {
+    content: "";
+    display: block;
+    height: 2px; margin: 3px 2px 0;
+    background: var(--line-2);
+    box-shadow: 0 3px 0 var(--line-2), 0 6px 0 var(--line-2);
+  }
+  .count {
+    margin-left: auto;
+    font: 700 10px/1 Tahoma, sans-serif;
+    background: var(--chrome-2);
+    color: var(--navy);
+    padding: .12rem .32rem;
+    border-radius: 8px;
+    min-width: 1.2rem;
+    text-align: center;
+  }
+  .tree .group {
+    color: var(--muted);
+    font: 700 10px/1 Tahoma, sans-serif;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: .55rem .5rem .15rem;
+  }
 
+  .work { overflow: hidden; }
+  .view {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .view[hidden] { display: none !important; }
+  .filterbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .35rem .55rem;
+    background: var(--menu);
+    border-bottom: 1px solid var(--line-2);
+    font-size: 12px;
+    color: var(--muted);
+  }
   .chip {
     display: inline-block;
-    font-size: 11px;
-    padding: 1px 7px;
-    border: 1px solid var(--line);
     background: #fff;
+    border: 1px solid var(--line);
+    padding: .1rem .4rem;
+    color: var(--ink);
+    font-size: 11px;
   }
-  .chip.pending { background: var(--warn-bg); border-color: #e0c784; color: var(--warn); }
-  .chip.delivered { background: var(--ok-bg); border-color: #b7dcc8; color: var(--ok); }
-  .chip.abandoned { background: var(--bad-bg); border-color: #e3b6b2; color: var(--bad); }
-  .disp.in { color: var(--ok); font-weight: 600; }
-  .disp.out { color: var(--bad); font-weight: 600; }
+  .body {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 0;
+    background: var(--panel);
+  }
+  .note {
+    margin: .7rem .7rem .2rem;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .note code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11px; }
 
-  .status {
-    grid-area: status;
-    background: #eceff2;
-    border-top: 1px solid var(--line);
+  /* ── grid ──────────────────────────────────────────────── */
+  table.grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  table.grid th, table.grid td {
+    border-right: 1px solid var(--line-2);
+    border-bottom: 1px solid var(--line-2);
+    padding: .32rem .45rem;
+    vertical-align: middle;
+    text-align: left;
+    white-space: nowrap;
+  }
+  table.grid th {
+    background: linear-gradient(180deg, #f4f7fa, #d5dee8);
+    color: var(--navy-deep);
+    font-weight: 700;
+    font-size: 11px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    box-shadow: 0 1px 0 var(--line);
+  }
+  table.grid th .uom {
+    display: block;
+    font-weight: 400;
+    color: var(--muted);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  table.grid tbody tr:nth-child(even) { background: var(--alt); }
+  table.grid tbody tr:hover { background: #dceaf6; }
+  table.grid td.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+  table.grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.grid td.num .uom { color: var(--muted); font-size: 10px; margin-left: .2rem; }
+  table.grid td.empty-cell { color: var(--line); text-align: center; }
+  table.grid .empty-row td {
+    text-align: center;
+    color: var(--muted);
+    padding: 1.4rem .6rem;
+    font-style: italic;
+    white-space: normal;
+  }
+  .actions { display: flex; gap: .25rem; flex-wrap: nowrap; }
+  .actions form { display: inline; margin: 0; }
+  .actions button { padding: .2rem .45rem; font-size: 11px; }
+
+  .pill {
+    display: inline-block;
+    font: 700 10px/1 Tahoma, sans-serif;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: .18rem .4rem;
+    border: 1px solid var(--line);
+    background: var(--chrome);
+    color: var(--muted);
+  }
+  .pill.pending { background: var(--warn-bg); color: #7a5310; border-color: #d2b06a; }
+  .pill.delivered { background: var(--ok-bg); color: var(--ok); border-color: #8fbf9e; }
+  .pill.abandoned { background: var(--bad-bg); color: var(--bad); border-color: #d09a96; }
+  .pill.received { background: #d6e7f6; color: var(--navy); border-color: #8eb4d4; }
+  .pill.verified { background: var(--ok-bg); color: var(--ok); border-color: #8fbf9e; }
+  .pill.rejected { background: var(--bad-bg); color: var(--bad); border-color: #d09a96; }
+
+  .msg {
+    margin: 0;
+    padding: .4rem .7rem;
+    font-size: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .msg.ok { background: var(--ok-bg); color: #1b4d2c; }
+  .msg.err { background: var(--bad-bg); color: #6a221c; }
+
+  .stage-actions { display: flex; gap: .4rem; flex-wrap: wrap; padding: .7rem; }
+
+  table.props { width: auto; margin: .7rem; border-collapse: collapse; font-size: 12px; }
+  table.props th {
+    text-align: left;
+    color: var(--muted);
+    font-weight: 600;
+    padding: .25rem .8rem .25rem 0;
+  }
+  table.props td { padding: .25rem 0; }
+  table.props td.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+
+  /* ── status bar ────────────────────────────────────────── */
+  .statusbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    height: 24px;
+    background: var(--chrome);
+    border-top: 1px solid #f4f8fb;
+    font-size: 11px;
+    color: var(--ink);
+  }
+  .statusbar > span {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 0 12px;
-    font-size: 11px;
-    color: var(--muted);
+    gap: .3rem;
+    padding: 0 .55rem;
+    border-right: 1px solid var(--line);
+    box-shadow: inset -1px 0 0 #f4f8fb;
+    white-space: nowrap;
   }
-  .dot {
+  .statusbar > span:last-child { border-right: 0; box-shadow: none; margin-left: auto; }
+  .statusbar code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 10px; }
+  .led {
     display: inline-block;
-    width: 7px; height: 7px;
+    width: .55rem; height: .55rem;
+    border-radius: 50%;
     background: var(--bad);
-    margin-right: 5px;
-    vertical-align: middle;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.25);
   }
-  .dot.on { background: var(--ok); }
-  .dot.warn { background: var(--warn); }
-  .meaning {
-    font-size: 11px;
-    color: var(--muted);
-    padding: 0 12px 10px;
+  .led.on { background: #2ecc71; }
+  .led.warn { background: #e8b44a; }
+  .statusbar .alarm {
+    background: #c4453c;
+    color: #fff;
+    font-weight: 700;
+    letter-spacing: .04em;
   }
 </style>
 </head>
 <body>
 <div class="app">
 
-  <header class="top">
+  <div class="titlebar">
     <div class="brand">
-      <div class="mark">L</div>
-      <div class="brand-name">LIMS Web<span>ICC Biologics · Site 1</span></div>
+      <span class="mark" aria-hidden="true"></span>
+      <div class="brand-name">LIMS<span>Sample Manager</span></div>
     </div>
-    <input class="search" type="search" placeholder="Search samples, batches, tests…" aria-label="Search">
-    <div class="top-meta">
-      <span class="env">Production</span>
-      <span>Quality Control</span>
-      <div class="userchip">
-        <div class="avatar">@@ANALYST_INITIALS@@</div>
-        <div>@@ANALYST@@<br><span style="color:#a9c7de">QC Reviewer</span></div>
-      </div>
-    </div>
-  </header>
-
-  <div class="menubar">
-    <span>File</span>
-    <span>Sample</span>
-    <span>Test</span>
-    <span class="current">Results</span>
-    <span>Reports</span>
-    <span>Window</span>
-    <span>Help</span>
+    <div class="win-title">Site1 QC &mdash; ICC26</div>
+    <form method="get" action="/" class="user-form">
+      <label for="analyst">Current User</label>
+      <input id="analyst" name="analyst" type="text" value="@@ANALYST@@" autocomplete="username">
+      <button type="submit">Set</button>
+    </form>
+    <div class="winbtns" aria-hidden="true"><i>_</i><i>□</i><i>×</i></div>
   </div>
 
-  <nav>
-    <div class="nav-group">Sample management</div>
-    <div class="nav-item">Sample login</div>
-    <div class="nav-item">Sample browse</div>
-    <div class="nav-group">Testing</div>
-    <div class="nav-item">Worklist</div>
-    <div class="nav-item">Result entry</div>
-    <div class="nav-group">Quality</div>
-    <div class="nav-item current">Result review <span class="count">@@PENDING_COUNT@@</span></div>
-    <div class="nav-item">Certificates of analysis</div>
-    <div class="nav-group">Lab</div>
-    <div class="nav-item">Instruments</div>
-    <div class="nav-item">Inventory</div>
-    <div class="nav-foot">
-      <h3>Lab utilities</h3>
-      <div class="if-row">
-        <span>Instrument I/F</span>
-        <span><i class="dot @@MQTT_LED@@"></i>@@MQTT_LABEL@@</span>
-      </div>
-      <div class="if-row">
-        <span>Outbound I/F</span>
-        <span><i class="dot @@DRAINER_LED@@"></i>@@DRAINER_LABEL@@</span>
-      </div>
-      <form method="post" action="/webhook/disable"><button class="danger" type="submit">Pause outbound</button></form>
-      <form method="post" action="/webhook/enable"><button class="ok" type="submit">Resume outbound</button></form>
-      <form method="post" action="/trigger">
-        <input type="hidden" name="analyst" value="@@ANALYST@@">
-        <button class="ghost" type="submit">Manual sample login</button>
-      </form>
-    </div>
+  <nav class="menubar" aria-label="Menu">
+    <span>File</span><span>Edit</span><span>View</span><span>Samples</span><span>Tests</span><span>Tools</span><span>Window</span><span>Help</span>
   </nav>
 
-  <main>
-    <div class="crumb">Home / Quality Control / <b>Result Review</b></div>
-    <div class="pagehead">
-      <div>
-        <h1>Result review</h1>
-        <p>In-process chemistry · BioProfile FLEX2 · batch release to manufacturing</p>
-      </div>
-      <form method="get" action="/" class="signon">
-        <div>
-          <label for="analyst">Signed on as</label>
-          <input id="analyst" name="analyst" type="text" value="@@ANALYST@@" autocomplete="username">
+  <div class="toolbar">
+    <form method="post" action="/trigger">
+      <input type="hidden" name="analyst" value="@@ANALYST@@">
+      <button type="submit"><span class="ico log"></span> Log Sample</button>
+    </form>
+    <a class="btn" href="/?analyst=@@ANALYST@@"><span class="ico refresh"></span> Refresh</a>
+  </div>
+
+  <div class="workspace">
+    <aside class="explorer">
+      <div class="caption">Explorer</div>
+      <ul class="tree">
+        <li class="group">ICC26 / Site1</li>
+        <li>
+          <span class="node" style="cursor:default"><span class="folder"></span> QC Laboratory</span>
+          <ul>
+            <li><a class="node active" href="#samples" data-view="samples"><span class="leaf"></span> Sample Manager<span class="count">@@PENDING_COUNT@@</span></a></li>
+            <li><a class="node" href="#outbox" data-view="outbox"><span class="leaf"></span> Webhook Outbox<span class="count">@@OUTBOX_COUNT@@</span></a></li>
+            <li><a class="node" href="#instruments" data-view="instruments"><span class="leaf"></span> Instruments</a></li>
+          </ul>
+        </li>
+        <li class="group">Tools</li>
+        <li><a class="node" href="#stage" data-view="stage"><span class="leaf"></span> Stage Controls</a></li>
+      </ul>
+    </aside>
+    <div class="splitter" aria-hidden="true"></div>
+    <div class="work">
+      @@FLASH@@
+
+      <section class="view" data-view="samples">
+        <div class="caption">Sample Manager</div>
+        <div class="filterbar">
+          Filter
+          <span class="chip">Status = Received</span>
+          <span class="chip">Lab = Site1 QC</span>
+          <span>@@PENDING_COUNT@@ record(s)</span>
         </div>
-        <button type="submit" class="ghost">Change user</button>
-      </form>
+        <div class="body">@@PENDING@@</div>
+      </section>
+
+      <section class="view" data-view="outbox" hidden>
+        <div class="caption">Webhook Outbox</div>
+        <div class="filterbar">
+          One row per approved sample. Built in the same transaction that flipped the result rows, so a restart cannot leave a verified sample with nobody obliged to deliver it.
+        </div>
+        <div class="body">@@OUTBOX@@</div>
+      </section>
+
+      <section class="view" data-view="instruments" hidden>
+        <div class="caption">Instruments</div>
+        <div class="filterbar">Configured interfaces for this laboratory</div>
+        <div class="body">
+          <table class="props">
+            <tr><th>Instrument</th><td class="mono">novaflex-01</td></tr>
+            <tr><th>Type</th><td>Bioreactor analyzer</td></tr>
+            <tr><th>Interface</th><td>MQTT subscribe (QoS 1)</td></tr>
+            <tr><th>Topic</th><td class="mono">@@TOPIC@@</td></tr>
+            <tr><th>Publish</th><td>nothing &mdash; <code>lims-bridge</code> has an empty publish grant</td></tr>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" data-view="stage" hidden>
+        <div class="caption">Stage Controls</div>
+        <div class="filterbar">Demo only &mdash; not a LIMS function</div>
+        <div class="body">
+          <p class="note">
+            Disable the drainer to show a naive webhook losing data: Approve still writes the
+            outbox, nothing is POSTed, the backbone stays silent. Re-enable (or restart this
+            container) and the queued rows drain. <code>Log Sample</code> invents a sample
+            without waiting on the analyzer.
+          </p>
+          <div class="stage-actions">
+            <form method="post" action="/webhook/disable"><button class="danger" type="submit">Disable drainer</button></form>
+            <form method="post" action="/webhook/enable"><button class="ok" type="submit">Enable drainer</button></form>
+            <form method="post" action="/trigger">
+              <input type="hidden" name="analyst" value="@@ANALYST@@">
+              <button class="ghost" type="submit">Log Sample</button>
+            </form>
+          </div>
+        </div>
+      </section>
     </div>
+  </div>
 
-    @@FLASH@@
-
-    <section class="panel">
-      <h2>Pending review <span class="hint">@@PENDING_COUNT@@ sample(s) · e-sign required before release</span></h2>
-      @@PENDING@@
-    </section>
-
-    <section class="panel">
-      <h2>Release transmissions <span class="hint">@@OUTBOX_COUNT@@ · MES / historian interface</span></h2>
-      @@OUTBOX@@
-    </section>
-  </main>
-
-  <footer class="status">
-    <span>@@ANALYST@@ · QC Reviewer</span>
-    <span>ICC Site 1 · Production</span>
-    <span>LIMS Web 8.4</span>
-    <span style="margin-left:auto">Instrument I/F <i class="dot @@MQTT_LED@@"></i> · Outbound <i class="dot @@DRAINER_LED@@"></i></span>
-  </footer>
+  <div class="statusbar">
+    <span>Ready</span>
+    <span>Site1 / QC</span>
+    <span>@@ANALYST@@</span>
+    <span><span class="led @@MQTT_LED@@"></span> broker</span>
+    <span class="@@DRAINER_ALARM@@"><span class="led @@DRAINER_LED@@"></span> outbox @@DRAINER_LABEL@@</span>
+    <span>Pattern 4 · webhook</span>
+    <span><code>lims-bridge</code> may subscribe and may not publish</span>
+  </div>
 </div>
+<script>
+(function () {
+  var nodes = document.querySelectorAll(".tree a[data-view]");
+  var views = document.querySelectorAll(".view[data-view]");
+  function show(name) {
+    views.forEach(function (el) { el.hidden = el.getAttribute("data-view") !== name; });
+    nodes.forEach(function (el) {
+      el.classList.toggle("active", el.getAttribute("data-view") === name);
+    });
+  }
+  nodes.forEach(function (el) {
+    el.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      var name = el.getAttribute("data-view");
+      show(name);
+      if (history.replaceState) history.replaceState(null, "", "#" + name);
+    });
+  });
+  var initial = (location.hash || "#samples").replace("#", "");
+  if (initial) show(initial);
+})();
+</script>
 </body>
 </html>

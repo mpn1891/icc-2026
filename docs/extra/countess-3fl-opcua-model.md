@@ -1,6 +1,10 @@
 # Countess 3 FL — OPC UA information model
 
-An OPC UA information model for the cell-count result structure defined in **Appendix E, "CSV
+> **Extra — not the talk.** Pattern 3 on stage is the NovaFlex. This model, the PDF beside it,
+> and `services/opcua-countess/` stay in the repo as the designed-address-space contrast.
+> Index: [`README.md`](README.md).
+
+An OPC UA information model for the cell-count result structure defined in **Appendix E, "CSV"
 file format definition"** (columns A–BS, 71 fields) of
 [MAN0019567](MAN0019567-Countess-3FL-Automated-Cell-Counter-UG.pdf).
 

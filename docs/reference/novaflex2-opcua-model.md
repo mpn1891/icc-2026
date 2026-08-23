@@ -7,7 +7,7 @@ Server Instructions for Use Manual*, Nova Biomedical, 2024-03.
 
 ## Provenance — read this first, it is the opposite of the Countess
 
-| | [Countess 3 FL](countess-3fl-opcua-model.md) | **FLEX2 (this document)** |
+| | [Countess 3 FL](../extra/countess-3fl-opcua-model.md) | **FLEX2 (this document)** |
 |---|---|---|
 | Vendor OPC server | **None.** CSV to USB/SMB/Connect | **Yes**, shipped on the Bridge PC, licensed per instrument |
 | Whose address space | Ours. We designed it | **Nova's.** We are transcribing it |
@@ -432,7 +432,7 @@ Implemented in [`services/opcua-novaflex/`](../../services/opcua-novaflex/README
 | No counter, no state, no events, no result document | `ICC26Extensions` | [§6](#6-the-missing-trigger-and-icc26extensions). Separately named and self-documenting so it is never mistaken for vendor |
 | Result values from real sensors | simulated fed-batch CHO culture | |
 | Analysis takes minutes | 8 s (`RUN_DURATION_S`), QC 5 s | a demo waiting minutes for a result is minutes of dead air |
-| `Units` as String tags only | unchanged — **no `EUInformation` added** | tempting, but adding engineering-unit properties to the vendor branch would make the simulator lie about the product. What a properly modelled server would do is [the Countess doc §9](countess-3fl-opcua-model.md#9-engineering-units) |
+| `Units` as String tags only | unchanged — **no `EUInformation` added** | tempting, but adding engineering-unit properties to the vendor branch would make the simulator lie about the product. What a properly modelled server would do is [the Countess doc §9](../extra/countess-3fl-opcua-model.md#9-engineering-units) |
 
 ---
 

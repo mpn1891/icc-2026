@@ -192,11 +192,10 @@ services:
     networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Pattern 3 — a simulated Countess 3 FL cell counter, served over OPC UA
+  # Extra — simulated Countess 3 FL (not the talk)
   #
-  # Address space built from Appendix E of the instrument's user guide; the
-  # model is specified in docs/reference/countess-3fl-opcua-model.md and the
-  # deviations are listed in services/opcua-countess/README.md.
+  # Address space from Appendix E of the instrument user guide; model is
+  # docs/extra/countess-3fl-opcua-model.md. Pattern 3 on stage is opcua-novaflex.
   #
   # Ignition subscribes to ONE node — CountCompletedCounter, written last after
   # every result field — and reads the LastResult branch when it changes. That
@@ -427,13 +426,11 @@ services:
     networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Pattern 4 — LIMS approval webhook
+  # Pattern 4 — LIMS approval webhook (LEFTOVER)
   #
-  # Subscribes to icc26/site1/qc/analyzers/+/result as lims-bridge, holds the
-  # sample unapproved, and on a human Approve POSTs it to Ignition through a
-  # transactional outbox. Publishes nothing: publishTopics is empty, and
-  # Transmission is the publisher. The approval screen is this container on
-  # :8000, not Perspective — a LIMS screen should look like a LIMS.
+  # Built 2026-08-20, dropped from the talk 2026-08-23. Still runs. Pattern 4
+  # rebuilds as an HTTPS POST from opcua-novaflex into an Event Stream; unwire
+  # this service in that same pass. See docs/plans/04-novaflex-webhook.md.
   #
   # No depends_on: chariot. Reconnect-with-backoff is in-app, per the
   # conventions. The gateway certificate is mounted and trusted; we do not
@@ -476,8 +473,9 @@ services:
     networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Remaining pattern services land here in steps 5–8:
-  #   debezium         (pattern 5)  quay.io/debezium/server
+  # Remaining pattern services land here in later steps:
+  #   sim-turbidity    (patterns 5 and 6)  writes only to database turbidity
+  #   debezium         (pattern 5)         quay.io/debezium/server
   #
   # (services/sim-vibration/ is the retired pattern-1 vibration gateway. It is
   # kept on disk and is NOT wired in — see services/README.md.)

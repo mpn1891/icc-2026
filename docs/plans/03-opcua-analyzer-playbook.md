@@ -10,12 +10,12 @@ a simulated Nova Biomedical BioProfile FLEX2 the same way. **Pattern 3 MQTT publ
 Nova** (broker-verified 2026-08-20): a tag-change on vendor
 `HistoricalSampleResults/SampleTime` hands the result folder to Event Stream
 `03_opcua/novaflex-result`, which reads the historical UDT tags and publishes through
-Transmission. **Countess publish is deferred** — it stays a live second OPC UA analyzer for the
-talk contrast; step 9 on Countess is optional polish, not required to call Pattern 3 done.
+Transmission. **Countess is Extra, not the talk** — docs in [`../extra/`](../extra/README.md).
+MQTT publish on Countess was never wired. Pattern 3 on stage is Nova.
 
 | Artifact | Countess | Novaflex |
 |---|---|---|
-| Information model spec | [`countess-3fl-opcua-model.md`](../reference/countess-3fl-opcua-model.md) | [`novaflex2-opcua-model.md`](../reference/novaflex2-opcua-model.md) |
+| Information model spec | [`countess-3fl-opcua-model.md`](../extra/countess-3fl-opcua-model.md) | [`novaflex2-opcua-model.md`](../reference/novaflex2-opcua-model.md) |
 | Server | [`services/opcua-countess/`](../../services/opcua-countess/README.md) | [`services/opcua-novaflex/`](../../services/opcua-novaflex/README.md) |
 | Compose service | `opcua-countess` | `opcua-novaflex` |
 | Ignition connection | `opc-connection/cell_analyzer/` (UI) | `opc-connection/bioanalyzer/` (**copied as files**, see step 6) |
