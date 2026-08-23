@@ -22,8 +22,12 @@ slide and because the asymmetries are the interesting part:
 | `sample-valve-01` | Pattern 1 smart sample valve assembly, plain MQTT | Publish only, and only into `upstream` — see below |
 | `sample-valve-02` | Pattern 2 the same assembly, Sparkplug B | Publishes its own group; subscribes only NCMD/DCMD |
 | `analyzer-bridge` | Pattern 3, reserved | Only if the Nova Flex demo ever publishes without routing through Ignition |
-| `lims-bridge` | Pattern 4 LIMS (leftover) | Subscribe-only, `icc26/site1/qc/analyzers/+/result`. Empty publish grant was the cycle-hazard lock. **Drop when the LIMS is unwired** — pattern 4 no longer subscribes |
 | `observer` | Read-only | Firehose view, `mosquitto_sub`, MQTT Explorer |
+
+**Pattern 4 has no account of its own, and that is the finding.** It POSTs into Ignition over
+HTTPS and Ignition publishes as `ign-transmission`, exactly as patterns 3 and 6 do. A webhook
+instrument is not an MQTT client, so there is nothing here to grant it. The removed
+`lims-bridge` account is the visible shape of that change — see below.
 
 **The two valve accounts are the ACL half of the pattern 1 / pattern 2 comparison, and it is
 worth putting on the slide.**
@@ -47,10 +51,21 @@ is a lateral-movement path, and the ACL is where you close it. This is also why 
 an empty `publishTopics` array: it is safe to hand out and safe to leave connected during the
 talk.
 
-**`lims-bridge` is leftover.** It publishes nothing, and pattern 4 no longer
-subscribes either. Drop the user when the LIMS is unwired. `mqtt-users.json`
-seeds on first run only, so changing it against an existing Chariot store does
-nothing.
+## `lims-bridge` — removed 2026-08-23
+
+It was pattern 4's account when pattern 4 was a LIMS: subscribe-only on
+`icc26/site1/qc/analyzers/+/result`, with an empty publish grant that was the cycle-hazard
+lock — a LIMS that could both read the analyzer topic and write it could feed itself. Pattern
+4 is now a NovaFlex HTTPS POST, which subscribes to nothing and publishes through
+`ign-transmission`, so the account had nothing left to authorise and was deleted from this
+file.
+
+**Deleting it here does not delete it from a running Chariot.** `MQTT_USERS` applies on first
+run only. Against an existing volume the account is still in Chariot's own store and still
+works; remove it by hand in the UI at `:8081` → Users, or wait for the next
+`python tasks.py nuke`. Nothing connects with it either way — `services/lims/` is commented
+out of `docker-compose.yml`, not deleted, and its docs live in
+[`docs/extra/`](../../docs/extra/README.md).
 
 ## Server settings
 

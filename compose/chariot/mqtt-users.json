@@ -46,14 +46,6 @@
     }
   },
   {
-    "username": "lims-bridge",
-    "password": "lims-bridge",
-    "acl": {
-      "subscribeTopics": ["icc26/site1/qc/analyzers/+/result"],
-      "publishTopics": []
-    }
-  },
-  {
     "username": "observer",
     "password": "observer",
     "acl": {

@@ -426,51 +426,131 @@ services:
     networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Pattern 4 — LIMS approval webhook (LEFTOVER)
+  # Pattern 4 — the SAME BioProfile FLEX2, with a callback URL and nothing else
   #
-  # Built 2026-08-20, dropped from the talk 2026-08-23. Still runs. Pattern 4
-  # rebuilds as an HTTPS POST from opcua-novaflex into an Event Stream; unwire
-  # this service in that same pass. See docs/plans/04-novaflex-webhook.md.
+  # A separate container from opcua-novaflex on purpose. `opcua-novaflex` is the
+  # FLEX2 as Nova ships it — a licensed OPC UA server with ~400 tags. This is
+  # the same instrument imagined with the integration surface most of the room
+  # has actually met: one HTTPS POST to a URL somebody typed into a config
+  # screen. Two containers, so pattern 4 cannot disturb pattern 3, which is
+  # live. The cost is that the two run independent sample lifecycles, so the
+  # same physical sample cannot appear on the topic twice by construction —
+  # SAMPLE_ID_START is how you line the two counters up by hand.
+  # See docs/04-novaflex-webhook.md § Deviations.
   #
-  # No depends_on: chariot. Reconnect-with-backoff is in-app, per the
-  # conventions. The gateway certificate is mounted and trusted; we do not
-  # disable TLS verification. See services/lims/README.md.
+  # Both patterns land on icc26/site1/qc/analyzers/novaflex-01/result. Only
+  # meta.mechanism differs. That is the namespace claim, demonstrated.
+  #
+  # No depends_on: ignition. If the gateway is down the POST fails and the
+  # result is gone — that is checkpoint 6, and it is the whole reason pattern 5
+  # exists. There is deliberately no outbox in this container.
+  #
+  # The gateway certificate is mounted read-only and trusted; verification is
+  # never disabled. NOTE: ignition/certificates/icc26-ignition.crt is generated
+  # by `python tasks.py seed` (or `enable-ssl`) and is gitignored. If the file
+  # does not exist, Docker will create a DIRECTORY at that path and the mount
+  # will be useless — run seed before `up` on a fresh clone.
   # ───────────────────────────────────────────────────────────────────────────
-  lims:
-    build: ./services/lims
-    container_name: icc26-lims
+  webhook-novaflex:
+    build: ./services/webhook-novaflex
+    container_name: icc26-webhook-novaflex
     restart: unless-stopped
     environment:
-      BROKER_HOST: chariot
-      MQTT_USERNAME: lims-bridge
-      MQTT_PASSWORD: lims-bridge
-      RESULT_TOPIC: icc26/site1/qc/analyzers/+/result
-      PGHOST: postgres
-      PGDATABASE: icc26
-      PGUSER: icc26
-      PGPASSWORD: ${ICC26_DB_PASSWORD:-icc26}
-      # HTTPS. Ignition redirects :8088 to :8043, so HTTP is just an extra hop.
-      # The mounted gateway cert is trusted; hostname check is off because the
-      # restored ssl.pfx SAN is localhost, not `ignition`. See services/lims.
-      WEBHOOK_URL: ${LIMS_WEBHOOK_URL:-https://ignition:8043/system/webdev/icc-2026/lims/sample-result}
-      WEBHOOK_SECRET: ${LIMS_WEBHOOK_SECRET:-icc26-webhook-secret}
-      WEBHOOK_MAX_ATTEMPTS: ${LIMS_WEBHOOK_MAX_ATTEMPTS:-5}
+      DEVICE_ID: ${WEBHOOK_NOVAFLEX_DEVICE_ID:-novaflex-01}
+      ANALYZER_ID: ${WEBHOOK_NOVAFLEX_ANALYZER_ID:-FLEX2-01}
+      # Factory default for the callback. The device page at :8084 overrides all
+      # three live, and the override is NOT persisted — a restart returns the
+      # instrument to how it shipped. Unlike the valves, whose commissioned
+      # topic survives in a named volume, these are stage controls.
+      WEBHOOK_ENABLED: ${WEBHOOK_NOVAFLEX_ENABLED:-true}
+      WEBHOOK_URL: ${WEBHOOK_NOVAFLEX_URL:-https://ignition:8043/system/eventstream/icc-2026/04_webhook/novaflex-result}
+      WEBHOOK_SECRET: ${WEBHOOK_NOVAFLEX_SECRET:-icc26-webhook-secret}
       WEBHOOK_CA_FILE: /certs/icc26-ignition.crt
-      GENERATOR_INTERVAL_S: ${LIMS_GENERATOR_INTERVAL_S:-0}
-      LOG_LEVEL: ${LIMS_LOG_LEVEL:-INFO}
+      WEBHOOK_TIMEOUT_S: ${WEBHOOK_NOVAFLEX_TIMEOUT_S:-10}
+      # Same id FORMAT as opcua-novaflex (S-#####), independent sequence. Set
+      # SAMPLE_ID_START to line the two up before a run where you want one
+      # sample id to appear under both mechanisms.
+      SAMPLE_ID_PREFIX: ${WEBHOOK_NOVAFLEX_SAMPLE_ID_PREFIX:-S-}
+      SAMPLE_ID_START: ${WEBHOOK_NOVAFLEX_SAMPLE_ID_START:-1}
+      # Osmo unfitted, same as the OPC UA twin and for the same reason. Here it
+      # shows up as a key that is simply absent from the JSON, beside
+      # Modules.Osmo = false which is present. Absent vs zero, again.
+      OSMO_INSTALLED: ${WEBHOOK_NOVAFLEX_OSMO_INSTALLED:-false}
+      SAMPLE_INTERVAL_S: ${WEBHOOK_NOVAFLEX_SAMPLE_INTERVAL_S:-120}
+      FIRST_SAMPLE_DELAY_S: ${WEBHOOK_NOVAFLEX_FIRST_SAMPLE_DELAY_S:-20}
+      # Every Nth free-running cycle is an onboard QC, which POSTs nothing —
+      # checkpoint 5. 0 disables.
+      QC_EVERY_N: ${WEBHOOK_NOVAFLEX_QC_EVERY_N:-6}
+      SENSOR_ERROR_RATE: ${WEBHOOK_NOVAFLEX_SENSOR_ERROR_RATE:-0.0}
+      FAILURE_RATE: ${WEBHOOK_NOVAFLEX_FAILURE_RATE:-0.0}
+      LOG_LEVEL: ${WEBHOOK_NOVAFLEX_LOG_LEVEL:-INFO}
       TZ: ${TZ:-America/Chicago}
     ports:
-      - "${LIMS_PORT:-8000}:8000"
+      # 8084 — 8085/8086 are the valves and 8000 was the retired LIMS.
+      - "${WEBHOOK_NOVAFLEX_UI_PORT:-8084}:8080"
     volumes:
       - ./ignition/certificates/icc26-ignition.crt:/certs/icc26-ignition.crt:ro
+    # The config page answering is the whole liveness question. A failing POST
+    # is this pattern's subject matter, not an unhealthy container.
     healthcheck:
       test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 10s
     networks: [icc26]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Extra — LIMS approval webhook. UNWIRED 2026-08-23, not deleted.
+  #
+  # Pattern 4 until 2026-08-23, when it was replaced by webhook-novaflex above.
+  # The service block is commented out rather than removed, and services/lims/,
+  # the WebDev resource at com.inductiveautomation.webdev/resources/lims/, the
+  # lims_webhook script module and the lims.* tables all stay on disk. They are
+  # the proven, file-authorable fallback if the Event Stream HTTP source above
+  # cannot be made to work: a WebDev doPost calling
+  # system.cirruslink.transmission.publish was broker-verified on 2026-08-20.
+  #
+  # Docs: docs/extra/lims-webhook-spec.md and docs/extra/lims-webhook.md.
+  # Dropping the lims.* tables waits for the 05/06 volume nuke.
+  #
+  # To bring it back: uncomment, and re-add the `lims-bridge` user to
+  # compose/chariot/mqtt-users.json — which only takes effect against an empty
+  # Chariot volume, so it also needs a nuke or a hand-added user in the UI.
+  #
+  # lims:
+  #   build: ./services/lims
+  #   container_name: icc26-lims
+  #   restart: unless-stopped
+  #   environment:
+  #     BROKER_HOST: chariot
+  #     MQTT_USERNAME: lims-bridge
+  #     MQTT_PASSWORD: lims-bridge
+  #     RESULT_TOPIC: icc26/site1/qc/analyzers/+/result
+  #     PGHOST: postgres
+  #     PGDATABASE: icc26
+  #     PGUSER: icc26
+  #     PGPASSWORD: ${ICC26_DB_PASSWORD:-icc26}
+  #     WEBHOOK_URL: ${LIMS_WEBHOOK_URL:-https://ignition:8043/system/webdev/icc-2026/lims/sample-result}
+  #     WEBHOOK_SECRET: ${LIMS_WEBHOOK_SECRET:-icc26-webhook-secret}
+  #     WEBHOOK_MAX_ATTEMPTS: ${LIMS_WEBHOOK_MAX_ATTEMPTS:-5}
+  #     WEBHOOK_CA_FILE: /certs/icc26-ignition.crt
+  #     GENERATOR_INTERVAL_S: ${LIMS_GENERATOR_INTERVAL_S:-0}
+  #     LOG_LEVEL: ${LIMS_LOG_LEVEL:-INFO}
+  #     TZ: ${TZ:-America/Chicago}
+  #   ports:
+  #     - "${LIMS_PORT:-8000}:8000"
+  #   volumes:
+  #     - ./ignition/certificates/icc26-ignition.crt:/certs/icc26-ignition.crt:ro
+  #   healthcheck:
+  #     test: ["CMD", "python", "-c",
+  #            "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 20s
+  #   networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
   # Remaining pattern services land here in later steps:
