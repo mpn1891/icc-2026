@@ -1,6 +1,6 @@
 # Status
 
-> **Updated 2026-08-20.** Conference is ~4 weeks out.
+> **Updated 2026-08-23.** Conference is ~4 weeks out.
 >
 > **The stale-image blocker is CLEARED.** A gateway rebuilt from the repo loads Cirrus **5.0.4**
 > Engine, Transmission and Distributor with no compatibility warnings. `tasks.py` now forces
@@ -14,14 +14,25 @@
 > **Pattern 3 is done on the Nova path** (broker-verified 2026-08-20): vendor `SampleTime` →
 > Event Stream `03_opcua/novaflex-result` → Transmission →
 > `icc26/site1/qc/analyzers/novaflex-01/result` with `meta.mechanism = "opcua-event"` and
-> `meta.correlation_id` = `sample_id` (broker-watched 2026-08-20, e.g. `S-00140`). Countess
-> stays in compose as a second designed OPC UA analyzer for the talk contrast; **MQTT publish
-> is intentionally not wired** — not an open Pattern 3 work item.
+> `meta.correlation_id` = `sample_id`. Countess is **not on the talk** — docs live in
+> [`../extra/`](../extra/README.md); the container may still be in compose.
+> **MQTT publish is intentionally not wired**.
 >
-> **Pattern 4 is verified end-to-end** on this checkout. Ingest, reject, atomic
-> approve, webhook publish (`mechanism: webhook`), 409 replay, 401 wrong secret,
-> and outbox survival across `docker restart icc26-lims` all held. Talk track:
-> [`../04-lims-webhook.md`](../04-lims-webhook.md).
+> **Pattern 4's LIMS implementation is built and verified, and is no longer the talk.**
+> Re-sourced 2026-08-23: NovaFlex HTTPS POST → Event Stream → MQTT, same topic as pattern 3.
+> Spec: [`04-novaflex-webhook.md`](04-novaflex-webhook.md). As-built LIMS:
+> [`../extra/lims-webhook-spec.md`](../extra/lims-webhook-spec.md). Rebuild is pending.
+>
+> **Patterns 5 and 6 share a turbidity-meter local database** (CDC vs poll). Specs:
+> [`05-cdc-turbidity.md`](05-cdc-turbidity.md), [`06-poll-turbidity.md`](06-poll-turbidity.md).
+> **Vendor docs arrived 2026-08-23**: the instrument is an Anton Paar **Haze 3001** turbidity
+> module and its data lands in **AP Connect** 4.0. Both specs were re-sourced against it the
+> same day; see [`../reference/apconnect-haze3001-model.md`](../reference/apconnect-haze3001-model.md).
+> The catalog is `apconnect`, not `turbidity`. AP Connect really runs on MS SQL Server; the demo
+> substitutes Postgres deliberately, and both specs record why. Odoo is still out. The MET ONE
+> particle counter is out.
+>
+> **Pattern 7 is TBD** and remains the designated cut. Vibration / AMS / DCS is not the plan.
 
 What is true right now and what to do next. Durable knowledge does not live here — it lives in
 [`../00-architecture.md`](../00-architecture.md). Work still to be built lives in
@@ -30,27 +41,24 @@ and the fix is to move the fact rather than keep two copies.
 
 ## Do this next
 
-**Patterns 5, 6 and 7 were re-sourced on 2026-08-19, and the shared-topic set-piece was dropped.**
-This is the largest design change since pattern 2 stopped being a bioreactor, so read
-[`../00-architecture.md` § *Patterns 4, 5 and 6 used to share one
-topic*](../00-architecture.md) before touching any of them. In short: 5 becomes CDC on **Odoo**,
-6 becomes a Modbus poll of a **MET ONE particle counter**, 7 is leaning toward a **vibration
-waveform gated on DCS steady-state and requested by an asset management system**. Each mechanism
-now gets the source that genuinely forces it, and no two patterns carry the same data.
+**Patterns 4–7 were re-sourced again on 2026-08-23.** Read
+[`../00-architecture.md` § *Shared sources*](../00-architecture.md) before touching any of
+them. In short: 4 is a NovaFlex HTTPS POST into an Event Stream (LIMS leaves the talk); 5 is
+CDC of a turbidity meter's local database; 6 polls that same database on `id`; 7 is TBD.
 
-**Two work items remaining, and they are genuinely independent.**
+**Work items, independent except 05/06 sharing a database.** Specs 04/05/06 now have file
+sketches, Ignition paths, MQTT users, empirical checkpoints, and copy-paste verification.
 
-1. **Build 08's fallback firehose.** It depends on no pattern, and it is the only deliverable
-   whose absence is visible from the audience.
-2. **Pattern 6's Modbus simulator.** The longest new build of the remaining two; start it
-   earliest.
+1. **Build 08's fallback firehose.** Depends on no pattern; only deliverable the audience sees.
+2. **Rebuild pattern 4** per [`04-novaflex-webhook.md`](04-novaflex-webhook.md).
+3. **Turbidity simulator + database** (foundation for 05 and 06). Then Debezium, then the poll.
 
-Countess MQTT publish on `count_completed_counter` is optional polish if wanted later; nothing
-depends on it, and Pattern 3 does not wait on it.
+Countess MQTT publish is Extra polish; nothing depends on it. See [`../extra/`](../extra/README.md).
 
-Newly dead, and worth deleting rather than maintaining: `mes.batch_event` has no consumer at all
-(Odoo replaces the hand-made MES table), and `04-cdc.sql`'s publication points at two tables
-nothing reads. Comments in both SQL files now say so. Retire both with pattern 5's spec.
+Newly dead: the LIMS as pattern 4 (code still runs until unwired); `mes.batch_event` still has
+no consumer; `04-cdc.sql`'s publication still names two unread tables — retire that with
+pattern 5. The MET ONE particle counter and the vibration/AMS/DCS aggregation were never built
+and are not the plan.
 
 `00-next-step.md` is **done** and kept only as the record of what was run. Everything durable
 from it has moved into [`../00-architecture.md`](../00-architecture.md) and the two pattern specs.
@@ -83,8 +91,12 @@ Rules that are still live:
   once called `IGNITION_API_TOKEN`, and an older `.env` still carrying that name reads as "no
   token" with no error; and a key is bound to the gateway that minted it, so a key from another
   checkout returns 401 and looks identical to no key at all.
-- **Postgres JDBC datasource `ICC26`** → `jdbc:postgresql://postgres:5432/icc26`, user `icc26`.
-  Patterns 6 and 7 need it; not created yet (no `database-connection` resource in the repo).
+- **Postgres JDBC datasource `APCONNECT`** → `jdbc:postgresql://postgres:5432/apconnect`.
+  Pattern 6 needs it. Pattern 5 (MQTT sink) does not. Spec 06 authors it as files by copying
+  `pg_db`'s Embedded password blob rather than retyping the password in the UI. `ICC26` on `icc26`
+  is leftover from the LIMS era; recreate only if something still queries it. Neither resource
+  exists yet. (Earlier notes called this one `TURBIDITY`, against a catalog `turbidity`; both
+  names changed when the vendor docs landed.)
 - **Transmission logs `Failed to subscribe to TARGET elements`** immediately after connecting.
   Unexplained — possibly the `ign-transmission` ACL, possibly transmitter config. It connects, so
   it may block nothing; decide how hard to chase it before the pattern work starts.

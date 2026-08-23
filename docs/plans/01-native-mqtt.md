@@ -315,8 +315,10 @@ it.
 
 ### The subscription has to name one device, and that is the finding
 
-The obvious `icc26/site1/upstream/+/+/#` also swallows pattern 5's `…/br-201/batch/event` and
-pattern 7's `…/br-201/batch-summary` — **`#` matches zero levels too.** So pattern 1's
+The obvious `icc26/site1/upstream/+/+/#` also matches a four-level address under that area —
+**`#` matches zero levels too.** Pattern 5's old `…/br-201/batch/event` would have been
+swallowed; it no longer lives there (5/6 are `downstream/tff-301/turbidity-01`). The finding
+is about MQTT, not about those topics: pattern 1's
 subscription enumerates a single device by name, and **adding a second plain-MQTT valve means
 editing this file.** Pattern 2's `spBv1.0/#` already covers every edge node that will ever
 exist. That row is in [`02-sparkplug-b.md`](02-sparkplug-b.md)'s comparison table.

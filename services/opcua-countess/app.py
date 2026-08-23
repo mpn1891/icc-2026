@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A simulated Countess 3 FL automated cell counter, served over OPC UA.
 
-Implements the information model in docs/reference/countess-3fl-opcua-model.md, which maps all
+Implements the information model in docs/extra/countess-3fl-opcua-model.md, which maps all
 71 columns of Appendix E of the Thermo Fisher user guide (MAN0019567) into an address space.
 Read that document first -- it carries the reasoning, the column mapping and the provenance
 note. This file is its executable half, and README.md here lists where the two differ.
@@ -131,7 +131,7 @@ class Config:
 #
 # The single source of truth for the address space AND for every write. The letter in each row
 # is the Appendix E column it came from, so this table can be diffed against section 7 of
-# docs/reference/countess-3fl-opcua-model.md line for line.
+# docs/extra/countess-3fl-opcua-model.md line for line.
 
 V = ua.VariantType
 UM, PCT, CONC = "um", "pct", "conc"  # engineering-unit keys, see EU_INFO

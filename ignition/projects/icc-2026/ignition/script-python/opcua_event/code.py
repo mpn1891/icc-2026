@@ -4,8 +4,9 @@ Nova publishes off HistoricalSampleResults/SampleTime, a vendor field. The tag s
 that DateTime hands this module the result-folder path; we read the historical UDT siblings
 already bound and return one JSON document. Nothing under ICC26Extensions is read.
 
-meta.correlation_id is sample_id. Pattern 4 carries it through the LIMS and back out under
-mechanism=webhook, so one sample is traceable across two colours on the firehose.
+meta.correlation_id is sample_id. Pattern 4's HTTPS path stamps the same value
+on the same topic (mechanism=webhook), so one sample is two colours on the firehose.
+The LIMS is not in that chain any more.
 
 Jython 2.7: no f-strings, no type hints, integer division is floor division.
 """

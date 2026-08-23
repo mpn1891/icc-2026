@@ -19,7 +19,7 @@
 INSERT INTO plant.equipment (equipment_id, site, area, line, equipment_type, description) VALUES
     ('BR-201',          'site1', 'upstream', NULL,        'bioreactor',        '2000L single-use bioreactor'),
     ('BR-202',          'site1', 'upstream', NULL,        'bioreactor',        '2000L single-use bioreactor'),
-    ('novaflex-01',     'site1', 'qc',       'analyzers', 'analyzer',          'Nova Flex cell-culture analyzer — pattern 3, OPC UA to MQTT'),
+    ('novaflex-01',     'site1', 'qc',       'analyzers', 'analyzer',          'Nova Flex cell-culture analyzer — pattern 3 OPC UA, pattern 4 HTTPS POST (planned)'),
     ('sample-valve-01', 'site1', 'upstream', 'br-201',    'sample-valve',      'RFID sample valve assembly, s/n SV-2000-0417 — pattern 1, native MQTT'),
     ('sample-valve-02', 'site1', 'upstream', 'br-202',    'sample-valve',      'RFID sample valve assembly, s/n SV-2000-0418 — pattern 2, Sparkplug B');
 
