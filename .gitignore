@@ -79,3 +79,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Agent worktrees (git worktrees, not content)
+.claude/worktrees/
