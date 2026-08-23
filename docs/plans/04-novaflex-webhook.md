@@ -1,5 +1,22 @@
 # 04 — NovaFlex HTTPS webhook
 
+> **BUILT 2026-08-23, and this file is now the *plan*, not the record.** The as-built is
+> [`../04-novaflex-webhook.md`](../04-novaflex-webhook.md) — read its deviations table before
+> using anything below, because four things went differently:
+>
+> 1. **The sender is a new container, `services/webhook-novaflex/`**, not an addition to
+>    `services/opcua-novaflex/app.py`. Every "Files to change" row naming `opcua-novaflex`
+>    landed in the new directory instead; `opcua-novaflex` is untouched.
+> 2. **Checkpoint 3 is not achievable as written.** Two containers means two independent
+>    sample lifecycles, so one physical sample cannot appear on the topic twice. The id format
+>    matches and `SAMPLE_ID_START` lines the counters up by hand; nothing automates it.
+> 3. **The Event Stream was authored blind, from files** — no UI step, with the stack down. The
+>    HTTP source type, its config keys and the mount URL below are all **guesses**. The
+>    as-built lists every one and the runbook settles them in one pass.
+> 4. **Nothing has been verified against a running gateway or broker.** The empirical
+>    checkpoints below are superseded by the runbook in the as-built, which is written to be
+>    executed.
+>
 > **Supersedes the pattern-4 entry in [`00-master-plan.md`](00-master-plan.md) entirely.**
 > Rewritten **2026-08-23.** The LIMS approval webhook
 > ([`../extra/lims-webhook-spec.md`](../extra/lims-webhook-spec.md)) is the previous design; it was built and

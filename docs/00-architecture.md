@@ -40,6 +40,16 @@ Pattern 4 is an HTTPS POST from the NovaFlex into an Event Stream, not a LIMS. *
 is not the mechanism**: HTTP in, MQTT out, `meta.mechanism = "webhook"`. Pattern 3 is the same
 instrument over OPC UA onto the same topic.
 
+**Patterns 3 and 4 are two containers, not one with a flag.** `opcua-novaflex` is the FLEX2 as
+Nova ships it; `webhook-novaflex` is the same instrument imagined with only a callback URL.
+Splitting them keeps pattern 3 (live, broker-verified) safe from pattern 4 (new, unverified),
+and it is the truer picture — those are two products, not one product with a checkbox. The
+price is that they run **independent sample lifecycles**, so one physical sample cannot appear
+on the result topic twice. Both stamp `sample_id` into `meta.correlation_id` and the id format
+is identical, but aligning a specific id across the two mechanisms is a manual act
+(`WEBHOOK_NOVAFLEX_SAMPLE_ID_START`). See [`04-novaflex-webhook.md`](04-novaflex-webhook.md)
+§ Deviations.
+
 | Service | Host ports | Built in |
 |---|---|---|
 | `postgres` | 5432 | step 1 |
@@ -47,9 +57,10 @@ instrument over OPC UA onto the same topic.
 | `chariot` | 1883, 8883, 8090, 8081, 8444 | step 1 |
 | `sim-valve-mqtt` | 8085 (config page) | pattern 1 |
 | `sim-valve-spb` | 8086 (config page) | pattern 2 |
-| `opcua-novaflex` | 4841 | pattern 3 (OPC UA) and pattern 4 (planned HTTPS POST) |
+| `opcua-novaflex` | 4841 | pattern 3 (OPC UA) |
+| `webhook-novaflex` | 8084 (device page) | pattern 4 (HTTPS POST) — built 2026-08-23, **unverified against a running stack** |
 | `opcua-countess` | 4840 | **Extra — not the talk.** Still in compose. Docs: [`extra/`](extra/README.md) |
-| `lims` | 8000 (approval screen) | **Extra — not the talk.** Still in compose until pattern 4 is rebuilt. Docs: [`extra/lims-webhook-spec.md`](extra/lims-webhook-spec.md) |
+| ~~`lims`~~ | ~~8000~~ | **Extra — unwired 2026-08-23.** Commented out of compose, not deleted; it is pattern 4's proven fallback. Docs: [`extra/lims-webhook-spec.md`](extra/lims-webhook-spec.md) |
 | `sim-turbidity` | config page TBD | patterns 5 and 6 — planned. Writes only to database `turbidity` |
 | `debezium` | 8083 | pattern 5 — planned, tails `turbidity` |
 | `sim-vibration` | — | retired (was pattern 1, then a pattern-7 candidate). On disk, unwired |
@@ -58,9 +69,10 @@ instrument over OPC UA onto the same topic.
 | `sim-particle-counter` | — | **not planned.** Pattern 6 is the turbidity database, not Modbus |
 
 **Odoo was the 2026-08-19 candidate for pattern 5 and was dropped 2026-08-20** — do not add
-it back. Pattern 5's source is now the turbidity meter's local database. Pattern 4's current
-LIMS implementation is superseded; the rebuild is [`plans/04-novaflex-webhook.md`](plans/04-novaflex-webhook.md).
-Pattern 7 is TBD and is the designated cut.
+it back. Pattern 5's source is now the turbidity meter's local database. Pattern 4's LIMS
+implementation was superseded and unwired on 2026-08-23; the rebuild is
+[`plans/04-novaflex-webhook.md`](plans/04-novaflex-webhook.md) and its as-built is
+[`04-novaflex-webhook.md`](04-novaflex-webhook.md). Pattern 7 is TBD and is the designated cut.
 
 **Patterns 1 and 2 are the same physical device in two firmwares** — a badge-operated smart
 sample valve assembly, one on `BR-201` speaking plain MQTT and one on `BR-202` speaking
@@ -97,8 +109,19 @@ sample result) from 2026-08-19. **On 2026-08-23 that last surface left the talk.
 now the same NovaFlex as pattern 3, imagined with no OPC UA and no MQTT — only an HTTPS POST
 into an Ignition Event Stream. See [`plans/04-novaflex-webhook.md`](plans/04-novaflex-webhook.md).
 
-The FastAPI LIMS, its outbox, `lims-bridge`, and `qc/lims/sample-result` stay in the tree until
-the rebuild unwires them. They are not the talk. SENAITE is not coming back.
+**Unwired 2026-08-23, not deleted.** The `lims` compose service is commented out, `lims-bridge`
+is gone from `mqtt-users.json`, `lims.*` is marked Extra in `02-schema.sql`, and nothing
+publishes `qc/lims/sample-result` any more. The FastAPI service, the WebDev endpoint, the
+`lims_webhook` module and the tables all remain on disk — same filing as the retired vibration
+gateway, and for a sharper reason: **that WebDev endpoint is pattern 4's fallback.** It was
+hand-authored as plain files, needed no gateway UI, and was broker-verified on 2026-08-20;
+pattern 4's Event Stream HTTP source was authored blind and has not been. SENAITE is not
+coming back.
+
+Two consequences worth not rediscovering: deleting `lims-bridge` from `mqtt-users.json` does
+**not** delete it from a Chariot that already has a user store (`MQTT_USERS` seeds on first run
+only — remove it in the UI or wait for a `nuke`), and the `lims.*` tables can only go away with
+a volume rebuild, which is deferred to the one pattern 5 needs anyway.
 
 The three earlier retired surfaces (`GET /results?since_id=N`, a Debezium-tailed insert, and a
 query for the aggregation script) stay retired. The comments in `02-schema.sql` and `04-cdc.sql`
@@ -205,12 +228,19 @@ That is why turbidity comes back as a database, not as a 4–20 mA loop.
 
 Consequences that are easy to miss:
 
-- **`lims-bridge` is leftover.** The cycle hazard was load-bearing when the LIMS subscribed
-  and caused publishes. Pattern 4 no longer subscribes. Drop the user when the LIMS is unwired.
+- **`lims-bridge` is gone** (2026-08-23). The cycle hazard was load-bearing when the LIMS
+  subscribed and caused publishes; pattern 4 subscribes to nothing and has **no MQTT account
+  at all**, publishing as `ign-transmission` like patterns 3 and 6. A webhook instrument is
+  not a broker client, so there is nothing to grant it.
 - **`lims.sample_result` and `mes.batch_event` have no talk consumer.** Pattern 5 tails
-  `turbidity.reading`. Retire `04-cdc.sql`'s publication with that spec.
+  `turbidity.reading`. Retire `04-cdc.sql`'s publication and drop the `lims.*` tables together,
+  in the volume rebuild pattern 5 needs.
 - Pattern 4's message is analyzer-shaped because it *is* an analyzer result, sharing pattern
-  3's topic rather than a LIMS topic. The `qc/lims/` wart dies with the rebuild.
+  3's topic rather than a LIMS topic. The `qc/lims/` wart is dead.
+- **Sharing a topic is not the same as sharing a sample.** Patterns 3 and 4 run in separate
+  containers with separate sample lifecycles, so the two documents on that topic are two
+  different samples unless the counters were aligned by hand. The claim the topic supports is
+  "you cannot tell how it arrived", not "here is one sample twice."
 
 ### Payload envelope
 
@@ -260,9 +290,14 @@ Pattern 7 is TBD. If a request/response pattern is ever added, this is the const
 run into first, and `meta.correlation_id` is the field already reserved in the envelope for it.
 
 **`meta.correlation_id` is `sample_id` on the NovaFlex.** Pattern 3 stamps it; pattern 4 stamps
-the same value on the HTTPS path. One sample, two colours, one topic. That is the first real
-user, and it does not need MQTT 5. Pattern 7 would have been the request/response user; it is
-TBD.
+the same field on the HTTPS path. That is the first real user, and it does not need MQTT 5.
+Pattern 7 would have been the request/response user; it is TBD.
+
+The caveat, added 2026-08-23 when pattern 4 became its own container: the two patterns emit
+the *same field*, not the *same value*. Two simulators, two sample counters. Aligning them so
+one id genuinely appears twice is manual (`WEBHOOK_NOVAFLEX_SAMPLE_ID_START`), and the claim
+to make unprompted is the weaker, truer one — the field is there, on both paths, and a
+consumer joins on it.
 
 ### MQTT Engine has two ingest surfaces, and they produce different things
 
@@ -618,7 +653,7 @@ Three roles, deliberately separate:
 | Role | Purpose |
 |---|---|
 | `ignition` | Gateway's JDBC target — historian, audit log |
-| `icc26` | Demo data (`lims`, `mes`, `plant` schemas). `lims` is leftover until pattern 4's rebuild |
+| `icc26` | Demo data (`lims`, `mes`, `plant` schemas). `lims` has had no reader or writer since 2026-08-23 |
 | `turbidity` | **Planned.** Instrument catalog for patterns 5 and 6 — a database the meter owns, not a schema in `icc26` |
 | `cdc` | Debezium's login, has `REPLICATION`. Will be granted on `turbidity`, not used on `icc26` |
 
@@ -629,7 +664,9 @@ role `turbidity`; Debezium reads as `cdc`; Ignition polls as a SELECT-only JDBC 
 `lims.sample_result` and `mes.batch_event` are still `REPLICA IDENTITY FULL` and still named
 in `04-cdc.sql`. Nothing reads that publication. Pattern 5's spec retires it and puts
 `REPLICA IDENTITY FULL` on `turbidity.reading` instead. `lims.webhook_delivery` was pattern
-4's outbox; it is leftover with the LIMS.
+4's outbox; it went unwired with the LIMS on 2026-08-23. **Pattern 4 has no outbox and no
+database at all** — one POST attempt, and the failed POST is the demo, because a durable retry
+queue built there would be pattern 5 in the wrong container.
 
 ---
 
