@@ -12,7 +12,12 @@
 > Shares the database specified in [`05-cdc-turbidity.md`](05-cdc-turbidity.md). The poll contract is
 > an incrementing identity column, not a vendor register map.
 >
-> Talk track (draft): [`../06-poll-turbidity.md`](../06-poll-turbidity.md).
+> Talk track: [`../06-poll-turbidity.md`](../06-poll-turbidity.md) — **as-built, and the place to
+> read first.** All Ignition resources below were authored as files on 2026-08-23 with the stack
+> down and the gateway untouched; **none of it has been run.** The talk track carries the itemised
+> list of every inferred field, its failure mode, the deviations, and the runbook that settles
+> them. Two corrections to this file were made during that build and are marked **[as-built]**
+> below.
 >
 > **Build the simulator and database with pattern 5 first.** This spec is the Ignition poll path on
 > top. Do not invent a second writer.
@@ -117,7 +122,7 @@ one needs a UI round-trip, do both in the same trip.
 |---|---|---|
 | Database connection `APCONNECT` | `database-connection/pg_db/` is committed and works | **High.** Copy it |
 | Memory tags | `tag-definition/default/icc26/site1/...` is committed and works | **High.** Copy the folder pattern |
-| Gateway timer | `ignition/projects/icc-2026/ignition/timer/` **exists but is empty** | **Low.** Inferred |
+| Gateway timer | **[as-built]** `ignition/projects/icc-2026/ignition/timer/` does **not** exist in the committed tree at all — git does not track empty directories, so this is weaker evidence than "exists but is empty" | **Low.** Inferred |
 | Gateway tag-change script | no such folder on disk at all | **Low.** Inferred |
 
 Apply with `python tasks.py scan`, not a restart.
@@ -232,18 +237,30 @@ Folder `default` provider, path `icc26/site1/downstream/tff-301/turbidity-01/`. 
 `tag-definition/default/icc26/site1/qc/analyzers/` pattern: one `unary-resource.json` per folder
 level, and a JSON array of tag objects in the leaf.
 
+**[as-built] The initial-value key is `defaultValue`, not `value`.** The block below is corrected
+from the original draft. `tag-type-definition/default/udts.json` carries 24 real
+`valueSource: "memory"` tags, and the ones with an initial value all spell it `defaultValue`
+(`{"dataType": "Boolean", "defaultValue": false, …}` — the vibration UDT's `collect_request` and
+`collect_steady_state`). In that same file `"value"` means something else entirely: a parameter
+**binding** object, `{"bindType": "parameter", "binding": "{gw_serial}"}`. So `"value": 0` would at
+best be ignored and at worst parsed as a malformed binding.
+
 ```json
 [
   { "name": "poll_watermark", "tagType": "AtomicTag", "valueSource": "memory",
-    "dataType": "Int8", "value": 0 },
+    "dataType": "Int8", "defaultValue": 0 },
   { "name": "poll_enabled",   "tagType": "AtomicTag", "valueSource": "memory",
-    "dataType": "Boolean", "value": true },
+    "dataType": "Boolean", "defaultValue": true },
   { "name": "poll_jump",      "tagType": "AtomicTag", "valueSource": "memory",
-    "dataType": "Boolean", "value": false },
+    "dataType": "Boolean", "defaultValue": false },
   { "name": "measure_now",    "tagType": "AtomicTag", "valueSource": "memory",
-    "dataType": "Boolean", "value": false }
+    "dataType": "Boolean", "defaultValue": false }
 ]
 ```
+
+That upgrades `valueSource`, `tagType`, `dataType` and `defaultValue` from inferred to
+**evidenced on disk**. What stays inferred is the leaf **file name** — `tags.json` here, while the
+only data-file name anywhere in the committed tag tree is `udts.json`.
 
 `measure_now` is the operator prop: write `true`, the tag-change script fires and writes it back to
 `false`. Keep it in the same folder as the poll tags so one Perspective screen or one tag browser

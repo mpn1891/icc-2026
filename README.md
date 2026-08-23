@@ -16,7 +16,7 @@ PostgreSQL 17, all under `docker compose`, all version controlled.
 | 3 | OPC UA → MQTT | Nova Flex analyzer; Ignition publishes on sample-complete | step 4 |
 | 4 | Webhook / Push API | NovaFlex HTTPS POST into an Ignition Event Stream (same analyzer as pattern 3) | rebuild pending |
 | 5 | CDC / log tailing | Turbidity meter local Postgres → Debezium → MQTT | planned |
-| 6 | Poll / watermark | Same turbidity database, JDBC `id > last` | planned |
+| 6 | Poll / watermark | Same AP Connect database, Ignition JDBC `measurement_no > watermark`, 60 s | Ignition side authored, never run |
 | 7 | TBD | Designated cut | not scoped |
 
 **Patterns 1 and 2 are one device in two firmwares**, which is the point of running both: a

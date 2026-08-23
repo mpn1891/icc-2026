@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "tagPaths": [
+    "[default]icc26/site1/downstream/tff-301/turbidity-01/measure_now"
+  ],
+  "changeTypes": [
+    "VALUE"
+  ]
+}

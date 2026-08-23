@@ -1,0 +1,17 @@
+{
+  "scope": "A",
+  "description": "AP Connect's measurement catalog. Pattern 6 polls it read-only; the ignition role holds SELECT and nothing else.",
+  "version": 1,
+  "restricted": false,
+  "overridable": true,
+  "files": [
+    "config.json"
+  ],
+  "attributes": {
+    "lastModification": {
+      "actor": "admin",
+      "timestamp": "2026-08-23T12:00:00Z"
+    },
+    "enabled": true
+  }
+}

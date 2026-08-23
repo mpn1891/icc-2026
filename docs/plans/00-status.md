@@ -32,6 +32,15 @@
 > substitutes Postgres deliberately, and both specs record why. Odoo is still out. The MET ONE
 > particle counter is out.
 >
+> **Pattern 6's Ignition side is authored as files but has never been run** (2026-08-23). The
+> `APCONNECT` datasource, the four memory tags, the `poll_turbidity` script module and the two
+> gateway-event resources are all on disk; the stack was down throughout and the gateway UI was
+> not touched. The two gateway events had **no committed example to copy**, so their on-disk
+> schemas are inferred and are the pattern's main risk. Every guessed field, its failure mode, the
+> deviations, and a one-pass runbook that settles them are in
+> [`../06-poll-turbidity.md`](../06-poll-turbidity.md). Nothing can be checked until pattern 5's
+> branch (database + `sim-apconnect`) is merged, and that needs a nuke.
+>
 > **Pattern 7 is TBD** and remains the designated cut. Vibration / AMS / DCS is not the plan.
 
 What is true right now and what to do next. Durable knowledge does not live here — it lives in
@@ -94,9 +103,10 @@ Rules that are still live:
 - **Postgres JDBC datasource `APCONNECT`** → `jdbc:postgresql://postgres:5432/apconnect`.
   Pattern 6 needs it. Pattern 5 (MQTT sink) does not. Spec 06 authors it as files by copying
   `pg_db`'s Embedded password blob rather than retyping the password in the UI. `ICC26` on `icc26`
-  is leftover from the LIMS era; recreate only if something still queries it. Neither resource
-  exists yet. (Earlier notes called this one `TURBIDITY`, against a catalog `turbidity`; both
-  names changed when the vendor docs landed.)
+  is leftover from the LIMS era; recreate only if something still queries it. **`APCONNECT` now
+  exists on disk** (authored 2026-08-23, never connected — whether the copied blob decrypts is
+  checkpoint 1); `ICC26` still does not. (Earlier notes called this one `TURBIDITY`, against a
+  catalog `turbidity`; both names changed when the vendor docs landed.)
 - **Transmission logs `Failed to subscribe to TARGET elements`** immediately after connecting.
   Unexplained — possibly the `ign-transmission` ACL, possibly transmitter config. It connects, so
   it may block nothing; decide how hard to chase it before the pattern work starts.

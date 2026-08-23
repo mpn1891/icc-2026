@@ -1,0 +1,34 @@
+[
+  {
+    "dataType": "Boolean",
+    "defaultValue": false,
+    "documentation": "Stage prop for the operator at the instrument. Write true; the gateway tag-change script POSTs to sim-apconnect /measure and writes this back to false, so it can be pressed again. Ignition never INSERTs into the apconnect catalog - see checkpoint 10.",
+    "name": "measure_now",
+    "tagType": "AtomicTag",
+    "valueSource": "memory"
+  },
+  {
+    "dataType": "Boolean",
+    "defaultValue": true,
+    "documentation": "Clear to stall the poll. The timer still fires; poll_turbidity.tick() returns immediately. Set true again and the backlog drains in measurement_no order - that burst is the catch-up visual.",
+    "name": "poll_enabled",
+    "tagType": "AtomicTag",
+    "valueSource": "memory"
+  },
+  {
+    "dataType": "Boolean",
+    "defaultValue": false,
+    "documentation": "The other implementation, one flag away. When true the tick advances the watermark to max(measurement_no) WITHOUT publishing, so a stall loses rows instead of arriving late. Live code on purpose: catch-up first, then flip this and show the numbers skip.",
+    "name": "poll_jump",
+    "tagType": "AtomicTag",
+    "valueSource": "memory"
+  },
+  {
+    "dataType": "Int8",
+    "defaultValue": 0,
+    "documentation": "High-water mark on measurement.measurement_no. Deliberately a memory tag: a gateway restart resets it to 0 and the next tick replays from the beginning. That at-least-once behaviour is honest and is checkpoint 9 - do not make it durable in v1.",
+    "name": "poll_watermark",
+    "tagType": "AtomicTag",
+    "valueSource": "memory"
+  }
+]

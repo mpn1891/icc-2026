@@ -231,6 +231,19 @@ Every non-Sparkplug payload:
 This field carries the demo. The Perspective firehose view filters and colors by it, so you
 get per-pattern legibility on screen without encoding the mechanism into the namespace.
 
+**Running the firehose against patterns 5 and 6.** Both publish to
+`icc26/site1/downstream/tff-301/turbidity-01/telemetry`, and the only differences in the two
+documents are `meta.mechanism` and `meta.ingest_ts`. `meta.correlation_id` is the AP Connect
+**GUID** on both, so the two colours of one measurement join on it; `seq` is `measurement_no` on
+both, so they line up on the same axis. `ingest_ts` minus `ts` is the lag — milliseconds for `cdc`,
+up to a minute for `poll` — and that gap on one measurement is the comparison the two patterns
+exist to make.
+
+Pattern 6's failure to demo is a **stalled watermark**, not a wrapping particle-counter buffer.
+That was the MET ONE plan and it is out. Clear `poll_enabled`, let measurements accumulate, set it
+again: the poll either catches up (late, complete) or, with `poll_jump` set, skips them (lost). CDC
+on the same topic dropped neither. See [`06-poll-turbidity.md`](06-poll-turbidity.md).
+
 ### Two things that become talk content
 
 **A Last Will belongs to whoever owns the session.** It is registered in the MQTT CONNECT
@@ -630,6 +643,26 @@ role `turbidity`; Debezium reads as `cdc`; Ignition polls as a SELECT-only JDBC 
 in `04-cdc.sql`. Nothing reads that publication. Pattern 5's spec retires it and puts
 `REPLICA IDENTITY FULL` on `turbidity.reading` instead. `lims.webhook_delivery` was pattern
 4's outbox; it is leftover with the LIMS.
+
+### Ignition JDBC datasources
+
+Gateway-side connections, which are a different list from the Postgres roles above:
+
+| Datasource | URL | State |
+|---|---|---|
+| `pg_db` | `jdbc:postgresql://postgres:5432/postgres` | Committed and working. Points at the `postgres` catalog; leftover, but it is the source of the `Embedded` password blob the others copy. Do not delete it |
+| `APCONNECT` | `jdbc:postgresql://postgres:5432/apconnect` | **Pattern 6.** Authored as files 2026-08-23, **never connected.** User `ignition`, SELECT only on `measurement` |
+| `ICC26` | `jdbc:postgresql://postgres:5432/icc26` | Leftover from the LIMS era. Does not exist; recreate only if something still queries it |
+
+`APCONNECT` was called `TURBIDITY` (against a catalog `turbidity`) in notes written before the
+vendor documents landed. Both names changed on 2026-08-23: the instrument's application is Anton
+Paar **AP Connect**, and the catalog is `apconnect`. Any surviving `TURBIDITY` reference is stale.
+
+Its `config.json` carries `pg_db`'s `Embedded` ciphertext `password` object copied byte-identical,
+which is how a new connection gets a working credential without a plaintext password in the repo or
+a retype in the UI — the blob decrypts with the gateway's own key and both connections use the same
+`ignition` role. Whether that survives on a freshly seeded gateway is unproven; the fallback is one
+UI retype, recorded as-built.
 
 ---
 

@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "delay": 60000,
+  "delayType": "FIXED_DELAY",
+  "threadType": "DEDICATED"
+}
