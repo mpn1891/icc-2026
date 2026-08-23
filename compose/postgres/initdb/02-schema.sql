@@ -35,12 +35,25 @@ CREATE TABLE plant.batch (
     status        text NOT NULL DEFAULT 'running'   -- running | complete | aborted
 );
 
--- ── lims: sample results ─────────────────────────────────────────────────────
--- Leftover. Pattern 4 was a LIMS until 2026-08-23; these tables stay until that
--- rebuild unwires them. Analyzer results land as status='received'; a human
--- Approve flips them to 'verified' and writes one outbox row in the same
--- transaction. The talk no longer uses this.
+-- ── lims: sample results ── EXTRA. No consumer as of 2026-08-23 ──────────────
 --
+-- UNWIRED, NOT DROPPED. Pattern 4 was a LIMS until 2026-08-23 and is now a
+-- NovaFlex HTTPS POST into an Event Stream, which touches no database at all.
+-- The `lims` service is commented out of docker-compose.yml, `lims-bridge` is
+-- gone from compose/chariot/mqtt-users.json, and nothing reads or writes either
+-- table below.
+--
+-- They stay because dropping them means a volume rebuild, and the 05/06 work
+-- needs one anyway — retire the whole schema in that pass, deliberately, rather
+-- than adding a nuke to this one. Same filing as the retired vibration gateway:
+-- on disk, wired to nothing, documented in docs/extra/lims-webhook-spec.md.
+--
+-- If you bring the LIMS back (it is the proven fallback for pattern 4 — see
+-- docs/04-novaflex-webhook.md § Deviations), these are the tables it needs, and
+-- the reasoning below is still correct:
+--
+-- Analyzer results land as status='received'; a human Approve flips them to
+-- 'verified' and writes one outbox row in the same transaction.
 -- `batch_id` is free text, not a FK. The analyzer names batches the LIMS may not
 -- have opened yet, and refusing the insert would drop a real result.
 -- `UNIQUE (sample_id, analyte)` is a demo simplification: a real LIMS repeats
@@ -64,7 +77,12 @@ CREATE INDEX ix_sample_result_id_created ON lims.sample_result (id, created_at);
 CREATE INDEX ix_sample_result_created    ON lims.sample_result (created_at);
 CREATE INDEX ix_sample_result_status     ON lims.sample_result (status, collected_at);
 
--- The outbox. One row per sample approved, not per result row: one approval is
+-- The outbox. EXTRA, like the table above — nothing writes it since 2026-08-23.
+-- Pattern 4 has no outbox by design: the instrument makes one POST attempt and
+-- the failed POST is the demo, because building a durable retry queue here
+-- would be building pattern 5 in the wrong place.
+--
+-- One row per sample approved, not per result row: one approval is
 -- one delivery. Delivery state is not domain state, which is why this is a
 -- separate table. Pattern 5 used to tail sample_result; attempt counters on the
 -- result row would have made every retry a CDC event. That hazard is gone

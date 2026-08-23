@@ -10,7 +10,7 @@ tracks do not live here. If a fact is still true of the demo, it belongs in
 
 | Item | Why it is here | What is in the tree |
 |---|---|---|
-| [LIMS approval webhook](lims-webhook-spec.md) ([talk track](lims-webhook.md)) | Pattern 4 until 2026-08-23. Built and broker-verified. Replaced by a NovaFlex HTTPS POST | Spec + talk track here. Service still at `services/lims/`, still in compose, until the NovaFlex webhook rebuild unwires it |
+| [LIMS approval webhook](lims-webhook-spec.md) ([talk track](lims-webhook.md)) | Pattern 4 until 2026-08-23. Built and broker-verified. Replaced by a NovaFlex HTTPS POST | Spec + talk track here. **Unwired 2026-08-23**: commented out of `docker-compose.yml`, `lims-bridge` dropped from the Chariot ACLs, `lims.*` marked Extra. Everything is still on disk at `services/lims/`, `com.inductiveautomation.webdev/resources/lims/sample-result/` and the `lims_webhook` module — **it is pattern 4's fallback**, see [`../04-novaflex-webhook.md`](../04-novaflex-webhook.md) |
 | [Countess 3 FL OPC UA model](countess-3fl-opcua-model.md) ([user guide PDF](MAN0019567-Countess-3FL-Automated-Cell-Counter-UG.pdf)) | Second analyzer for a vendor-vs-designed contrast. Pattern 3's talk is the NovaFlex | Model + manual here. Service still at `services/opcua-countess/`, still in compose, MQTT publish never wired |
 | Particle counter (MET ONE / Modbus) | Pattern 6 candidate 2026-08-19. Not built | No spec. Mentioned in git history and the 2026-08-23 plan notes |
 | Odoo | Pattern 5 candidate 2026-08-19. Dropped 2026-08-20 | Removed from the tree. Do not add it back |
@@ -18,3 +18,8 @@ tracks do not live here. If a fact is still true of the demo, it belongs in
 
 Services listed above stay where they are. Extra holds **docs**, not compose. Unwiring a
 container is a build step, not a filing step.
+
+**Extra is not the same as deletable.** The LIMS row above is the case in point: it is
+retired from the talk *and* it is the only file-authorable, broker-verified HTTP ingest in the
+tree, which makes it pattern 4's recovery path. Read
+[`../04-novaflex-webhook.md`](../04-novaflex-webhook.md) before removing anything under it.

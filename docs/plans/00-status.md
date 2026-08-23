@@ -18,10 +18,17 @@
 > [`../extra/`](../extra/README.md); the container may still be in compose.
 > **MQTT publish is intentionally not wired**.
 >
-> **Pattern 4's LIMS implementation is built and verified, and is no longer the talk.**
-> Re-sourced 2026-08-23: NovaFlex HTTPS POST → Event Stream → MQTT, same topic as pattern 3.
-> Spec: [`04-novaflex-webhook.md`](04-novaflex-webhook.md). As-built LIMS:
-> [`../extra/lims-webhook-spec.md`](../extra/lims-webhook-spec.md). Rebuild is pending.
+> **Pattern 4 is rebuilt in code and is UNVERIFIED.** `services/webhook-novaflex/` (a new
+> container, not an addition to `opcua-novaflex`) POSTs a vendor-shaped result over HTTPS to
+> Event Stream `04_webhook/novaflex-result`, which publishes onto pattern 3's topic with
+> `meta.mechanism = "webhook"`. The sender was exercised locally against a stub receiver;
+> **nothing has met the gateway or the broker.** The Event Stream was authored blind — the
+> HTTP source type, its config keys and the mount URL are all guesses. Run the runbook in
+> [`../04-novaflex-webhook.md`](../04-novaflex-webhook.md) before demoing it, and read the
+> deviations table first — same-sample correlation across patterns 3 and 4 is no longer
+> automatic. The LIMS is **unwired**: commented out of compose, `lims-bridge` dropped, `lims.*`
+> marked Extra but not dropped. It stays on disk as pattern 4's proven fallback
+> ([`../extra/lims-webhook-spec.md`](../extra/lims-webhook-spec.md)).
 >
 > **Patterns 5 and 6 share a turbidity-meter local database** (CDC vs poll). Specs:
 > [`05-cdc-turbidity.md`](05-cdc-turbidity.md), [`06-poll-turbidity.md`](06-poll-turbidity.md).
@@ -58,16 +65,22 @@ CDC of a turbidity meter's local database; 6 polls that same database on `id`; 7
 **Work items, independent except 05/06 sharing a database.** Specs 04/05/06 now have file
 sketches, Ignition paths, MQTT users, empirical checkpoints, and copy-paste verification.
 
-1. **Build 08's fallback firehose.** Depends on no pattern; only deliverable the audience sees.
-2. **Rebuild pattern 4** per [`04-novaflex-webhook.md`](04-novaflex-webhook.md).
+1. **Prove pattern 4.** The code is written and the stack has never seen it. One pass through
+   the runbook in [`../04-novaflex-webhook.md`](../04-novaflex-webhook.md) settles the
+   Event Stream HTTP source type, its config keys, the mount URL, the shape of `event`, and
+   whether a bad secret returns 401 or a dropped 200. Everything else about pattern 4 is
+   downstream of that one pass. **This is the highest-value hour in the tree right now** —
+   it is the only unbuilt-knowledge item, and the fallback if it fails is already in place.
+2. **Build 08's fallback firehose.** Depends on no pattern; only deliverable the audience sees.
 3. **Turbidity simulator + database** (foundation for 05 and 06). Then Debezium, then the poll.
 
 Countess MQTT publish is Extra polish; nothing depends on it. See [`../extra/`](../extra/README.md).
 
-Newly dead: the LIMS as pattern 4 (code still runs until unwired); `mes.batch_event` still has
-no consumer; `04-cdc.sql`'s publication still names two unread tables — retire that with
-pattern 5. The MET ONE particle counter and the vibration/AMS/DCS aggregation were never built
-and are not the plan.
+Newly dead: the LIMS as pattern 4 — **unwired 2026-08-23**, commented out of compose, no
+Chariot account, still on disk as the fallback. `mes.batch_event` still has no consumer;
+`04-cdc.sql`'s publication still names two unread tables — retire that with pattern 5, along
+with the `lims.*` tables, in the same volume drop. The MET ONE particle counter and the
+vibration/AMS/DCS aggregation were never built and are not the plan.
 
 `00-next-step.md` is **done** and kept only as the record of what was run. Everything durable
 from it has moved into [`../00-architecture.md`](../00-architecture.md) and the two pattern specs.
@@ -92,6 +105,11 @@ Rules that are still live:
   **Turning `allowAnonymous` off before the talk will break Engine**, and with it both patterns 1
   and 2, unless the `ign-engine` credential is set first. Found 2026-08-17; deliberately not
   fixed in the same pass as the pattern work.
+- **`lims-bridge` is still in a running Chariot's user store.** It was removed from
+  `compose/chariot/mqtt-users.json` on 2026-08-23, but `MQTT_USERS` seeds on first run only, so
+  the account survives on any existing volume. Nothing connects with it — the `lims` container
+  is commented out — but delete it in the UI at `:8081` → Users before the talk, or let the
+  next `nuke` do it. Same class of thing as `allowAnonymous`.
 - **Per-machine Ignition 8.3 API key** — `tasks.py scan` uses verified HTTPS only. After seeding,
   each user must create a secure-channel key in Gateway UI → Platform → Security → API Keys,
   grant its security level Gateway read/write access, and put the complete `name:secret` value in

@@ -14,7 +14,7 @@ PostgreSQL 17, all under `docker compose`, all version controlled.
 | 1 | Native MQTT pub/sub | Smart sample valve assembly — RFID badge scan opens a bioreactor sample valve | services built |
 | 2 | Sparkplug B edge node | **The same valve assembly**, other firmware — birth/death, RBE, self-describing metrics | services built |
 | 3 | OPC UA → MQTT | Nova Flex analyzer; Ignition publishes on sample-complete | step 4 |
-| 4 | Webhook / Push API | NovaFlex HTTPS POST into an Ignition Event Stream (same analyzer as pattern 3) | rebuild pending |
+| 4 | Webhook / Push API | NovaFlex HTTPS POST into an Ignition Event Stream (same analyzer as pattern 3) | services built, **Ignition side unverified** |
 | 5 | CDC / log tailing | Turbidity meter local Postgres → Debezium → MQTT | planned |
 | 6 | Poll / watermark | Same AP Connect database, Ignition JDBC `measurement_no > watermark`, 60 s | Ignition side authored, never run |
 | 7 | TBD | Designated cut | not scoped |
@@ -107,6 +107,7 @@ python tasks.py down     # stops the stack, keeps volumes
 | PostgreSQL | `localhost:5432` — db `icc26`, user `icc26` |
 | Sample valve — plain MQTT | <http://localhost:8085> — the device's own config page (pattern 1) |
 | Sample valve — Sparkplug B | <http://localhost:8086> — the same page, three controls disabled (pattern 2) |
+| Bioanalyzer — webhook | <http://localhost:8084> — a URL, a secret and a switch (pattern 4) |
 
 > **Why the separate `seed` step?** Ignition 8.3 seeds `data/` from the image on first launch,
 > and bind-mounting host directories over `data/config` at that moment blocks the seeding and
@@ -244,9 +245,14 @@ should not need to know how data arrived in order to find it.
 icc26/{site}/{area}/{line-or-cell}/{device}/{message_type}
 ```
 
-Patterns 4, 5 and 6 deliberately publish to the **same** topic
-(`icc26/site1/qc/lims/sample-result`). Same data, three acquisition mechanisms, one
-destination — swap between them live and no subscriber notices. The mechanism lives in the
-payload's `meta.mechanism` field, not in the topic.
+Patterns 3 and 4 deliberately publish to the **same** topic
+(`icc26/site1/qc/analyzers/novaflex-01/result`): one analyzer, two vendor surfaces — an OPC UA
+server and an HTTPS callback — landing identically. Patterns 5 and 6 do the same for the
+turbidity meter's local database, CDC against poll. A subscriber cannot tell which mechanism
+fired; that lives in the payload's `meta.mechanism` field, never in the topic.
+
+The older design had patterns 4, 5 and 6 sharing one LIMS topic. That was dropped on
+2026-08-19 — nobody webhooks, tails *and* polls the same table in production — and the
+`qc/lims/sample-result` topic went with it.
 
 Full namespace and payload envelope in [`docs/00-architecture.md`](docs/00-architecture.md#topic-namespace).
