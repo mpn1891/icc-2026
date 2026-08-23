@@ -25,7 +25,12 @@
 >
 > **Patterns 5 and 6 share a turbidity-meter local database** (CDC vs poll). Specs:
 > [`05-cdc-turbidity.md`](05-cdc-turbidity.md), [`06-poll-turbidity.md`](06-poll-turbidity.md).
-> Vendor API TBD. Odoo is still out. The MET ONE particle counter is out.
+> **Vendor docs arrived 2026-08-23**: the instrument is an Anton Paar **Haze 3001** turbidity
+> module and its data lands in **AP Connect** 4.0. Both specs were re-sourced against it the
+> same day; see [`../reference/apconnect-haze3001-model.md`](../reference/apconnect-haze3001-model.md).
+> The catalog is `apconnect`, not `turbidity`. AP Connect really runs on MS SQL Server; the demo
+> substitutes Postgres deliberately, and both specs record why. Odoo is still out. The MET ONE
+> particle counter is out.
 >
 > **Pattern 7 is TBD** and remains the designated cut. Vibration / AMS / DCS is not the plan.
 
@@ -86,9 +91,12 @@ Rules that are still live:
   once called `IGNITION_API_TOKEN`, and an older `.env` still carrying that name reads as "no
   token" with no error; and a key is bound to the gateway that minted it, so a key from another
   checkout returns 401 and looks identical to no key at all.
-- **Postgres JDBC datasource `TURBIDITY`** → `jdbc:postgresql://postgres:5432/turbidity`.
-  Pattern 6 needs it. Pattern 5 (MQTT sink) does not. `ICC26` on `icc26` is leftover from the
-  LIMS era; recreate only if something still queries it. Neither resource exists yet.
+- **Postgres JDBC datasource `APCONNECT`** → `jdbc:postgresql://postgres:5432/apconnect`.
+  Pattern 6 needs it. Pattern 5 (MQTT sink) does not. Spec 06 authors it as files by copying
+  `pg_db`'s Embedded password blob rather than retyping the password in the UI. `ICC26` on `icc26`
+  is leftover from the LIMS era; recreate only if something still queries it. Neither resource
+  exists yet. (Earlier notes called this one `TURBIDITY`, against a catalog `turbidity`; both
+  names changed when the vendor docs landed.)
 - **Transmission logs `Failed to subscribe to TARGET elements`** immediately after connecting.
   Unexplained — possibly the `ign-transmission` ACL, possibly transmitter config. It connects, so
   it may block nothing; decide how hard to chase it before the pattern work starts.
