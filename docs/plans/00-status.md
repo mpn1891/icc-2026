@@ -1,6 +1,6 @@
 # Status
 
-> **Updated 2026-08-20.** Conference is ~4 weeks out.
+> **Updated 2026-08-23.** Conference is ~4 weeks out.
 >
 > **The stale-image blocker is CLEARED.** A gateway rebuilt from the repo loads Cirrus **5.0.4**
 > Engine, Transmission and Distributor with no compatibility warnings. `tasks.py` now forces
@@ -18,10 +18,11 @@
 > stays in compose as a second designed OPC UA analyzer for the talk contrast; **MQTT publish
 > is intentionally not wired** — not an open Pattern 3 work item.
 >
-> **Pattern 4 is verified end-to-end** on this checkout. Ingest, reject, atomic
+> **Pattern 4 is verified end-to-end** on this checkout (2026-08-20). Ingest, reject, atomic
 > approve, webhook publish (`mechanism: webhook`), 409 replay, 401 wrong secret,
 > and outbox survival across `docker restart icc26-lims` all held. Talk track:
-> [`../04-lims-webhook.md`](../04-lims-webhook.md).
+> [`../04-lims-webhook.md`](../04-lims-webhook.md). **Remaining:** both review outcomes
+> publish `analyst` + `disposition` pass/fail — reject is no longer silent.
 
 What is true right now and what to do next. Durable knowledge does not live here — it lives in
 [`../00-architecture.md`](../00-architecture.md). Work still to be built lives in
@@ -30,27 +31,32 @@ and the fix is to move the fact rather than keep two copies.
 
 ## Do this next
 
-**Patterns 5, 6 and 7 were re-sourced on 2026-08-19, and the shared-topic set-piece was dropped.**
-This is the largest design change since pattern 2 stopped being a bioreactor, so read
-[`../00-architecture.md` § *Patterns 4, 5 and 6 used to share one
-topic*](../00-architecture.md) before touching any of them. In short: 5 becomes CDC on **Odoo**,
-6 becomes a Modbus poll of a **MET ONE particle counter**, 7 is leaning toward a **vibration
-waveform gated on DCS steady-state and requested by an asset management system**. Each mechanism
-now gets the source that genuinely forces it, and no two patterns carry the same data.
+**Patterns 5, 6 and 7 were re-sourced again on 2026-08-23.** The 2026-08-19 Odoo / Modbus
+MET ONE / vibration-AMS-DCS plan is withdrawn. Read
+[`../00-architecture.md` § *Sources as of 2026-08-23*](../00-architecture.md) before
+touching any of them. In short:
 
-**Two work items remaining, and they are genuinely independent.**
+- **4** stays the LIMS webhook; add `disposition` pass/fail and publish on reject too.
+- **5** is an Ignition timer that auto-cycles `BR-201` through CIP/SIP/INOC/GROWTH/HARVEST,
+  writes the bioreactor UDT and `mes.batch_event`, Debezium CDC off that table.
+- **6** is a MET ONE HTTP API, polled from Ignition; new analyses go out through an Event Stream.
+- **7** listens for the LIMS review and publishes one sample-chain aggregate (valve open →
+  Nova complete, batch operation at sample time, nearest MET ONE to the Nova timestamp).
 
-1. **Build 08's fallback firehose.** It depends on no pattern, and it is the only deliverable
-   whose absence is visible from the audience.
-2. **Pattern 6's Modbus simulator.** The longest new build of the remaining two; start it
-   earliest.
+**Work items, in the order they unblock each other:**
+
+1. **04 pass/fail.** Small, and pattern 7 listens for that message.
+2. **08's fallback firehose.** No dependencies, and the only deliverable the audience sees.
+3. **05** (timer + JDBC + Debezium) and **06** (MET ONE simulator + poll) in parallel.
+   06 waits on vendor API notes; stub the routes if they have not arrived.
+4. **07** last of the seven — it is the join.
 
 Countess MQTT publish on `count_completed_counter` is optional polish if wanted later; nothing
 depends on it, and Pattern 3 does not wait on it.
 
-Newly dead, and worth deleting rather than maintaining: `mes.batch_event` has no consumer at all
-(Odoo replaces the hand-made MES table), and `04-cdc.sql`'s publication points at two tables
-nothing reads. Comments in both SQL files now say so. Retire both with pattern 5's spec.
+`mes.batch_event` **has a consumer again** (pattern 5). `04-cdc.sql` still publishes both
+that table and `lims.sample_result`; drop the LIMS table from the publication with pattern
+5's spec, do not tail both.
 
 `00-next-step.md` is **done** and kept only as the record of what was run. Everything durable
 from it has moved into [`../00-architecture.md`](../00-architecture.md) and the two pattern specs.
@@ -84,7 +90,8 @@ Rules that are still live:
   token" with no error; and a key is bound to the gateway that minted it, so a key from another
   checkout returns 401 and looks identical to no key at all.
 - **Postgres JDBC datasource `ICC26`** → `jdbc:postgresql://postgres:5432/icc26`, user `icc26`.
-  Patterns 6 and 7 need it; not created yet (no `database-connection` resource in the repo).
+  Pattern 5's timer writes `mes.batch_event` through it; not created yet (no
+  `database-connection` resource in the repo). UI first, then commit.
 - **Transmission logs `Failed to subscribe to TARGET elements`** immediately after connecting.
   Unexplained — possibly the `ign-transmission` ACL, possibly transmitter config. It connects, so
   it may block nothing; decide how hard to chase it before the pattern work starts.

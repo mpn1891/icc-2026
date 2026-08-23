@@ -5,17 +5,18 @@
 > (`docs/plans/01…08-*.md`) and handed to an agent or teammate one at a time.
 >
 > [`../00-architecture.md`](../00-architecture.md) is settled truth. It is *usually* not changed
-> from here — but it was on **2026-08-19**, when patterns 5, 6 and 7 were given their own sources
-> and the shared-topic set-piece was dropped. Read that section before touching 04, 05, 06 or 07.
+> from here — but it was on **2026-08-19** (shared-topic set-piece dropped) and again on
+> **2026-08-23**, when patterns 5, 6 and 7 were re-sourced and pattern 4 gained a pass/fail
+> disposition. Read those sections before touching 04, 05, 06 or 07.
 > Where a per-pattern file disagrees with its summary here, **the per-pattern file is newer.**
 
 Seven data-transaction/event patterns on Ignition 8.3.8 + Cirrus 5.0.4 + Chariot + Postgres 17,
 config-as-code via bind-mounted `ignition/config` + `ignition/projects`. Two or three teammates
 clone, run, and collaborate via push/pull. Conference is ~4 weeks out.
 
-All seven `meta.mechanism` values still have exactly one user each, which is the one thing the
-re-sourcing did not change — and is now the *only* thing tying the seven patterns together, since
-no two of them carry the same data any more.
+All seven `meta.mechanism` values still have exactly one user each. Patterns 1–6 still carry
+different data; pattern 7 is the join of several of them into one aggregate document. The
+namespace still must not leak the mechanism.
 
 Locked in: GitHub private repo under Matt's account; mixed Windows + macOS/Linux team; FastAPI
 stub for LIMS; demo-grade committed credentials are acceptable.
@@ -105,128 +106,87 @@ shape for Countess on `count_completed_counter`. Verify Nova: one message per co
 sample, never per-value, nothing on abort/fail/QC. Talk point: event-on-completion, keyed
 off the field the vendor actually ships.
 
-**04 — LIMS approval webhook (`services/lims` + WebDev)** — **blocks nothing any more.**
-It blocked 05/06/07 for as long as those three read from the LIMS. Since the convergence reversal
-on 2026-08-19 they have their own sources, so all four can be built in parallel. This is the
-single biggest schedule win available right now and it was a side effect, not the goal.
+**04 — LIMS approval webhook (`services/lims` + WebDev)** — **built 2026-08-20.**
 **Written up in [`04-lims-webhook.md`](04-lims-webhook.md), which supersedes this entry
-entirely.** The shape moved a long way from the sketch that was here on 2026-08-19 and the file
-carries the reasoning; do not "fix" it back toward an older summary.
+except for the remaining delta below.** Do not "fix" the built shape back toward an older
+summary: subscribe to pattern 3, hold for a human, webhook into Ignition, no LIMS MQTT
+publish rights, transactional outbox. Port 8000, approval screen served by the LIMS itself.
 
-Three changes worth knowing from this level. The LIMS no longer **generates** sample results — it
-**subscribes** to pattern 3's analyzer topic, which makes 04/05/06/07 all downstream of a publish
-path that has never been watched on a broker, and makes verifying pattern 3 the critical path for
-four patterns. The webhook fires on **manual analyst approval**, not on receipt, which is what
-gives the callback an honest reason to be asynchronous. And the LIMS gets **no MQTT publish rights
-at all** — its only output is the HTTP callback into Ignition, which is what stops the first
-component that both consumes and causes publishes from being a feedback loop.
+**Remaining (2026-08-23):** both review outcomes publish. Approve and reject each write an
+outbox row and land on `icc26/site1/qc/lims/sample-result` with `analyst` and
+`values.disposition` ∈ `pass | fail`. Reject is no longer silent — pattern 7 listens for the
+review, not only for a pass. The rest of the contract is unchanged.
 
-One `nuke` pays for both config changes it needs (`02-schema.sql` and `mqtt-users.json`), and it
-must happen before 05/06/07 are built against the old shape. Port 8000, and the approval screen
-is served by the LIMS itself rather than Perspective, like the two valve config pages.
+**05 — CDC on our own batch table** — decided 2026-08-23, no spec yet.
+A **very simple batch engine inside Ignition**: a gateway timer, started and stopped from
+enable/disable tags, auto-cycles `BR-201` through `CIP → SIP → INOC → GROWTH → HARVEST`.
+The timer writes the bioreactor UDT (add an operation/phase tag to the existing
+`bioreactor` type) and inserts `mes.batch_event` in the same step. The sequencer publishes
+**nothing** onto MQTT.
 
-**05 — CDC on Odoo (`compose/debezium/` + an `odoo` service)** — decided 2026-08-19, no spec yet.
-Debezium tails **Odoo's** Postgres, not ours. `quay.io/debezium/server:3.x`, pgoutput, user `cdc`,
-**HTTP sink** → a WebDev endpoint (`cdc-sink`) mapping change events to the envelope,
-`mechanism=cdc`, manufacturing-order state changes →
-`icc26/site1/upstream/br-201/batch/event`. Named volume for offsets. Verify: change an MO state in
-Odoo's own UI on stage → topic message within ~1 s, with Odoo never having been configured to
-tell anyone.
+Debezium tails **our** Postgres — `quay.io/debezium/server:3.x`, pgoutput, user `cdc`,
+publication on `mes.batch_event` only (drop `lims.sample_result` from `04-cdc.sql`).
+HTTP sink → WebDev (`cdc-sink`) → envelope `mechanism=cdc` →
+`icc26/site1/upstream/br-201/batch/event`. Named volume for offsets.
 
-Why Odoo rather than our own table: **CDC's real use case is an application you do not own and
-cannot make emit events.** `../00-architecture.md` already claims the `cdc` role is separate
-because CDC is an out-of-band observer the application knows nothing about; against Odoo that
-stops being staged and becomes literally true. It also vindicates the "no `mes` area" decision —
-an Odoo manufacturing order publishes under the cell that produced it and names Odoo in the
-payload, which is exactly the rule that section argues for.
+Talk point, said honestly: **CDC's textbook case is an application you do not own.** This
+engine is one we do own, and it is a stand-in for an MES we would not patch to emit events.
+The demonstration is still the observer: the writer does not know MQTT exists, the `cdc`
+role is not `icc26`, and disabling Debezium leaves the reactor cycling with a silent topic.
+That is the failure demo — not a fake ERP UI.
 
-Four findings to start the spec from, so they are not rediscovered:
+The JDBC datasource `ICC26` is now on the critical path (the timer writes the table). It is
+not in the repo yet; **UI first, then commit.**
 
-- **Odoo's Quality app is Enterprise-only** (confirmed against Odoo's own edition comparison,
-  along with Studio, PLM, Barcode and IoT). Tail Community MRP and Inventory — `mrp_production`,
-  `stock_move`, `stock_move_line`, lot records. Do not design the demo around quality checks.
-- **Logical replication publications are per-database, and Debezium Server runs one source
-  connector per process.** So Odoo in its own database means either a second Debezium container or
-  no CDC on `icc26` at all. The second is now fine: `mes.batch_event` has no consumer left, so
-  `04-cdc.sql`'s publication should probably be retired with this spec.
-- **Odoo adds a third manual per-volume init step** beside Ignition commissioning and Chariot's
-  trial, and `nuke` wipes it. Script it into `tasks.py`
-  (`odoo -d odoo -i base,stock,mrp --stop-after-init`) rather than adding a fourth thing a human
-  does before walking on stage. Pre-pull the image; check RAM on the presenting laptop.
-- **Odoo writes constantly to `bus_bus`, `ir_cron` and `mail_message`.** Tail broadly and you
-  drown. Knowing which of ~800 ORM tables matter is the actual work of CDC against a real
-  application, and it is the best argument for `04-cdc.sql` naming tables explicitly instead of
-  letting a connector choose.
+Verify: flip the enable tag → phase tags advance on a dwell → a row appears in
+`mes.batch_event` → a message on `batch/event` within ~1 s. Stop Debezium, leave the timer
+running, show the gap.
 
-**06 — Poll / diff of a MET ONE particle counter** — decided 2026-08-19, no spec yet.
-A simulated Hach MET ONE airborne particle counter (3400 or 6000 series) speaking **Modbus TCP**,
-in a cleanroom beside `BR-201`. New service (`pymodbus`), plus an Ignition Modbus device
-connection — a connection type this repo has never created, so **UI first, then commit** per the
-conventions above. Gateway timer script drains the instrument's record buffer, watermarks on
-record index, publishes `mechanism=poll` to
-`icc26/site1/upstream/br-201/particle-counter-01/telemetry`.
+**06 — Poll of a MET ONE environmental analyzer** — decided 2026-08-23, no spec yet.
+A simulated Hach MET ONE particle counter beside `BR-201`, speaking an **HTTP API** (not
+Modbus). New service `services/sim-metone`. The exact routes and record shape are **TBD** —
+vendor API docs will be dropped in; until then treat it as "a pull API that returns
+completed particle-count analysis events with a timestamp and channel counts," watermarked
+on record id or analysis time.
 
-This is the strongest of the three sources decided that day, and the reason is in the vendor
-manual rather than in our design:
+An Ignition gateway timer polls that API. **On a new analysis, the script submits the
+payload to an Event Stream** (`06_poll/metone-result`), which publishes through
+Transmission to `icc26/site1/upstream/br-201/particle-counter-01/result` with
+`mechanism=poll`. Same relay shape as pattern 3; the acquisition is the poll.
 
-- **The instrument has no push capability at all.** That is the honest justification for polling,
-  and it is a much better one than polling an HTTP API that could have called you back.
-- **There is a real buffered record block.** Appendix A.6 of the MET ONE 6000 manual: "the
-  buffered record block gives a remote application the ability to access data that is stored in
-  the instrument… continuously updated with new sample data," with a separate buffered-sample
-  status register. So reading records by index is the vendor's own interface, not our invention —
-  the watermark argument in hardware.
-- **The buffer has two failure modes, and which one you get is a checkbox.** 50–5000 samples, and
-  a *Rotate Buffer* option. Unchecked (the **default**): "once the data buffer is completely
-  filled, no new data is loaded" — the instrument silently stops recording. Checked: "the oldest
-  data in the buffer is overwritten with the latest." **Both lose data**, and a checkbox on the
-  instrument's own config screen decides how. This is pattern 1's retained-flag argument on a real
-  vendor product, and it belongs on the simulator's config page for exactly that reason.
-- Also: "a change to the buffer size causes all current buffer data to be lost and
-  unrecoverable," and the manual says the register tables "may become updated — contact Hach
-  Company for updated tables." An unversioned register map you obtain by email is a good aside.
+Do not invent a Modbus device connection or a rotate-buffer checkbox for this revision.
+Those were the 2026-08-19 plan. The talk is now: an environmental instrument that only
+offers a pull API, so Ignition has to notice that an analysis happened.
 
-Chosen over a turbidity meter deliberately. Turbidity gives a continuous value and a deadband, and
-deadband-on-poll overlaps with report-by-exception, which pattern 2's Sparkplug already does
-better. The particle counter's indexed buffer is a polling problem nothing else in the demo has.
+Verify: one HTTP analysis → one Event Stream fire → one MQTT message. Stall the poll and
+show a missed (or late) analysis.
 
-Verify: stall the poll loop long enough for the buffer to wrap, then show the gap — the failure,
-not just the mechanism.
+**07 — Scripted aggregation: the sample chain** — decided 2026-08-23, no spec yet.
+**This is the designated cut** if the schedule bites: it is the join of 01, 03, 04, 05 and
+06, and it cannot start until those four sources exist.
 
-**07 — Scripted aggregation: a vibration reading and the evidence it was valid** — leaning,
-2026-08-19. No spec, and **this is the designated cut** if the schedule bites.
+A gateway script **listens for the pattern-4 LIMS review** on MQTT (`qc/lims/sample-result`,
+pass or fail). On that message it builds one composite document,
+`mechanism=aggregate`, on `icc26/site1/upstream/br-201/sample-chain/event`:
 
-Three sources into one composite document → `mechanism=aggregate` on
-`icc26/site1/downstream/tff-301/asset-summary`: a **vibration waveform** (resurrects
-`services/sim-vibration/`, currently on disk and wired to nothing), a **webhook request from an
-asset management system** asking for the reading, and a **steady-state signal from a DCS**.
+| Section | Source | What it answers |
+|---|---|---|
+| Valve open | pattern 1 event (`sample-valve-01`) | when material left the reactor |
+| Analysis complete | pattern 3 Nova result | when the sample was run; **duration outside = open → analysis** |
+| Reactor operation | pattern 5 batch/phase at sample time | CIP / SIP / INOC / GROWTH / HARVEST when the valve opened |
+| Environment | pattern 6 MET ONE | **the nearest particle-count analysis to the Nova timestamp** |
 
-**Frame it as validity, not as three sources joined.** ISO 20816 acceptance criteria assume rated
-steady operating conditions, so a waveform captured during a ramp is not a poor measurement — it
-is a meaningless one. The composite document's value is that it carries the measurement *and the
-evidence the measurement was admissible*: the operating state that made it valid and the work
-order that asked for it. That is the strongest justification for aggregation available, and it is
-much better than needing a third source to fill a slot. It also answers the "third source
-undecided" question that stood here since pattern 2 stopped being a bioreactor.
+Always publish. A dirty or missing MET ONE reading is a finding in the document, not a
+refusal. `meta.correlation_id` is the `sample_id` already stamped in 3 and 4, so one
+sample is four colours on the firehose (opcua-event, webhook, and whatever 5/6 contributed)
+plus the aggregate.
 
-It puts three unused things in `../00-architecture.md` to work at once: the `waveform` message
-type, the `cmd/<verb>` + `response/<what>` pair, and MQTT 3.1.1's missing response-topic
-properties as a live constraint rather than a footnote. It also gives `downstream` its first user.
+This is a real join, not the old "same LIMS row three ways." Pattern 7 no longer uses a
+webhook, a waveform, or `cmd`/`response`. `downstream` still has no user; `utilities`
+still has none.
 
-Two scope cuts to take **before** starting, not after:
-
-- **The DCS is a small OPC UA server.** It is the cheapest new source this repo can add, because
-  the server skeleton, connection-by-directory-copy and UDT binding are all proven — see
-  [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md).
-- **The AMS is a copy of the LIMS FastAPI skeleton**, same shape with a different noun, not a
-  novel service. Build it after 04 and it is an afternoon.
-
-Note the AMS webhook is **inbound trigger**, and the published mechanism is `aggregate`, not
-`webhook`. Two patterns sharing a transport while carrying different mechanisms is worth saying
-out loud: the transport is not the mechanism.
-
-Verify: one message containing all three sections, and a **refusal** — request a reading while the
-DCS says the unit is not at steady state, and show that nothing is published.
+Verify: badge the valve, complete a Nova sample, review it in the LIMS → one aggregate
+message carrying duration, operation, and the nearest MET ONE record.
 
 **08 — Presentation + runbook** — **start the fallback firehose now, not last.**
 Perspective: overview page, one page per pattern, and the **firehose** colored by
@@ -236,12 +196,11 @@ fallback = Engine-subscribed wildcard → gateway script appends to a dataset ta
 Perspective table. `docs/demo-runbook.md` (planned — write with this spec): T-15 dual-trial
 checklist, per-pattern trigger + recovery.
 
-Two changes from the convergence reversal. There is **no shared "LIMS result" page with mechanism
-toggles** — that was the set-piece control panel, and the set-piece is gone; each of 04/05/06 now
-gets its own page because each has its own source. And the runbook's choreography is no longer
-"webhook off → CDC on"; it is per-pattern failure demonstrations instead (a webhook whose retries
-exhaust, a particle-counter buffer that wraps, an aggregation that refuses because the unit is not
-at steady state).
+There is **no shared "LIMS result" page with mechanism toggles** — that set-piece is gone.
+Each of 04/05/06 gets its own page. Pattern 7's page *is* the join: one sample's valve,
+analysis, review, batch phase and env reading on one screen. Runbook choreography is
+per-pattern failure (webhook without an outbox, CDC with Debezium down, a poll that
+stalls, an aggregate whose MET ONE nearest-neighbour is missing or dirty).
 
 **Build the fallback firehose in the next working session.** It is the only deliverable whose
 absence is visible from the audience, it is the one piece with no dependencies on any pattern, and
@@ -257,33 +216,36 @@ track agreements.
 
 ## Execution order
 
-**Rewritten 2026-08-19.** The old order had everything funnelling through 04 because 05, 06 and 07
-all read the LIMS. They no longer do, so the dependency graph is almost flat and the constraint is
-people, not ordering.
+**Rewritten 2026-08-23.** Patterns 1–3 stay as built. Pattern 4 is built minus pass/fail.
+Pattern 7 is the only join, so it is last of the seven.
 
-- **Wave 0** — done. 01, 02, 03 built (03's publish still unwatched, below).
-- **Wave 1**, and these four are genuinely independent:
-  - **Verify pattern 3 on the broker.** Small, and pattern 4 consumes its topic.
+- **Wave 0** — done. 01, 02, 03 built and broker-verified; 04 built minus disposition.
+- **Wave 1**, independent of each other:
+  - **04 pass/fail.** Small: both review outcomes publish `disposition` + `analyst`.
+    Pattern 7 cannot listen until this lands.
   - **08's fallback firehose.** No dependencies, and the only thing the audience sees.
-  - **04**, per [`04-lims-webhook.md`](04-lims-webhook.md).
-  - **06's Modbus simulator.** The longest new build; start it earliest.
-- **Wave 2**: 05 (Odoo + Debezium), 07 (vibration + AMS + DCS), 08's primary firehose.
+  - **05** — timer + `mes.batch_event` + Debezium. JDBC datasource first.
+  - **06** — MET ONE HTTP simulator + poll script + Event Stream. Longest new service;
+    start it once the API notes arrive, or stub the routes.
+- **Wave 2**: 07 (the sample-chain aggregate — needs 01, 03, 04, 05, 06), 08's primary firehose.
 - **Wave 3**: runbook, dual-trial rehearsal, the offline run.
 - Each wave ends with: `tasks.py health` green, pattern verification passes, `git status` shows
   only intended files, push.
 
-**The one sequencing rule left:** the `nuke` that pattern 4 needs also takes Odoo's database with
-it. Land 04's schema change before Odoo is initialized, or plan on re-initializing Odoo.
+No Odoo, so the old "nuke before Odoo init" rule is gone. `nuke` still rebuilds `icc26` and
+the CDC publication; land the `mes.batch_event`-only publication change before Debezium
+first connects, or drop the slot and reconnect.
 
 ## Verification (whole effort)
 
 1. Per pattern: the spec's copy-pasteable check (trigger + `mosquitto_sub` + expected envelope).
-2. **Per pattern, the failure too.** With no convergence set-piece to carry the argument, each
-   mechanism has to demonstrate its own weakness: a webhook whose delivery is lost without an
-   outbox, a record buffer that wraps between polls, an aggregation that refuses because the unit
-   is not at steady state. A mechanism shown only working is a mechanism nobody can judge.
-3. End-to-end: all seven mechanisms firing → firehose shows seven colors; run once with networking
-   disabled to prove offline viability.
+2. **Per pattern, the failure too.** A webhook whose delivery is lost without an outbox; a
+   batch engine that keeps cycling while Debezium is down; a poll that stalls and misses an
+   analysis; an aggregate that still publishes when the nearest MET ONE is missing.
+   A mechanism shown only working is a mechanism nobody can judge.
+3. End-to-end: all seven mechanisms firing → firehose shows seven colors; one sample's
+   valve → Nova → LIMS review → aggregate on the same `correlation_id`. Run once with
+   networking disabled to prove offline viability.
 4. **A subscriber cannot tell how anything arrived.** Read the topic list to somebody who has not
    seen the build and ask them which patterns use CDC. That, not the old switch-over, is now how
    the namespace claim gets tested.

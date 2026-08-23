@@ -11,7 +11,8 @@
 | **New container** | `lims` — [`services/lims/`](../services/lims/) |
 | **Approval screen** | <http://localhost:8000> |
 | **Depends on** | pattern 3's analyzer topic (already live). `POST /trigger` unblocks a broken analyzer |
-| **Blocks** | nothing |
+| **Blocks** | pattern 7 listens for this review message |
+| **Remaining** | publish reject as well as approve, with `disposition` pass/fail |
 
 ## Talk points
 
@@ -82,6 +83,7 @@ One message per sample, all analytes that were present. `ts` is `collected_at` (
     "batch_id": "B-2026-0142",
     "collected_at": "2026-08-20T14:03:22.145Z",
     "analyst": "mnorris",
+    "disposition": "pass",
     "results": [
       { "analyte": "glucose", "value": 4.21, "uom": "g/L" },
       { "analyte": "lactate", "value": 1.08, "uom": "g/L" }
@@ -110,8 +112,7 @@ Rehearse this. It is now the only durability argument this pattern makes.
 
 Schema and the `lims-bridge` subscribe grant take effect on an empty volume. On this checkout they
 were applied live (`migrate-04-lims.sql` as `postgres`, Chariot `PUT /mqttusers/lims-bridge`)
-without a nuke. `python tasks.py nuke` then `seed` is still the clean-room path — and do it
-before Odoo exists, because the same `nuke` destroys Odoo's database.
+without a nuke. `python tasks.py nuke` then `seed` is still the clean-room path.
 
 Terminal 1, both topics:
 
@@ -137,8 +138,9 @@ docker exec -it icc26-postgres psql -U icc26 -d icc26 -c `
   "SELECT sample_id, analyte, value, status, verified_at FROM lims.sample_result ORDER BY id DESC LIMIT 10;"
 ```
 
-Reject publishes nothing. Replay a delivered idempotency key by hand → `409`, no second
-message. Wrong secret → `401`.
+Reject publishes `disposition=fail` on the same topic (remaining 2026-08-23 — currently
+still silent until that lands). Replay a delivered idempotency key by hand → `409`, no
+second message. Wrong secret → `401`.
 
 ## Topic wart, kept
 
@@ -169,3 +171,4 @@ to fix this close to a deadline.
 | 2026-08-20 | Service, schema, ACL, `correlation_id` on pattern 3, WebDev + `lims_webhook` script, approval screen on :8000. |
 | 2026-08-20 | **Ingest verified without a nuke.** Schema applied live (`migrate-04-lims.sql`); `lims-bridge` ACL updated via `PUT /mqttusers/lims-bridge`. MQTT connect as `lims-bridge`, `/trigger` → 3 rows, QoS-1 redelivery is a no-op, Reject writes `rejected` and no outbox row, Approve is one transaction (rows + outbox). |
 | 2026-08-20 | **Publish checkpoints after a trial reset.** Trial lapse returned WebDev `402` — check `GET /data/api/v1/trial` before anything else. File-authored WebDev needed `resource-type: python-resource` or GET/POST is `500 Unknown resource factory`. LoggerEx needs `infof`/`warnf`. Then: Approve → one message on `qc/lims/sample-result` with `mechanism: webhook`; replay of the same idempotency key → `409` and no second message; wrong secret → `401`; disable drainer, approve two, `docker restart icc26-lims` → both deliver from Postgres. Pattern 3 `correlation_id` watched live on `qc/analyzers/novaflex-01/result`. |
+| 2026-08-23 | **Remaining:** publish both review outcomes with `analyst` + `disposition` pass/fail. Reject is still silent in the running service. Pattern 7 will listen for this message. |

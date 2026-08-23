@@ -65,12 +65,12 @@ CREATE INDEX ix_sample_result_id_created ON lims.sample_result (id, created_at);
 CREATE INDEX ix_sample_result_created    ON lims.sample_result (created_at);
 CREATE INDEX ix_sample_result_status     ON lims.sample_result (status, collected_at);
 
--- The outbox. One row per sample approved, not per result row: one approval is
--- one delivery. Delivery state is not domain state, which is why this is a
--- separate table. Pattern 5 used to tail sample_result; attempt counters on the
--- result row would have made every retry a CDC event. That hazard is gone
--- (pattern 5 moved to Odoo) and the table still earns its keep — you can query
--- it, retry it, and put it on the approval screen.
+-- The outbox. One row per sample reviewed, not per result row: one review is
+-- one delivery (pass or fail). Delivery state is not domain state, which is why
+-- this is a separate table. Pattern 5 used to tail sample_result; attempt
+-- counters on the result row would have made every retry a CDC event. Pattern 5
+-- now tails mes.batch_event, so that hazard stays gone. The table still earns
+-- its keep — you can query it, retry it, and put it on the approval screen.
 CREATE TABLE lims.webhook_delivery (
     id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     sample_id   text NOT NULL UNIQUE,
@@ -84,10 +84,10 @@ CREATE TABLE lims.webhook_delivery (
 CREATE INDEX ix_webhook_delivery_due ON lims.webhook_delivery (state, next_try_at);
 
 -- ── mes: batch lifecycle events ──────────────────────────────────────────────
--- No consumer. Pattern 5 was going to CDC-tail this; it now tails Odoo instead.
--- Kept so the physical model stays coherent and so pattern 5's spec can retire
--- it on purpose rather than leaving a table that looks live. 04-cdc.sql still
--- publishes it — retire that publication with the pattern-5 spec, not here.
+-- Pattern 5's CDC source (2026-08-23). An Ignition timer writes phase changes
+-- for BR-201 (CIP/SIP/INOC/GROWTH/HARVEST); Debezium tails this table.
+-- 04-cdc.sql currently also names lims.sample_result — drop that table from
+-- the publication when pattern 5 is built, so a LIMS review is not a CDC event.
 CREATE TABLE mes.batch_event (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     batch_id      text NOT NULL,

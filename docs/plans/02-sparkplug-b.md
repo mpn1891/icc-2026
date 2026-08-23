@@ -203,10 +203,11 @@ bioreactor.** It had planned to join `plant.batch` (SQL), the LIMS `GET /results
 Three options were recorded here: the valve's own metrics, a standalone process simulator, or
 dropping to two sources.
 
-None of them was taken. Pattern 7 was re-scoped entirely: a **vibration waveform on a downstream
-asset, requested by an asset management system and gated on a DCS steady-state signal**, joining
-none of the three original sources. So this consequence is closed, and closed by replacement rather
-than by repair. See [`00-master-plan.md`](00-master-plan.md) § 07.
+None of them was taken. Pattern 7 was re-scoped on 2026-08-19 to a vibration/AMS/DCS
+aggregate, then **re-scoped again on 2026-08-23** to a sample-chain join: LIMS review
+triggers a document of valve-open → Nova-complete duration, reactor operation at sample
+time, and the nearest MET ONE analysis. Still none of the original three sources in the
+form they had here. See [`00-master-plan.md`](00-master-plan.md) § 07.
 
 Nothing in this file needs to change as a result. Recorded because the open question stood here for
 two days and somebody will come looking for how it ended.
