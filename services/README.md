@@ -5,13 +5,19 @@ backbone to attach these to.
 
 | Directory | Pattern | Status |
 |---|---|---|
-| `sim-valve-mqtt/` | 1 — native MQTT pub/sub | **built and wired into compose.** Smart sample valve assembly on `BR-201`; config page on <http://localhost:8085>. **Ignition ingest verified 2026-08-17**: the Engine custom namespace auto-creates a JSON-shaped tag tree, and a null field creates no tag at all ([spec](../docs/plans/01-native-mqtt.md)) |
-| `sim-valve-spb/` | 2 — Sparkplug B edge node | **built and wired into compose**, and it is the **same device** as `sim-valve-mqtt/`, not a different one (see below). Config page on <http://localhost:8086>. **Ignition ingest verified 2026-08-17**: MQTT Engine built all 19 typed tags with their engineering units straight from DBIRTH, with no configuration at all ([spec](../docs/plans/02-sparkplug-b.md)) |
+| `sim-valve-mqtt/` | 1 — native MQTT pub/sub | **built and wired into compose.** Smart sample valve assembly on `BR-201`; config page on <http://localhost:8085>. **Ignition ingest verified 2026-08-17**: the Engine custom namespace auto-creates a JSON-shaped tag tree, and a null field creates no tag at all ([spec](../docs/plans/01-native-mqtt.md), [talk track](../docs/talk-tracks/01-native-mqtt.md)) |
+| `sim-valve-spb/` | 2 — Sparkplug B edge node | **built and wired into compose**, and it is the **same device** as `sim-valve-mqtt/`, not a different one (see below). Config page on <http://localhost:8086>. **Ignition ingest verified 2026-08-17**: MQTT Engine built all 19 typed tags with their engineering units straight from DBIRTH, with no configuration at all ([spec](../docs/plans/02-sparkplug-b.md), [talk track](../docs/talk-tracks/02-sparkplug-b.md)) |
 | `opcua-countess/` | 3 — OPC UA example | **server built and wired into compose.** Simulated Countess 3 FL cell counter; address space per [`docs/reference/countess-3fl-opcua-model.md`](../docs/reference/countess-3fl-opcua-model.md). Ignition side: connection + `cell_analyzer` UDT done. **MQTT publish not wired** — second designed analyzer UA server for the talk contrast alongside Nova; optional polish later, nothing depends on it |
 | `opcua-novaflex/` | 3 — OPC UA → MQTT | **server built and wired into compose**, and it runs **alongside** `opcua-countess/`, not instead of it (see below). Simulated Nova BioProfile FLEX2; address space transcribed from the real vendor server per [`docs/reference/novaflex2-opcua-model.md`](../docs/reference/novaflex2-opcua-model.md). Ignition side: connection + `bioanalyzer` UDT + instance **verified bound — 57/57 tags monitored**. **MQTT publish built 2026-08-19, broker-verified 2026-08-20**: `result/sample_time` (vendor `HistoricalSampleResults/SampleTime`) → Event Stream `03_opcua/novaflex-result` → `icc26/site1/qc/analyzers/novaflex-01/result` with `meta.mechanism = "opcua-event"`. Does not use `ICC26Extensions` |
-| `lims/` | 4 — approval webhook | **built and wired into compose.** Approval screen on <http://localhost:8000>. Subscribes to the analyzer topic as `lims-bridge` (publish grant empty), holds results for human review, POSTs through a transactional outbox ([spec](../docs/plans/04-lims-webhook.md), [talk track](../docs/04-lims-webhook.md)). **Remaining:** publish both outcomes with `disposition` pass/fail |
+| `lims/` | 4 — approval webhook | **built and wired into compose.** Approval screen on <http://localhost:8000>. Subscribes to the analyzer topic as `lims-bridge` (publish grant empty), holds results for human review, POSTs through a transactional outbox ([spec](../docs/plans/04-lims-webhook.md), [talk track](../docs/talk-tracks/04-lims-webhook.md)). **Remaining:** publish both outcomes with `disposition` pass/fail |
 | `sim-metone/` | 6 — poll / diff | **planned.** Simulated Hach MET ONE environmental analyzer with an HTTP API. Ignition polls for particle-count analysis events and relays them through an Event Stream. Vendor API notes TBD |
-| `sim-vibration/` | — | **retired.** The pattern-1 vibration gateway, superseded on 2026-08-17 by the sample valve. Not wired in, kept on disk only until it is clear nobody wants it back |
+
+`sim-vibration/` — the pattern-1 vibration gateway superseded by the sample valve on
+2026-08-17 — was **deleted on 2026-08-23**, along with the `vibsim` script module and both
+`vibration-gw-*` event streams. Nobody wanted it back, and one of the event streams was still
+enabled and subscribed to a topic no service published. Note that the `icc26-native` Engine
+namespace is **not** part of that retired set: it is the sample valve's ingest surface. See
+[`docs/00-architecture.md`](../docs/00-architecture.md).
 
 ## Why patterns 1 and 2 are the same device
 

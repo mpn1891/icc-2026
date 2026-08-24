@@ -22,10 +22,19 @@ namespace still must not leak the mechanism.
 Locked in: GitHub private repo under Matt's account; mixed Windows + macOS/Linux team; FastAPI
 stub for LIMS; demo-grade committed credentials are acceptable.
 
-**Each spec must carry:** objective + talk point, files to create (with sketches), Ignition
-resources (exact paths where known, UI-then-commit where schemas are unknown), MQTT user +
-topics, empirical checkpoints, copy-pasteable verification, and "update the `docs/0N-*.md`
-talk-track doc" as the closing step.
+**Each pattern gets two documents**, as patterns 1, 2 and 4 now do:
+
+- `docs/plans/0N-*.md` — the **build spec**: the physical model, files to create (with
+  sketches), Ignition resources (exact paths where known, UI-then-commit where schemas are
+  unknown), MQTT user + topics, payload contracts, empirical checkpoints, copy-pasteable
+  verification, open items, progress log. It states what the thing *is* and how it was measured;
+  why it earns a slot in the talk belongs to the talk track.
+- `docs/talk-tracks/0N-*.md` — the **talk track**, written as the closing step: talk points, the
+  segment's intro → demo → risk → close beats, **the signal it contributes to the spine**, **the
+  GxP hook**, the wire shot, and the on-stage trigger list.
+
+Neither should re-argue the other. Settled truth goes to
+[`../00-architecture.md`](../00-architecture.md) rather than being copied into both.
 
 ## Demo through line
 
@@ -77,12 +86,16 @@ is written (planned — not present yet).
 ## The eight specs
 
 **01 and 02 are one device in two firmwares, and they must be read together.**
-**Written up in [`01-native-mqtt.md`](01-native-mqtt.md) and
-[`02-sparkplug-b.md`](02-sparkplug-b.md), which supersede this entry entirely.** Both moved a
-very long way from the sketches that were here — pattern 1 was a wireless vibration gateway
-simulated inside Ignition, pattern 2 was a bioreactor UDT on the Programmable Device Simulator.
-Each file carries the reasoning and a deviations table; do not "fix" either back toward an older
-summary.
+**Split into two layers on 2026-08-23, matching pattern 4's convention.** Talk tracks —
+[`../talk-tracks/01-native-mqtt.md`](../talk-tracks/01-native-mqtt.md) and
+[`../talk-tracks/02-sparkplug-b.md`](../talk-tracks/02-sparkplug-b.md) — carry the talk points,
+the pattern 1 vs 2 comparison table, the segment beats and the GxP risk material. Build specs —
+[`01-native-mqtt.md`](01-native-mqtt.md) and [`02-sparkplug-b.md`](02-sparkplug-b.md) — carry
+the contracts, the measured Ignition-side findings and verification. **All four supersede this
+entry entirely.** Both patterns moved a very long way from the sketches that were here (pattern
+1 was a wireless vibration gateway simulated inside Ignition, pattern 2 a bioreactor UDT on the
+Programmable Device Simulator); that history is now a progress-log line in each build spec
+rather than a deviations table. Do not "fix" either back toward an older summary.
 
 A **smart sample valve assembly**: a sanitary sample valve with an RFID badge reader on a
 bioreactor's sample port. Badge in, the valve strokes open for a sampling window, the valve
@@ -100,9 +113,11 @@ spec-mandated versus hand-rolled — the topic, the datatypes, the units, the lo
 the death certificate, one protocol giving you all five and the other giving you three form
 fields and a wiki page.
 
-**Signal contributed to the spine:** sample actuation event (pattern 1) and device liveness /
-session state (pattern 2) — pattern 7 reads pattern 1's `sample-valve-01` event for *when
-material left the reactor*.
+**Signal contributed to the spine:** sample actuation event (pattern 1) — pattern 7 reads
+pattern 1's `sample-valve-01` event for *when material left the reactor*. Pattern 2's device
+liveness / session state is a **stage argument, not a section of pattern 7's document**: this
+valve is `sample-valve-02` on `BR-202`, and nothing in the aggregate reads it. Say "silence
+becomes evidence"; do not promise a Sparkplug field in the composite payload.
 
 **GxP hooks:** Pattern 1 — the record originates at the point of action; no transcription, no
 intermediary. Pattern 2 — you can prove the valve was alive when it said nothing; consider
@@ -234,7 +249,7 @@ pass or fail). On that message it builds one composite document, `mechanism=aggr
 
 | Section | Source | What it answers |
 |---|---|---|
-| Sample actuation + device liveness | pattern 1 / 2 event (`sample-valve-01`) | when material left the reactor |
+| Sample actuation | pattern 1 event (`sample-valve-01`) | when material left the reactor |
 | VCD reading + assay result | pattern 3 Nova result + pattern 4 review | when the sample was run, and its disposition |
 | Batch phase and qualified window | pattern 5 `batch/event` at sample time | `phase` and `qualified_window` when the valve opened |
 | Environmental excursion status | pattern 6 MET ONE, nearest reading to the Nova timestamp | `status` at (or nearest) the sample instant |
@@ -312,11 +327,25 @@ it is last of the seven.
 - **Wave 1**, independent of each other:
   - **04 pass/fail.** Small: both review outcomes publish `disposition` + `analyst`.
     Pattern 7 cannot listen until this lands.
+  - **The sample id correlation.** The valve mints `S-YYYYMMDD-NNNN`, the Nova mints
+    `S-NNNNN`, and nothing joins them — so pattern 7's valve-open → analysis leg does not
+    correlate today. Ignition writes the valve's `sample_id` into the Nova's writable
+    `SampleInformation/SampleID` before the run. Touches 01 and 03, not 07, which is why it
+    is here and not in 07's spec — and **07 cannot be specified until it lands**, because
+    both derived flags are evaluated at the sample-open instant. See
+    [`../00-architecture.md` § *`meta.correlation_id` is the sample id*](../00-architecture.md).
   - **08's fallback firehose.** No dependencies, and the only thing the audience sees.
+    There are **no Perspective views in the repo at all** — this is greenfield, not an edit.
   - **05** — timer + `mes.batch_event` (with `qualified_window`) + Debezium. JDBC datasource
-    first.
+    first, and note the trap: `database-connection/pg_db` already exists pointing at the
+    **`postgres` database as user `ignition`** — wrong db, wrong user. Create `ICC26`
+    properly and decide whether `pg_db` is deleted rather than left to be picked by mistake.
+    The `bioreactor` UDT also needs its phase tag, and its only current member
+    (`asset_data/agitator_vibration`) belongs to the withdrawn vibration pattern.
   - **06** — MET ONE HTTP simulator (with `status` excursion flag) + poll script + Event
     Stream. Longest new service; start it once the API notes arrive, or stub the routes.
+    The excursion flag and its limit config are ours, not the vendor's — build those now
+    rather than letting the longest task wait on somebody else's PDF.
 - **Wave 2**: 07 (the composite aggregate — needs 01, 03, 04, 05, 06), 08's primary firehose.
 - **Wave 3**: runbook, dual-trial rehearsal, the offline run.
 - Each wave ends with: `tasks.py health` green, pattern verification passes, `git status` shows

@@ -1,14 +1,14 @@
 # 04 — LIMS approval webhook
 
 > Talk track for pattern 4. The spec this was built from is
-> [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md). Architecture decisions live in
-> [`00-architecture.md`](00-architecture.md); this file is what you speak.
+> [`plans/04-lims-webhook.md`](../plans/04-lims-webhook.md). Architecture decisions live in
+> [`00-architecture.md`](../00-architecture.md); this file is what you speak.
 
 | | |
 |---|---|
 | **Pattern** | 4 of 7 — webhook, because a person has to sign it off |
 | **Mechanism tag** | `meta.mechanism = "webhook"` |
-| **New container** | `lims` — [`services/lims/`](../services/lims/) |
+| **New container** | `lims` — [`services/lims/`](../../services/lims/) |
 | **Approval screen** | <http://localhost:8000> |
 | **Depends on** | pattern 3's analyzer topic (already live). `POST /trigger` unblocks a broken analyzer |
 | **Blocks** | pattern 7 listens for this review message |
@@ -161,7 +161,7 @@ to fix this close to a deadline.
 | `qc/lims/sample-result` names a system in the line-or-cell slot | Kept for schedule. See above |
 | WebDev resource was file-authored | Mount path is `/system/webdev/icc-2026/lims/sample-result`. The 8.3 discriminator is `resource-type: python-resource` in `config.json` — `resourceType: python` yields `500 Unknown resource factory:` with an empty name |
 | Gateway cert SAN is `localhost` only | LIMS verifies the mounted public cert and skips hostname matching. Ignition 302s `:8088` → `:8043`, so the default URL is HTTPS |
-| LoggerEx is not Python logging | `logger.info("… %s", x)` throws. Use `infof` / `warnf`, matching `vibsim` |
+| LoggerEx is not Python logging | `logger.info("… %s", x)` throws. Use `infof` / `warnf`, matching `lims_webhook` and `opcua_event` (this idiom used to point at `vibsim`, deleted 2026-08-23) |
 | Live Nova sample is two rows | Osmometer unfitted → `osmo` is null → no row, not a zero. `/trigger` still synthesises all three |
 
 ## Progress log

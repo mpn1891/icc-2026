@@ -7,7 +7,7 @@ add it here rather than in a status note.
 
 - What is true *right now* and what to do next: [`plans/00-status.md`](plans/00-status.md).
 - What is still to be built: [`plans/00-master-plan.md`](plans/00-master-plan.md).
-- Talk tracks, as they are written: [`04-lims-webhook.md`](04-lims-webhook.md).
+- Talk tracks, as they are written: [`talk-tracks/04-lims-webhook.md`](talk-tracks/04-lims-webhook.md).
 
 ---
 
@@ -48,9 +48,8 @@ Everything else publishes through Ignition. Pattern 7 is not a new inbound trans
 | `sim-metone` | TBD (HTTP API) | pattern 6 — planned |
 
 `lims` is built: see [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md) and
-[`04-lims-webhook.md`](04-lims-webhook.md). Odoo, the AMS stub, the DCS OPC server and a
-Modbus particle counter were the 2026-08-19 plan and are not in this stack. `sim-vibration`
-stays on disk, unwired.
+[`talk-tracks/04-lims-webhook.md`](talk-tracks/04-lims-webhook.md). Odoo, the AMS stub, the DCS OPC server and a
+Modbus particle counter were the 2026-08-19 plan and are not in this stack.
 
 **Patterns 1 and 2 are the same physical device in two firmwares** — a badge-operated smart
 sample valve assembly, one on `BR-201` speaking plain MQTT and one on `BR-202` speaking
@@ -60,12 +59,31 @@ caused. Each serves its own device commissioning webpage (8085, 8086), and **the
 between those two pages is as much of the talk as the traffic is**: on one the topic, QoS and
 retained flag are editable fields, on the other the same three controls are disabled with the
 specification clause that fixed them. Both valves are publish-only — nothing on the backbone
-can open either. See [`plans/01-native-mqtt.md`](plans/01-native-mqtt.md) and
+can open either. Talk tracks: [`talk-tracks/01-native-mqtt.md`](talk-tracks/01-native-mqtt.md) and
+[`talk-tracks/02-sparkplug-b.md`](talk-tracks/02-sparkplug-b.md). Build specs:
+[`plans/01-native-mqtt.md`](plans/01-native-mqtt.md) and
 [`plans/02-sparkplug-b.md`](plans/02-sparkplug-b.md).
 
-The retired vibration-gateway implementation (`vibsim`, the `vibration_sensor` UDT, the
-`vibration-gw-*` event streams, the `icc26-native` Engine namespace, and
-`services/sim-vibration/`) is still on disk and is wired to nothing.
+The retired vibration-gateway implementation was **deleted on 2026-08-23**: the `vibsim` script
+module, both `vibration-gw-*` event streams and `services/sim-vibration/`. They had been "on
+disk, wired to nothing" since 2026-08-17, except that `vibration-gw-listener` was still
+`enabled: true` and subscribed to a topic no service published — a live gateway resource for a
+withdrawn pattern. Pattern 7 no longer uses a waveform or `cmd`/`response`, so nothing was
+waiting on them.
+
+**Two pieces of that implementation were kept, and one of them is not retired at all.**
+
+- **`icc26-native` is the sample valve's Engine namespace, not the vibration gateway's.** Its
+  subscription is `icc26/site1/upstream/br-201/sample-valve-01/#`. It was repurposed when
+  pattern 1 became the valve, and earlier revisions of this document wrongly listed it as part
+  of the retired set. **Deleting it breaks pattern 1.**
+- The `vibration_sensor` UDT and `br-201`'s `asset_data/agitator_vibration` member are now
+  orphaned, but `tag-type-definition/default/udts.json` has to be opened anyway to give the
+  `bioreactor` type its phase tag. Remove them with pattern 5's spec rather than in a second
+  pass over the same file.
+
+The Engine Edge Node tag trees under `MQTT Engine/Edge Nodes/` are gitignored and regenerate
+from the broker, so they needed no cleanup.
 
 **Nothing may depend on the internet at runtime.** It is a conference network and a stage. Every
 image is pulled ahead of time, the Perspective firehose vendors its JavaScript rather than
@@ -110,9 +128,10 @@ icc26/{site}/{area}/{line-or-cell}/{device}/{message_type}
 ```
 
 ```
-icc26/site1/upstream/br-201/sample-valve-01/event      # 1  badge scan + sample complete
+icc26/site1/upstream/br-201/sample-valve-01/event/badge-scan       # 1  every badge, granted or denied
+icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete  # 1  only when a sample ran
 icc26/site1/upstream/br-201/sample-valve-01/state      # 1  valve position, retained; also the LWT
-icc26/site1/upstream/br-201/sample-valve-01/telemetry  # 1  line pressure / temp, every 5 s
+icc26/site1/upstream/br-201/sample-valve-01/telemetry  # 1  air supply / enclosure temp, every 5 s
 icc26/site1/qc/analyzers/novaflex-01/result            # 3
 icc26/site1/qc/lims/sample-result                      # 4  review: analyst + pass/fail
 icc26/site1/upstream/br-201/batch/event                # 5  CDC of mes.batch_event
@@ -129,8 +148,21 @@ HVAC and personnel flow, so the process name and the physical area coincide. The
 write these `usp`/`dsp`; spelled out they cost four characters and stop `dsp` colliding with
 *digital signal processing* in a talk that plots bearing spectra.
 
-Message types are a closed set: `telemetry`, `event`, `waveform`, `state`, `cmd/<verb>`,
-`response/<what>`, `ack`.
+Message types are a closed set: `telemetry`, `event`, `event/<subtype>`, `waveform`, `state`,
+`cmd/<verb>`, `response/<what>`, `ack`.
+
+**`event/<subtype>` is optional and was added 2026-08-23**, for pattern 1. A device that emits
+more than one *shape* of event may name each one, on the same two-token form as `cmd/<verb>` —
+and must, if it wants a usable tag tree, because Engine's custom namespace mirrors whatever
+document arrives and writes only the keys that document contains. Two shapes on one topic means
+one `values` folder holding the union of both, with half the tags stale from the other shape.
+See [`plans/01-native-mqtt.md § Why the two event subtypes are two topics`](plans/01-native-mqtt.md).
+
+`icc26/+/+/+/+/event/#` catches both forms, because **`#` matches zero levels** — so a
+subscriber written against plain `…/event` keeps working, and no other pattern is obliged to
+grow a subtype. The subtype is part of the *taxonomy the device invented*, which is exactly what
+pattern 2 does not have to do: Sparkplug declares one metric list in DBIRTH and there is no
+second shape to name.
 
 `cmd/<verb>` and `response/<what>` are the two-token pair, and they go together: wherever one
 appears the other should too. **All three of `cmd`, `response` and `ack` are currently used by
@@ -207,9 +239,17 @@ A second re-source, after 2026-08-19's Odoo / Modbus MET ONE / vibration-AMS-DCS
 | 7 | `aggregate` | MQTT listener on the LIMS review | sample chain: valve, Nova, batch, env |
 
 Pattern 5 is an application we own. Say that on stage: the textbook CDC case is an app you
-cannot modify; this engine is a stand-in for that MES, and the point is still that the writer
-never publishes MQTT. Pattern 6 is a pull API, not Modbus; vendor routes land when the docs
-are dropped in. Pattern 7 is a join of the others, not a third copy of the LIMS row.
+cannot modify; this engine is a stand-in for the **batch execution system** we would not patch,
+and the point is still that the writer never publishes MQTT. Pattern 6 is a pull API, not
+Modbus; vendor routes land when the docs are dropped in. Pattern 7 is a join of the others, not
+a third copy of the LIMS row.
+
+**Say BES, not MES.** `CIP → SIP → INOC → GROWTH → HARVEST` is an ISA-88 phase model, which is
+batch execution specifically; MES is the wider L3 layer that also covers scheduling, genealogy
+and dispatch, none of which the timer does. This room runs DeltaV Batch, PAS-X or Syncade — say
+MES and they will expect work orders. The schema stays `mes.batch_event`: batch execution is an
+MES-layer function in ISA-95 terms, so the name is defensible, and renaming it churns the
+publication, `04-cdc.sql` and every doc reference for no audience benefit.
 
 Consequences that are easy to miss:
 
@@ -221,6 +261,59 @@ Consequences that are easy to miss:
   from `04-cdc.sql`'s publication when that spec is written; do not tail both.
 - Pattern 4's message stays sample-shaped. `disposition` is a new field on that object, not a
   return to row-granular CDC.
+
+### Derived flags travel with the fact that produced them
+
+Added 2026-08-23 alongside the demo through line, which needs three booleans to reach its
+payoff. **Each one is computed by the component that owns the fact and put on the wire — never
+re-derived by the consumer.**
+
+| Field | On | Set by | Meaning |
+|---|---|---|---|
+| `values.qualified_window` | pattern 5 `batch/event` | the Ignition timer, at insert time, into `mes.batch_event.payload` | the protocol qualifies sampling for `GROWTH` only |
+| `values.status` | pattern 6 `…/result` | the MET ONE simulator, or the poll script at ingest | `normal` or `excursion` against a configured cleanroom limit |
+| `values.outside_qualified_window`, `values.environmental_excursion` | pattern 7 aggregate | the aggregation script, from the two above | the composite event's two claims |
+
+**Why the flag and not the raw value.** Pattern 5 is the only component that knows which phase
+the batch protocol qualifies for sampling; pattern 6 is the only one that knows the cleanroom
+grade. If pattern 7 tested `phase = 'GROWTH'` or compared counts to a limit itself, the
+aggregation script would hold a second copy of the batch protocol and of the cleanroom spec, and
+the two copies would drift. Pattern 7 derives only from flags it was handed.
+
+`qualified_window` goes into `mes.batch_event.payload` (jsonb, already present — **no schema
+change**) rather than being computed in the `cdc-sink` WebDev endpoint, so that it is in the WAL
+Debezium tails. A flag added after the tail is a flag the CDC demo did not actually observe.
+
+All three are `values` fields. None appears in a topic or in `meta`: the namespace must not leak
+the mechanism, and it must not leak the verdict either.
+
+### The sample id, and pattern 1 mints it
+
+The rule, settled here so that no spec re-litigates it: **the valve mints the sample id, because
+the sample begins when material leaves the reactor.** Everything downstream carries it unchanged.
+The Nova sim already reads `SampleInformation/SampleID` from writable OPC UA nodes, so Ignition
+writes the valve's id into the analyzer before the run instead of the analyzer inventing one.
+
+**This is not done.** `services/sim-valve-mqtt/valve.py` produces `S-YYYYMMDD-NNNN` locally
+while the Nova produces `S-NNNNN`, in two containers that never talk, so the valve-open →
+analysis-complete leg of the join does not correlate today. It is a gap, not a design, and it is
+pattern 1's open item 1.
+
+**Which field carries it is per-pattern, and that is deliberate as of 2026-08-23.** Patterns 3
+and 4 stamp `meta.correlation_id` and keep it — it is built, verified and carried through a
+review workflow and a Postgres outbox. **Pattern 1 does not have the field**; its id travels as
+`values.sample_id`, inside the record it belongs to, where an Ignition tag binding or a column
+mapping reaches it without crossing into a sibling folder. Pattern 7 therefore reads two shapes,
+and can, because it has no spec yet to be broken by it.
+
+The cost is named rather than hidden: a consumer joining across all seven patterns no longer has
+one field in one place. If that becomes painful, the fix is additive — adding `meta.correlation_id`
+to pattern 1 later breaks no consumer — so nothing here is load-bearing on the choice.
+
+This matters more than it looks. Both of pattern 7's derived flags are evaluated **at the
+sample-open instant** — which phase was running when the valve opened, which particle-count
+analysis was nearest. Without a shared id there is no sample-open instant to evaluate them
+against, and the composite event cannot be built at all.
 
 ### Payload envelope
 
@@ -237,6 +330,11 @@ Every non-Sparkplug payload:
 ```
 
 `meta.mechanism` ∈ `native-mqtt | sparkplug | opcua-event | webhook | cdc | poll | aggregate`.
+
+`meta.correlation_id` is **optional** — patterns 3, 4 and 7 carry it, pattern 1 does not, and
+patterns 5 and 6 have nothing to correlate to. Pattern 1 may also add fields of its own to
+`meta` (`event`, `cell`, `assembly_serial`); the three above are the only ones every JSON
+pattern shares.
 
 This field carries the demo. The Perspective firehose view filters and colors by it, so you
 get per-pattern legibility on screen without encoding the mechanism into the namespace.
@@ -297,7 +395,8 @@ leave the static `MQTT Engine/Engine Info/Edge Nodes/` folder tracked, as it sho
 
 A caveat that costs an hour if you meet it cold: **a MANAGED provider's tag tree is only
 partially on disk.** Ignition persists a tag definition only where the config is non-default, so
-the Sparkplug device's nineteen metrics write four `tags.json` entries — the ones carrying
+the Sparkplug device's nineteen metrics (twenty once `Sample/LastCycleResult` lands) write four
+`tags.json` entries — the ones carrying
 engineering units — and the other fifteen leave empty folders. Counting files gives the wrong
 answer. The authoritative read is
 `GET /data/api/v1/tags/export?provider=MQTT Engine&type=json&recursive=true`, which needs an

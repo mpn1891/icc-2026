@@ -11,6 +11,14 @@
 > passed. Findings live in [`01-native-mqtt.md`](01-native-mqtt.md) and
 > [`02-sparkplug-b.md`](02-sparkplug-b.md), each under *Ingest, as built*.
 >
+> **Both were split into two documents on 2026-08-23**, matching pattern 4's convention: the
+> `plans/` files are the build specs, and the new [`../talk-tracks/01-native-mqtt.md`](../talk-tracks/01-native-mqtt.md)
+> and [`../talk-tracks/02-sparkplug-b.md`](../talk-tracks/02-sparkplug-b.md) are the talk tracks, carrying the
+> through-line signal and GxP hook. The vibration deviations tables are gone — that code no
+> longer exists. **One new work item fell out:** pattern 1 does not stamp `meta.correlation_id`,
+> which the spine needs. It is now open item 1 in its build spec and pairs with work item 2
+> below.
+>
 > **Pattern 3 is done on the Nova path** (broker-verified 2026-08-20): vendor `SampleTime` →
 > Event Stream `03_opcua/novaflex-result` → Transmission →
 > `icc26/site1/qc/analyzers/novaflex-01/result` with `meta.mechanism = "opcua-event"` and
@@ -21,7 +29,7 @@
 > **Pattern 4 is verified end-to-end** on this checkout (2026-08-20). Ingest, reject, atomic
 > approve, webhook publish (`mechanism: webhook`), 409 replay, 401 wrong secret,
 > and outbox survival across `docker restart icc26-lims` all held. Talk track:
-> [`../04-lims-webhook.md`](../04-lims-webhook.md). **Remaining:** both review outcomes
+> [`../talk-tracks/04-lims-webhook.md`](../talk-tracks/04-lims-webhook.md). **Remaining:** both review outcomes
 > publish `analyst` + `disposition` pass/fail — reject is no longer silent.
 
 What is true right now and what to do next. Durable knowledge does not live here — it lives in
@@ -43,20 +51,48 @@ touching any of them. In short:
 - **7** listens for the LIMS review and publishes one sample-chain aggregate (valve open →
   Nova complete, batch operation at sample time, nearest MET ONE to the Nova timestamp).
 
+**Joseph's demo through line was merged in on 2026-08-23** (PR #4, folded into this branch the
+same day). It adds a single fed-batch spine, a per-pattern GxP hook, and three booleans the
+payoff depends on — `qualified_window` on 5, `status` on 6, and the two derived flags on 7. See
+[`../demo-through-line.md`](../demo-through-line.md) and
+[`../00-architecture.md` § *Derived flags travel with the fact that produced them*](../00-architecture.md).
+
 **Work items, in the order they unblock each other:**
 
-1. **04 pass/fail.** Small, and pattern 7 listens for that message.
-2. **08's fallback firehose.** No dependencies, and the only deliverable the audience sees.
-3. **05** (timer + JDBC + Debezium) and **06** (MET ONE simulator + poll) in parallel.
-   06 waits on vendor API notes; stub the routes if they have not arrived.
-4. **07** last of the seven — it is the join.
+1. **04 pass/fail.** Small, and pattern 7 listens for that message. Confirmed unbuilt:
+   `services/lims/app.py` `reject()` writes no outbox row, and the payload builder has no
+   `disposition` key at all.
+2. **The sample id correlation.** The valve mints `S-YYYYMMDD-NNNN`, the Nova mints `S-NNNNN`,
+   and nothing joins them — so pattern 7's valve-open → analysis leg does not correlate today.
+   Ignition writes the valve's id into the Nova's writable `SampleInformation/SampleID`, **and
+   the valve stamps that id into `meta.correlation_id`** — it does not today, which is open item
+   1 in [`01-native-mqtt.md`](01-native-mqtt.md).
+   **07 cannot be specified until this lands**, because both derived flags are evaluated at the
+   sample-open instant.
+3. **08's fallback firehose.** No dependencies, and the only deliverable the audience sees.
+   **There are no Perspective views in the repo at all** — `com.inductiveautomation.perspective/`
+   holds only `page-config`. This is greenfield, not an edit, and it is the largest gap between
+   what the plan assumes and what exists.
+4. **05** (timer + JDBC + Debezium) and **06** (MET ONE simulator + poll) in parallel.
+   06 waits on vendor API notes; stub the routes if they have not arrived — the excursion flag
+   and its limit config are ours, not the vendor's, so they need not wait.
+5. **07** last of the seven — it is the join.
 
 Countess MQTT publish on `count_completed_counter` is optional polish if wanted later; nothing
 depends on it, and Pattern 3 does not wait on it.
 
 `mes.batch_event` **has a consumer again** (pattern 5). `04-cdc.sql` still publishes both
 that table and `lims.sample_result`; drop the LIMS table from the publication with pattern
-5's spec, do not tail both.
+5's spec, do not tail both. Its `payload` jsonb column already exists, so `qualified_window`
+needs **no schema change**.
+
+**The retired vibration gateway was deleted on 2026-08-23** — `services/sim-vibration/`, the
+`vibsim` script module and both `vibration-gw-*` event streams. One of those event streams was
+still `enabled: true`, subscribed to a topic no service published. Two related things were
+deliberately *not* deleted: the `vibration_sensor` UDT and `br-201`'s `agitator_vibration`
+member (remove them with pattern 5's spec, which has to open `udts.json` anyway), and the
+`icc26-native` Engine namespace — **that one is not retired at all**, it is the sample valve's
+ingest surface and deleting it breaks pattern 1.
 
 `00-next-step.md` is **done** and kept only as the record of what was run. Everything durable
 from it has moved into [`../00-architecture.md`](../00-architecture.md) and the two pattern specs.
@@ -90,8 +126,12 @@ Rules that are still live:
   token" with no error; and a key is bound to the gateway that minted it, so a key from another
   checkout returns 401 and looks identical to no key at all.
 - **Postgres JDBC datasource `ICC26`** → `jdbc:postgresql://postgres:5432/icc26`, user `icc26`.
-  Pattern 5's timer writes `mes.batch_event` through it; not created yet (no
-  `database-connection` resource in the repo). UI first, then commit.
+  Pattern 5's timer writes `mes.batch_event` through it. **Not created — and there is a
+  look-alike.** `database-connection/pg_db` *is* in the repo, pointing at the **`postgres`
+  database as user `ignition`**: wrong database, wrong user. It will pass a glance in the
+  datasource dropdown and write nowhere useful. Create `ICC26` (UI first, then commit) and
+  decide whether `pg_db` is deleted rather than left to be picked by mistake.
+  (An earlier revision of this line said no `database-connection` resource existed at all.)
 - **Transmission logs `Failed to subscribe to TARGET elements`** immediately after connecting.
   Unexplained — possibly the `ign-transmission` ACL, possibly transmitter config. It connects, so
   it may block nothing; decide how hard to chase it before the pattern work starts.

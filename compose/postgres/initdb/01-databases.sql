@@ -12,7 +12,7 @@
 CREATE ROLE ignition WITH LOGIN PASSWORD 'ignition';
 CREATE DATABASE ignition OWNER ignition;
 
--- Demo data: the lims / mes / plant schemas the seven patterns read and write.
+-- Demo data: the lims / bes / plant schemas the seven patterns read and write.
 CREATE ROLE icc26 WITH LOGIN PASSWORD 'icc26';
 CREATE DATABASE icc26 OWNER icc26;
 

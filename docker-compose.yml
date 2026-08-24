@@ -478,9 +478,10 @@ services:
   # ───────────────────────────────────────────────────────────────────────────
   # Remaining pattern services land here in steps 5–8:
   #   debezium         (pattern 5)  quay.io/debezium/server
+  #   sim-metone       (pattern 6)  build: ./services/sim-metone
   #
-  # (services/sim-vibration/ is the retired pattern-1 vibration gateway. It is
-  # kept on disk and is NOT wired in — see services/README.md.)
+  # (services/sim-vibration/ — the retired pattern-1 vibration gateway — was
+  # deleted on 2026-08-23. It was never wired in here.)
   # ───────────────────────────────────────────────────────────────────────────
 
 volumes:

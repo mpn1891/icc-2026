@@ -53,7 +53,9 @@ intermediary.
 - Considering dropping the connection on one valve mid-sampling-window and let the death
   certificate fire
 
-**Signal contributed:** Device liveness / session state
+**Signal contributed:** Device liveness / session state — a stage argument, not a field in
+pattern 7's document. This valve is `sample-valve-02` on `BR-202`; the aggregate reads pattern
+1's `sample-valve-01` only.
 
 **GxP hook:** You can prove the valve was alive when it said nothing. Silence becomes
 evidence.
@@ -135,7 +137,7 @@ Combines:
 
 | Source | Pattern | Fragment |
 |---|---|---|
-| Smart sample valve | 1 / 2 | Sample actuation + device liveness |
+| Smart sample valve (`sample-valve-01`) | 1 | Sample actuation |
 | Cell analyzer + LIMS review | 3 / 4 | VCD reading + assay disposition |
 | Batch timer (BES stand-in) | 5 | Batch phase and qualified window |
 | EM system | 6 | Environmental excursion status |

@@ -6,7 +6,7 @@
 > topic*](../00-architecture.md).
 >
 > **Built 2026-08-20 and broker-verified the same day.** Talk track:
-> [`../04-lims-webhook.md`](../04-lims-webhook.md). Schema and the `lims-bridge` subscribe grant
+> [`../talk-tracks/04-lims-webhook.md`](../talk-tracks/04-lims-webhook.md). Schema and the `lims-bridge` subscribe grant
 > take effect on an empty volume; on this checkout they were applied live (`migrate-04-lims.sql`
 > + Chariot `PUT /mqttusers/lims-bridge`) without a nuke. `python tasks.py nuke` then `seed`
 > remains the clean-room path. Odoo is no longer in the stack (2026-08-23).
