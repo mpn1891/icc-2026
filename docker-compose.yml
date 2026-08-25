@@ -342,7 +342,7 @@ services:
       BASE_TOPIC: ${VALVE_BASE_TOPIC:-icc26/site1/upstream/br-201/sample-valve-01}
       PUBLISH_QOS: ${VALVE_PUBLISH_QOS:-1}
       PUBLISH_RETAIN: ${VALVE_PUBLISH_RETAIN:-true}
-      BADGE_ROSTER: ${VALVE_BADGE_ROSTER:-B-1042:Jordan Reyes:qc-analyst:authorized,B-2087:Sam Okafor:maintenance:not-authorized,B-3311:Alex Chen:qc-analyst:training-expired}
+      BADGE_ROSTER: ${VALVE_BADGE_ROSTER:-B-1042:Jordan Reyes:qc-analyst:authorized,B-2087:Sam Okafor:maintenance:not-authorized}
       SAMPLE_WINDOW_S: ${VALVE_SAMPLE_WINDOW_S:-12}
       TELEMETRY_INTERVAL_S: ${VALVE_TELEMETRY_INTERVAL_S:-5}
       # Background badge traffic so the firehose is not empty between triggers.
@@ -407,7 +407,7 @@ services:
       # Transmission does. Set false to put the names back on the wire and watch
       # the payload grow.
       USE_ALIASES: ${VALVE_SPB_USE_ALIASES:-true}
-      BADGE_ROSTER: ${VALVE_BADGE_ROSTER:-B-1042:Jordan Reyes:qc-analyst:authorized,B-2087:Sam Okafor:maintenance:not-authorized,B-3311:Alex Chen:qc-analyst:training-expired}
+      BADGE_ROSTER: ${VALVE_BADGE_ROSTER:-B-1042:Jordan Reyes:qc-analyst:authorized,B-2087:Sam Okafor:maintenance:not-authorized}
       SAMPLE_WINDOW_S: ${VALVE_SAMPLE_WINDOW_S:-12}
       TELEMETRY_INTERVAL_S: ${VALVE_TELEMETRY_INTERVAL_S:-5}
       SCAN_INTERVAL_S: ${VALVE_SCAN_INTERVAL_S:-90}
@@ -478,9 +478,10 @@ services:
   # ───────────────────────────────────────────────────────────────────────────
   # Remaining pattern services land here in steps 5–8:
   #   debezium         (pattern 5)  quay.io/debezium/server
+  #   sim-metone       (pattern 6)  build: ./services/sim-metone
   #
-  # (services/sim-vibration/ is the retired pattern-1 vibration gateway. It is
-  # kept on disk and is NOT wired in — see services/README.md.)
+  # (services/sim-vibration/ — the retired pattern-1 vibration gateway — was
+  # deleted on 2026-08-23. It was never wired in here.)
   # ───────────────────────────────────────────────────────────────────────────
 
 volumes:

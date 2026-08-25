@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Pattern 2 -- the same smart sample valve assembly, speaking Sparkplug B v3.0.0.
 
-Physically identical to services/sim-valve-mqtt: same badge roster, same interlock, same
-stroke times, same valve.py. Everything that differs between the two containers is a
+Physically identical to services/sim-valve-mqtt: same badge roster, same stroke times, same
+stroke faults, same valve.py. Everything that differs between the two containers is a
 consequence of the specification, which is the whole reason they are a pair. See
 docs/plans/02-sparkplug-b.md.
 
@@ -44,18 +44,42 @@ import webui
 from sparkplug import DataType, Metric, SequenceCounter
 from valve import Sink, ValveAssembly, parse_roster
 
-# Metric table: name, datatype, properties, report-by-exception deadband.
+# Metric table: name, datatype, properties, report-by-exception deadband. Nineteen of them,
+# every one declared in DBIRTH whether it has a value yet or not.
 #
 # The names use `/` so MQTT Engine renders them as a folder tree under the device. The
-# deadbands are why DDATA is small: a line temperature that wanders by 0.05 degrees is not
+# deadbands are why DDATA is small: an enclosure temperature that wanders 0.05 degrees is not
 # news, and saying so is a property of this device rather than of the broker.
+#
+# Three of these moved on 2026-08-25, and all three moved because valve.py did -- it is
+# shared byte-for-byte with pattern 1, so a decision taken over there arrives here as a
+# consequence rather than a choice:
+#
+#   * Interlock/Ok is GONE. Pattern 1 cut the interlock; authorization is the roster and only
+#     the roster, so the metric had nothing behind it. Nineteen, not twenty.
+#   * Line/PressureBar -> Actuator/AirSupplyBar and Line/TemperatureC -> Device/EnclosureTempC.
+#     Nothing flows through a shut sample valve, so a continuous line reading was measuring a
+#     dead leg or restating the vessel's own instruments. Same datatypes, same units, same
+#     deadbands -- only the thing being measured is now real.
+#   * Sample/LastCycleResult is NEW, mirroring cycle_result on pattern 1's
+#     event/sample-complete.
+#
+# The rename buys this pattern something it did not have: Actuator/AirSupplyBar is the
+# physical CAUSE of Sample/LastCycleResult. A starved actuator is a valve that will not seat,
+# so the deadbanded analog and the fault string are one story -- and on the wire you can watch
+# the DDATA that reported the sagging supply arrive minutes before the DDATA that reported the
+# failure. Pattern 1 carries the same two facts in a five-second telemetry document and a
+# string in an event, with nothing connecting them.
+#
+# Valve/State, Valve/IsOpen and Valve/PositionPct stay, and pattern 1 now has NO equivalent
+# for any of them -- it cut its `state` topic entirely. That asymmetry is deliberate and is
+# tracked as pattern 1's open item 7.
 _UNIT = lambda symbol: {"engUnit": (DataType.String, symbol)}  # noqa: E731
 
 DEVICE_METRICS = [
     ("Valve/State", DataType.String, None, None),
     ("Valve/IsOpen", DataType.Boolean, None, None),
     ("Valve/PositionPct", DataType.Float, _UNIT("%"), 0.5),
-    ("Interlock/Ok", DataType.Boolean, None, None),
     ("Badge/LastScanId", DataType.String, None, None),
     ("Badge/LastScanHolder", DataType.String, None, None),
     ("Badge/LastScanRole", DataType.String, None, None),
@@ -66,8 +90,9 @@ DEVICE_METRICS = [
     ("Sample/LastSampleId", DataType.String, None, None),
     ("Sample/LastSampleTime", DataType.DateTime, None, None),
     ("Sample/LastOpenDurationS", DataType.Float, _UNIT("s"), None),
-    ("Line/PressureBar", DataType.Float, _UNIT("bar"), 0.05),
-    ("Line/TemperatureC", DataType.Float, _UNIT("degC"), 0.2),
+    ("Sample/LastCycleResult", DataType.String, None, None),
+    ("Actuator/AirSupplyBar", DataType.Float, _UNIT("bar"), 0.05),
+    ("Device/EnclosureTempC", DataType.Float, _UNIT("degC"), 0.2),
     ("Device/FirmwareVersion", DataType.String, None, None),
     ("Device/SerialNumber", DataType.String, None, None),
     ("Device/Cell", DataType.String, None, None),
@@ -99,10 +124,10 @@ def _env_bool(name: str, default: bool) -> bool:
     return _env(name, "true" if default else "false").lower() in ("1", "true", "yes", "on")
 
 
+# Same two badges as pattern 1, because it is the same roster on the same device.
 DEFAULT_ROSTER = (
     "B-1042:Jordan Reyes:qc-analyst:authorized,"
-    "B-2087:Sam Okafor:maintenance:not-authorized,"
-    "B-3311:Alex Chen:qc-analyst:training-expired"
+    "B-2087:Sam Okafor:maintenance:not-authorized"
 )
 
 
@@ -143,8 +168,13 @@ class Config:
         self.telemetry_interval_s = _env_float("TELEMETRY_INTERVAL_S", 5.0)
         self.scan_interval_s = _env_float("SCAN_INTERVAL_S", 90.0)
 
-        self.line_pressure_bar = _env_float("LINE_PRESSURE_BAR", 1.35)
-        self.line_temperature_c = _env_float("LINE_TEMPERATURE_C", 36.8)
+        # The assembly's own condition, identical to pattern 1's because valve.py is
+        # identical. AIR_SUPPLY_SAG_BAR ships between valve.AIR_SUPPLY_SEAT_BAR (4.5) and
+        # valve.AIR_SUPPLY_STROKE_BAR (2.5), so the page's sag button produces a
+        # failed-to-seat; below 2.5 the same button produces a stroke timeout.
+        self.air_supply_bar = _env_float("AIR_SUPPLY_BAR", 5.5)
+        self.air_supply_sag_bar = _env_float("AIR_SUPPLY_SAG_BAR", 3.2)
+        self.enclosure_temperature_c = _env_float("ENCLOSURE_TEMPERATURE_C", 31.5)
 
         self.ui_port = _env_int("UI_PORT", 8080)
         self.config_path = _env("CONFIG_PATH", "/data/config.json")
@@ -228,7 +258,7 @@ class MetricRegistry:
     """Current value of every metric, plus who has moved since the last DDATA.
 
     Report-by-exception lives here rather than in the publisher because it is a property of
-    the *metric* -- the deadband on a line temperature has nothing to do with MQTT.
+    the *metric* -- the deadband on an air-supply reading has nothing to do with MQTT.
     """
 
     def __init__(self, use_aliases: bool) -> None:
@@ -502,16 +532,16 @@ class SparkplugSink(Sink):
         self._apply_telemetry(assembly.telemetry_values())
 
     def _apply_state(self, snapshot: dict) -> None:
+        # The same snapshot pattern 1's sink is handed and throws away, because it has no
+        # topic to put a valve position on.
         self.registry.set("Valve/State", snapshot["state"])
         self.registry.set("Valve/IsOpen", snapshot["is_open"])
         self.registry.set("Valve/PositionPct", snapshot["position_pct"])
-        self.registry.set("Interlock/Ok", snapshot["interlock_ok"])
         self.registry.set("Sample/CycleCount", snapshot["cycle_count"])
 
     def _apply_telemetry(self, values: dict) -> None:
-        self.registry.set("Line/PressureBar", values["line_pressure_bar"])
-        self.registry.set("Line/TemperatureC", values["line_temperature_c"])
-        self.registry.set("Interlock/Ok", values["interlock_ok"])
+        self.registry.set("Actuator/AirSupplyBar", values["air_supply_bar"])
+        self.registry.set("Device/EnclosureTempC", values["enclosure_temperature_c"])
         self.registry.set("Sample/CycleCount", values["valve_cycles_total"])
 
     # ---- Sink
@@ -532,6 +562,10 @@ class SparkplugSink(Sink):
             self.registry.set("Sample/LastSampleId", data["sample_id"])
             self.registry.set("Sample/LastSampleTime", _ms(ts))
             self.registry.set("Sample/LastOpenDurationS", data["open_duration_s"])
+            # normal | failed-to-seat | stroke-timeout. The DDATA that reported the air
+            # supply sagging predicted this one, and a consumer holding both metrics can
+            # see that without anybody explaining the relationship to it.
+            self.registry.set("Sample/LastCycleResult", data["cycle_result"])
             self.registry.set("Sample/CycleCount", data["cycle_count"])
         self._flush(ts)
 
@@ -603,6 +637,8 @@ class Provider(webui.ConfigProvider):
                 "valve": self.assembly.state_snapshot(),
                 "telemetry": self.assembly.telemetry_values(),
                 "last_scan": self.assembly.last_scan,
+                "last_cycle_result": self.assembly.last_cycle_result,
+                "air_sagged": self.assembly.air_sagged,
                 "published": self.sink.published,
                 "bd_seq": self.sink.bd_seq,
                 "rebirths": self.sink.rebirths,
@@ -641,8 +677,8 @@ class Provider(webui.ConfigProvider):
     def scan(self, badge_id: str) -> dict:
         return self.assembly.scan(badge_id)
 
-    def set_interlock(self, ok: bool) -> None:
-        self.assembly.set_interlock(ok)
+    def set_air_supply(self, sagged: bool) -> None:
+        self.assembly.set_air_supply(sagged)
 
 
 # -- main --------------------------------------------------------------------------------

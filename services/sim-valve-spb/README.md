@@ -2,8 +2,8 @@
 
 The same smart sample valve assembly as [`../sim-valve-mqtt/`](../sim-valve-mqtt/), on the
 sample port of `BR-202`, with Sparkplug B v3.0.0 firmware instead. Same badge roster, same
-interlock, same stroke times — `valve.py` and `webui.py` are byte-for-byte identical between
-the two directories. Everything else that differs, the specification caused.
+stroke times, same stroke faults — `valve.py` and `webui.py` are byte-for-byte identical
+between the two directories. Everything else that differs, the specification caused.
 
 Full contract and reasoning: [`docs/plans/02-sparkplug-b.md`](../../docs/plans/02-sparkplug-b.md).
 
@@ -58,17 +58,25 @@ that have no value yet — those go out as typed nulls, so a consumer learns
 
 ```
 Valve/State (String)   Valve/IsOpen (Boolean)   Valve/PositionPct (Float, %, db 0.5)
-Interlock/Ok (Boolean)
 Badge/LastScanId LastScanHolder LastScanRole LastScanResult LastDenyReason (String)
 Badge/LastScanTime (DateTime)
 Sample/CycleCount (Int64)  Sample/LastSampleId (String)  Sample/LastSampleTime (DateTime)
-Sample/LastOpenDurationS (Float, s)
-Line/PressureBar (Float, bar, db 0.05)   Line/TemperatureC (Float, degC, db 0.2)
+Sample/LastOpenDurationS (Float, s)   Sample/LastCycleResult (String)
+Actuator/AirSupplyBar (Float, bar, db 0.05)   Device/EnclosureTempC (Float, degC, db 0.2)
 Device/FirmwareVersion  Device/SerialNumber  Device/Cell (String)
 ```
 
 DDATA carries only the metrics that moved past their deadband, by alias rather than by name.
 Set `USE_ALIASES=false` to put the names back on the wire and watch the payload grow.
+
+`Actuator/AirSupplyBar` is the physical **cause** of `Sample/LastCycleResult`: a pneumatic
+actuator starved of air is a valve that will not seat. Sag the supply from the page, watch one
+DDATA report it crossing the 0.05 deadband, then badge in — the sample completes
+`failed-to-seat` in a later DDATA, minutes after the message that predicted it.
+
+`Valve/State`, `Valve/IsOpen` and `Valve/PositionPct` have **no equivalent in pattern 1**,
+which cut its `state` topic on 2026-08-25 and publishes valve position nowhere at all. Same
+`valve.py`, same snapshot handed to both sinks; only this one has somewhere to put it.
 
 ## Why the protobuf is hand-written
 

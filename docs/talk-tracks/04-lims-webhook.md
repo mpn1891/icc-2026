@@ -1,17 +1,18 @@
 # 04 — LIMS approval webhook
 
 > Talk track for pattern 4. The spec this was built from is
-> [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md). Architecture decisions live in
-> [`00-architecture.md`](00-architecture.md); this file is what you speak.
+> [`plans/04-lims-webhook.md`](../plans/04-lims-webhook.md). Architecture decisions live in
+> [`00-architecture.md`](../00-architecture.md); this file is what you speak.
 
 | | |
 |---|---|
 | **Pattern** | 4 of 7 — webhook, because a person has to sign it off |
 | **Mechanism tag** | `meta.mechanism = "webhook"` |
-| **New container** | `lims` — [`services/lims/`](../services/lims/) |
+| **New container** | `lims` — [`services/lims/`](../../services/lims/) |
 | **Approval screen** | <http://localhost:8000> |
 | **Depends on** | pattern 3's analyzer topic (already live). `POST /trigger` unblocks a broken analyzer |
-| **Blocks** | nothing |
+| **Blocks** | pattern 7 listens for this review message |
+| **Remaining** | publish reject as well as approve, with `disposition` pass/fail |
 
 ## Talk points
 
@@ -38,7 +39,7 @@ does in the WAL — which is pattern 5's argument arriving from the opposite dir
 ```
 opcua-novaflex ──OPC UA──▶ Ignition ──Event Stream──▶ Transmission
                                                           │
-                          icc26/site1/qc/analyzers/novaflex-01/result   (mechanism: opcua-event)
+                          icc26/site1/qc/analyzers/flex-01/result   (mechanism: opcua-event)
                                                           │
                                               subscribe (QoS 1, lims-bridge)
                                                           ▼
@@ -56,7 +57,9 @@ opcua-novaflex ──OPC UA──▶ Ignition ──Event Stream──▶ Transm
 ```
 
 `meta.correlation_id` is `sample_id`, stamped once in pattern 3, and survives the whole chain
-so one sample is two colours on the firehose.
+so one sample shows up twice on the wire under two different `meta.mechanism` values —
+`opcua-event`, then `webhook` — side by side in one `mosquitto_sub`. (There is no firehose view;
+spec 08 was cut on 2026-08-25 and the terminal is the demo surface.)
 
 The LIMS publishes **nothing**. `lims-bridge` has `publishTopics: []`. Widen its subscribe
 grant to `icc26/#` and you have an infinite loop; the same ACL file that stops the valve
@@ -82,6 +85,7 @@ One message per sample, all analytes that were present. `ts` is `collected_at` (
     "batch_id": "B-2026-0142",
     "collected_at": "2026-08-20T14:03:22.145Z",
     "analyst": "mnorris",
+    "disposition": "pass",
     "results": [
       { "analyte": "glucose", "value": 4.21, "uom": "g/L" },
       { "analyte": "lactate", "value": 1.08, "uom": "g/L" }
@@ -110,8 +114,7 @@ Rehearse this. It is now the only durability argument this pattern makes.
 
 Schema and the `lims-bridge` subscribe grant take effect on an empty volume. On this checkout they
 were applied live (`migrate-04-lims.sql` as `postgres`, Chariot `PUT /mqttusers/lims-bridge`)
-without a nuke. `python tasks.py nuke` then `seed` is still the clean-room path — and do it
-before Odoo exists, because the same `nuke` destroys Odoo's database.
+without a nuke. `python tasks.py nuke` then `seed` is still the clean-room path.
 
 Terminal 1, both topics:
 
@@ -137,8 +140,9 @@ docker exec -it icc26-postgres psql -U icc26 -d icc26 -c `
   "SELECT sample_id, analyte, value, status, verified_at FROM lims.sample_result ORDER BY id DESC LIMIT 10;"
 ```
 
-Reject publishes nothing. Replay a delivered idempotency key by hand → `409`, no second
-message. Wrong secret → `401`.
+Reject publishes `disposition=fail` on the same topic (remaining 2026-08-23 — currently
+still silent until that lands). Replay a delivered idempotency key by hand → `409`, no
+second message. Wrong secret → `401`.
 
 ## Topic wart, kept
 
@@ -159,7 +163,7 @@ to fix this close to a deadline.
 | `qc/lims/sample-result` names a system in the line-or-cell slot | Kept for schedule. See above |
 | WebDev resource was file-authored | Mount path is `/system/webdev/icc-2026/lims/sample-result`. The 8.3 discriminator is `resource-type: python-resource` in `config.json` — `resourceType: python` yields `500 Unknown resource factory:` with an empty name |
 | Gateway cert SAN is `localhost` only | LIMS verifies the mounted public cert and skips hostname matching. Ignition 302s `:8088` → `:8043`, so the default URL is HTTPS |
-| LoggerEx is not Python logging | `logger.info("… %s", x)` throws. Use `infof` / `warnf`, matching `vibsim` |
+| LoggerEx is not Python logging | `logger.info("… %s", x)` throws. Use `infof` / `warnf`, matching `lims_webhook` and `opcua_event` (this idiom used to point at `vibsim`, deleted 2026-08-23) |
 | Live Nova sample is two rows | Osmometer unfitted → `osmo` is null → no row, not a zero. `/trigger` still synthesises all three |
 
 ## Progress log
@@ -168,4 +172,5 @@ to fix this close to a deadline.
 |---|---|
 | 2026-08-20 | Service, schema, ACL, `correlation_id` on pattern 3, WebDev + `lims_webhook` script, approval screen on :8000. |
 | 2026-08-20 | **Ingest verified without a nuke.** Schema applied live (`migrate-04-lims.sql`); `lims-bridge` ACL updated via `PUT /mqttusers/lims-bridge`. MQTT connect as `lims-bridge`, `/trigger` → 3 rows, QoS-1 redelivery is a no-op, Reject writes `rejected` and no outbox row, Approve is one transaction (rows + outbox). |
-| 2026-08-20 | **Publish checkpoints after a trial reset.** Trial lapse returned WebDev `402` — check `GET /data/api/v1/trial` before anything else. File-authored WebDev needed `resource-type: python-resource` or GET/POST is `500 Unknown resource factory`. LoggerEx needs `infof`/`warnf`. Then: Approve → one message on `qc/lims/sample-result` with `mechanism: webhook`; replay of the same idempotency key → `409` and no second message; wrong secret → `401`; disable drainer, approve two, `docker restart icc26-lims` → both deliver from Postgres. Pattern 3 `correlation_id` watched live on `qc/analyzers/novaflex-01/result`. |
+| 2026-08-20 | **Publish checkpoints after a trial reset.** Trial lapse returned WebDev `402` — check `GET /data/api/v1/trial` before anything else. File-authored WebDev needed `resource-type: python-resource` or GET/POST is `500 Unknown resource factory`. LoggerEx needs `infof`/`warnf`. Then: Approve → one message on `qc/lims/sample-result` with `mechanism: webhook`; replay of the same idempotency key → `409` and no second message; wrong secret → `401`; disable drainer, approve two, `docker restart icc26-lims` → both deliver from Postgres. Pattern 3 `correlation_id` watched live on `qc/analyzers/novaflex-01/result` — the topic's name at the time; renamed to `flex-01` on 2026-08-25. |
+| 2026-08-23 | **Remaining:** publish both review outcomes with `analyst` + `disposition` pass/fail. Reject is still silent in the running service. Pattern 7 will listen for this message. |

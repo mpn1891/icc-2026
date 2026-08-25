@@ -8,7 +8,7 @@
 \connect icc26
 
 CREATE SCHEMA IF NOT EXISTS lims  AUTHORIZATION icc26;
-CREATE SCHEMA IF NOT EXISTS mes   AUTHORIZATION icc26;
+CREATE SCHEMA IF NOT EXISTS bes   AUTHORIZATION icc26;
 CREATE SCHEMA IF NOT EXISTS plant AUTHORIZATION icc26;
 
 -- ── plant: physical model ────────────────────────────────────────────────────
@@ -19,8 +19,8 @@ CREATE TABLE plant.equipment (
     equipment_id  text PRIMARY KEY,          -- e.g. 'BR-201', 'sample-valve-01'
     site          text NOT NULL,             -- 'site1'
     area          text NOT NULL,             -- 'upstream' | 'downstream' | 'qc' | 'utilities'
-                                             -- Places, not systems. There is no 'mes' area:
-                                             -- see docs/00-architecture.md § Topic namespace.
+                                             -- Places, not systems. There is no 'bes' area (nor
+                                             -- 'mes'): docs/00-architecture.md § Topic namespace.
     line          text,                      -- 'pumpskid1'
     equipment_type text NOT NULL,            -- 'bioreactor' | 'analyzer' | 'sample-valve'
     description   text
@@ -65,12 +65,12 @@ CREATE INDEX ix_sample_result_id_created ON lims.sample_result (id, created_at);
 CREATE INDEX ix_sample_result_created    ON lims.sample_result (created_at);
 CREATE INDEX ix_sample_result_status     ON lims.sample_result (status, collected_at);
 
--- The outbox. One row per sample approved, not per result row: one approval is
--- one delivery. Delivery state is not domain state, which is why this is a
--- separate table. Pattern 5 used to tail sample_result; attempt counters on the
--- result row would have made every retry a CDC event. That hazard is gone
--- (pattern 5 moved to Odoo) and the table still earns its keep — you can query
--- it, retry it, and put it on the approval screen.
+-- The outbox. One row per sample reviewed, not per result row: one review is
+-- one delivery (pass or fail). Delivery state is not domain state, which is why
+-- this is a separate table. Pattern 5 used to tail sample_result; attempt
+-- counters on the result row would have made every retry a CDC event. Pattern 5
+-- now tails bes.batch_event, so that hazard stays gone. The table still earns
+-- its keep — you can query it, retry it, and put it on the approval screen.
 CREATE TABLE lims.webhook_delivery (
     id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     sample_id   text NOT NULL UNIQUE,
@@ -83,12 +83,17 @@ CREATE TABLE lims.webhook_delivery (
 );
 CREATE INDEX ix_webhook_delivery_due ON lims.webhook_delivery (state, next_try_at);
 
--- ── mes: batch lifecycle events ──────────────────────────────────────────────
--- No consumer. Pattern 5 was going to CDC-tail this; it now tails Odoo instead.
--- Kept so the physical model stays coherent and so pattern 5's spec can retire
--- it on purpose rather than leaving a table that looks live. 04-cdc.sql still
--- publishes it — retire that publication with the pattern-5 spec, not here.
-CREATE TABLE mes.batch_event (
+-- ── bes: batch lifecycle events ──────────────────────────────────────────────
+-- Pattern 5's CDC source (2026-08-23). An Ignition timer writes phase changes
+-- for BR-201 (CIP/SIP/INOC/GROWTH/HARVEST); Debezium tails this table.
+-- 04-cdc.sql currently also names lims.sample_result — drop that table from
+-- the publication when pattern 5 is built, so a LIMS review is not a CDC event.
+--
+-- Named `bes`, not `mes` (renamed 2026-08-23, before anything was built on it):
+-- the writer stands in for a batch execution system specifically -- CIP → SIP →
+-- INOC → GROWTH → HARVEST is an ISA-88 phase model -- and pattern 5's verify
+-- step puts this table on screen right after the talk track says "BES".
+CREATE TABLE bes.batch_event (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     batch_id      text NOT NULL,
     event_type    text NOT NULL,             -- 'phase_start' | 'phase_end' | 'deviation' | …
@@ -97,14 +102,14 @@ CREATE TABLE mes.batch_event (
     occurred_at   timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ix_batch_event_batch ON mes.batch_event (batch_id, occurred_at);
+CREATE INDEX ix_batch_event_batch ON bes.batch_event (batch_id, occurred_at);
 
 -- ── Grants ───────────────────────────────────────────────────────────────────
-GRANT USAGE ON SCHEMA lims, mes, plant TO icc26;
-GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA lims, mes, plant TO icc26;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA lims, mes, plant TO icc26;
+GRANT USAGE ON SCHEMA lims, bes, plant TO icc26;
+GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA lims, bes, plant TO icc26;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA lims, bes, plant TO icc26;
 
 -- Debezium needs to read the tables it decodes, and to own a publication.
-GRANT USAGE  ON SCHEMA lims, mes, plant TO cdc;
-GRANT SELECT ON ALL TABLES IN SCHEMA lims, mes, plant TO cdc;
-ALTER DEFAULT PRIVILEGES IN SCHEMA lims, mes, plant GRANT SELECT ON TABLES TO cdc;
+GRANT USAGE  ON SCHEMA lims, bes, plant TO cdc;
+GRANT SELECT ON ALL TABLES IN SCHEMA lims, bes, plant TO cdc;
+ALTER DEFAULT PRIVILEGES IN SCHEMA lims, bes, plant GRANT SELECT ON TABLES TO cdc;

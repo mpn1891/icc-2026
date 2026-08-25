@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The smart sample valve assembly itself -- badge roster, interlock, state machine.
+"""The smart sample valve assembly itself -- badge roster, state machine, stroke faults.
 
 This module is the *device*, and it knows nothing about MQTT. It hands what happened to a
 sink, and the two variants of this assembly (plain MQTT, Sparkplug B) implement that sink
@@ -16,11 +16,18 @@ and `diff` the two before committing.
 The valve is PUBLISH-ONLY. Nothing on the backbone can open it, and there is no command
 topic: the assembly checks the badge against its own roster because a sample port that
 stops working when the network does is not a sample port anyone would install.
+
+Authorization is that roster and nothing else (2026-08-25). The process interlock that used
+to sit beside it is gone, along with the lapsed-training badge -- two more ways to say no,
+neither of which the demo could show without the audience taking the device's word for it.
+What is left is one question with one answer, and a fault path that is physical instead:
+starve the pneumatic actuator of air and the valve does not seat.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import random
 import threading
 import time
@@ -30,33 +37,74 @@ LOG = logging.getLogger("valve")
 
 # -- states ------------------------------------------------------------------------------
 #
-# LOCKED --scan--> [authorized && interlock] --> UNLOCKING -> OPEN -> CLOSING -> LOCKED
-#                          |
-#                          +--> denied: an event, and nothing moves
+# LOCKED --scan--> [on the roster, right role, not busy] --> UNLOCKING -> OPEN -> CLOSING
+#                          |                                                        |
+#                          +--> denied: an event, and nothing moves                  |
+#                                                                                    v
+#                                                             sample-complete, back to LOCKED
 
 LOCKED = "locked"
 UNLOCKING = "unlocking"
 OPEN = "open"
 CLOSING = "closing"
-OFFLINE = "offline"  # never entered here -- it is what the death certificate carries
 
-# Deny reasons. Every one of these produces an event: a refused sample attempt is exactly
-# as audit-relevant as a successful one, which is the whole reason this device publishes.
+# Neither of these is a valve state, and neither is ever entered by the state machine. They
+# are the two values of pattern 1's retained `status` topic -- `online` published by the
+# device as its first message after CONNACK, `offline` by the Last Will -- and they live
+# here so both firmwares spell them the same way.
+ONLINE = "online"
+OFFLINE = "offline"
+
+# Deny reasons, checked in exactly this order. Every one of these produces an event: a
+# refused sample attempt is exactly as audit-relevant as a successful one, which is the
+# whole reason this device publishes. There used to be two more -- `training-expired` and
+# `interlock-open` -- and both were cut on 2026-08-25.
 DENY_UNKNOWN = "badge-unknown"
 DENY_ROLE = "badge-not-authorized"
-DENY_TRAINING = "training-expired"
-DENY_INTERLOCK = "interlock-open"
 DENY_BUSY = "valve-busy"
 
 # Roster status values, as they appear in BADGE_ROSTER.
 STATUS_AUTHORIZED = "authorized"
 STATUS_NOT_AUTHORIZED = "not-authorized"
-STATUS_TRAINING_EXPIRED = "training-expired"
 
 _DENY_FOR_STATUS = {
     STATUS_NOT_AUTHORIZED: DENY_ROLE,
-    STATUS_TRAINING_EXPIRED: DENY_TRAINING,
 }
+
+# How a sample ended. Reported on pattern 1's event/sample-complete and mirrored by pattern
+# 2's Sample/LastCycleResult metric, which is the same fact in the two vocabularies.
+CYCLE_NORMAL = "normal"
+CYCLE_FAILED_TO_SEAT = "failed-to-seat"
+CYCLE_STROKE_TIMEOUT = "stroke-timeout"
+
+# The actuator is pneumatic, so the air supply is the physical cause of both faults, and
+# these two thresholds are what turn one analog reading into two different failures:
+#
+#   below SEAT   -- enough air to stroke open, not enough to drive it shut against the
+#                   diaphragm, so the position feedback stops short of zero
+#   below STROKE -- the actuator cannot complete the opening stroke at all
+#
+# The shipped sag (AIR_SUPPLY_SAG_BAR, 3.2) sits deliberately between the two, so the config
+# page's one button produces a failed-to-seat -- the demo path. Sag it further from the
+# environment and the same button produces a stroke timeout instead.
+# A real compressed-air header breathes as the compressor cycles, and so does this one:
+# +/- 0.12 bar on a 40 s period. Small enough to be plausible, and large enough that the
+# tick-to-tick change clears pattern 2's 0.05 bar deadband on the steep parts of the cycle
+# and not at the turning points -- so DDATA arrives on most ticks rather than every one,
+# which is what report-by-exception looks like when you watch it. Device/EnclosureTempC has
+# a 0.2 degree deadband and nothing pushing it that far, so it stays quiet: the same
+# mechanism seen from the other side. Pattern 1 has no deadbands and publishes all four
+# values every 5 s whatever they do.
+AIR_SUPPLY_BREATH_BAR = 0.12
+AIR_SUPPLY_BREATH_PERIOD_S = 40.0
+
+AIR_SUPPLY_SEAT_BAR = 4.5
+AIR_SUPPLY_STROKE_BAR = 2.5
+
+# Where the position feedback comes to rest when the valve fails to seat, and it stays there
+# until a cycle with enough air behind it puts it back. This number IS the fault: nothing in
+# this assembly can see the seat, it can only see that the feedback never reached zero.
+RESIDUAL_POSITION_PCT = 12.0
 
 
 def iso(epoch: float) -> str:
@@ -85,9 +133,10 @@ class Badge:
 def parse_roster(spec: str) -> dict:
     """`id:holder:role:status` entries, comma separated.
 
-    The default roster deliberately carries one badge that is refused for its role and one
-    whose training lapsed, so both denial paths can be demonstrated without editing config
-    on stage.
+    The default roster ships two badges -- one authorized, one refused for its role -- so
+    both roster outcomes can be demonstrated without editing config on stage. The third
+    denial, `badge-unknown`, needs no roster entry by definition; the config page offers a
+    button for a badge that is on no roster at all.
     """
     roster = {}
     for entry in spec.split(","):
@@ -99,7 +148,7 @@ def parse_roster(spec: str) -> dict:
             LOG.warning("ignoring malformed roster entry %r", entry)
             continue
         badge_id, holder, role, status = parts
-        if status not in (STATUS_AUTHORIZED, STATUS_NOT_AUTHORIZED, STATUS_TRAINING_EXPIRED):
+        if status not in (STATUS_AUTHORIZED, STATUS_NOT_AUTHORIZED):
             LOG.warning("roster entry %s has unknown status %r -- treating as not-authorized",
                         badge_id, status)
             status = STATUS_NOT_AUTHORIZED
@@ -112,9 +161,12 @@ class Sink:
 
     Three calls, and the split matters: an *event* is a discrete thing that must not be
     lost, a *state* is a level that a late subscriber needs to know right now, and
-    *telemetry* is a stream nobody will miss one sample of. Pattern 1 spends that
-    distinction on QoS and the retained flag; pattern 2 spends it on birth certificates and
-    report-by-exception.
+    *telemetry* is a stream nobody will miss one sample of. Pattern 2 spends that
+    distinction on birth certificates, deadbands and report-by-exception.
+
+    Pattern 1 spends it on QoS and the retained flag -- and since 2026-08-25 it does not
+    spend it on state at all: its `valve_state` does nothing, because valve position is on
+    no topic. The device still has the level. That firmware has no way to say so.
     """
 
     def valve_event(self, event: str, data: dict, ts: float) -> None:
@@ -131,8 +183,8 @@ class ValveAssembly:
     """Sanitary diaphragm sample valve + RFID reader + position feedback, on a sample port.
 
     Stroke times are real: a pneumatic sanitary valve takes over a second to seat, and a
-    demo that snaps between open and closed hides the one moment where the state topic is
-    genuinely useful.
+    demo that snaps between open and closed hides the one moment where a failed seat is
+    visible in the position feedback.
     """
 
     def __init__(self, cfg, sink: Sink) -> None:
@@ -146,18 +198,33 @@ class ValveAssembly:
 
         self.state = LOCKED
         self.state_since = self.started
-        self.interlock_ok = True
         self.cycle_count = 0
 
         self.sample_id = None
         self.sample_seq = 0
         self.active_badge = None
-        self.opened_at = None
+        self.sample_start = None
 
         self.last_scan = None
+        self.last_cycle_result = None
 
-        self.line_pressure_bar = cfg.line_pressure_bar
-        self.line_temperature_c = cfg.line_temperature_c
+        # What the assembly measures about itself. The air supply is not scenery: it is the
+        # cause of every stroke fault below, which is the whole reason telemetry was
+        # re-pointed here from a line pressure / line temperature pair.
+        self.air_sagged = False
+        # The settled level the header is heading for, and the reading it actually shows.
+        # They differ by the breath below, which is why a sag still takes a few seconds to
+        # arrive while the reading itself moves on every tick.
+        self.air_supply_base = cfg.air_supply_bar
+        self.air_supply_bar = cfg.air_supply_bar
+        self.enclosure_temperature_c = cfg.enclosure_temperature_c
+
+        # Where the position feedback is resting. Zero unless the last close failed to seat,
+        # and then it stays wrong until a cycle with enough air behind it puts it right --
+        # which is how a real one behaves, and why the fault survives the message that
+        # reported it.
+        self.rest_position_pct = 0.0
+        self._pending_result = None
 
         self._next_state_at = None
         self._next_telemetry_at = 0.0
@@ -168,13 +235,18 @@ class ValveAssembly:
     # ---- snapshots
 
     def state_snapshot(self) -> dict:
-        """What the retained state message and the Sparkplug valve metrics both read from."""
+        """Where the valve is.
+
+        Pattern 2 reads four of these into Valve/State, Valve/IsOpen, Valve/PositionPct and
+        Sample/CycleCount. Pattern 1 reads it for its own config page and publishes none of
+        it -- the `state` topic was cut on 2026-08-25, and the asymmetry that leaves is
+        tracked as open item 7 in docs/plans/01-native-mqtt.md.
+        """
         with self.lock:
             return {
                 "state": self.state,
                 "is_open": self.state == OPEN,
                 "position_pct": self._position_pct(),
-                "interlock_ok": self.interlock_ok,
                 "sample_id": self.sample_id,
                 "badge_id": self.active_badge.badge_id if self.active_badge else None,
                 "cycle_count": self.cycle_count,
@@ -182,26 +254,39 @@ class ValveAssembly:
             }
 
     def telemetry_values(self) -> dict:
+        """The assembly's own condition -- not the process's.
+
+        Re-pointed 2026-08-23 from a line pressure / line temperature pair: a shut sample
+        valve has nothing moving through it, so those were either a dead-leg reading or a
+        restatement of the vessel's own instruments. `interlock_ok` left with the interlock
+        on 2026-08-25. Four keys, and `air_supply_bar` is the one that predicts a fault.
+        """
         with self.lock:
             return {
-                "line_pressure_bar": round(self.line_pressure_bar, 3),
-                "line_temperature_c": round(self.line_temperature_c, 2),
+                "air_supply_bar": round(self.air_supply_bar, 3),
+                "enclosure_temperature_c": round(self.enclosure_temperature_c, 2),
                 "valve_cycles_total": self.cycle_count,
-                "interlock_ok": self.interlock_ok,
                 "uptime_s": round(time.time() - self.started, 1),
             }
 
     def _position_pct(self) -> float:
-        """Interpolated across the stroke, so the position tag moves rather than snapping."""
+        """Interpolated across the stroke, so the position tag moves rather than snapping.
+
+        Both strokes run between `rest_position_pct` and 100 rather than between 0 and 100:
+        a valve that failed to seat is resting off its seat, and the next stroke starts from
+        wherever it actually is.
+        """
         now = time.time()
         elapsed = now - self.state_since
+        fraction = min(1.0, max(0.0, elapsed / max(self.cfg.stroke_s, 0.001)))
+        span = 100.0 - self.rest_position_pct
         if self.state == OPEN:
             return 100.0
         if self.state == UNLOCKING:
-            return round(min(100.0, 100.0 * elapsed / max(self.cfg.stroke_s, 0.001)), 1)
+            return round(self.rest_position_pct + span * fraction, 1)
         if self.state == CLOSING:
-            return round(max(0.0, 100.0 * (1.0 - elapsed / max(self.cfg.stroke_s, 0.001))), 1)
-        return 0.0
+            return round(self.rest_position_pct + span * (1.0 - fraction), 1)
+        return round(self.rest_position_pct, 1)
 
     # ---- the reader
 
@@ -221,14 +306,12 @@ class ValveAssembly:
                 reason = DENY_UNKNOWN
             else:
                 # Who you are is decided before what the valve happens to be doing. An
-                # operator whose training lapsed should be told that, not "try again in
+                # operator refused for their role should be told that, not "try again in
                 # ten seconds" -- and the reason has to be the same one every time so the
                 # audit trail means something.
                 reason = badge.deny_reason()
             if reason is None and self.state != LOCKED:
                 reason = DENY_BUSY
-            if reason is None and not self.interlock_ok:
-                reason = DENY_INTERLOCK
 
             granted = reason is None
             if granted:
@@ -238,6 +321,7 @@ class ValveAssembly:
                     self.sample_seq,
                 )
                 self.active_badge = badge
+                self._pending_result = None
                 self._enter(UNLOCKING, now)
 
             result = {
@@ -246,7 +330,13 @@ class ValveAssembly:
                 "badge_role": badge.role,
                 "result": "granted" if granted else "denied",
                 "deny_reason": reason,
-                "valve_state": self.state,
+                # The instant the badge was read, which is not the instant the document is
+                # published and is nowhere near the instant the sample finishes. The record
+                # of what followed is event/sample-complete, fifteen seconds later.
+                "scan_time": iso(now),
+                # A denial belongs to no sample, so this is JSON null -- and a JSON null
+                # produces no tag at all on the Ignition side. See the ingest notes in
+                # docs/plans/01-native-mqtt.md.
                 "sample_id": self.sample_id if granted else None,
             }
             self.last_scan = dict(result, ts=iso(now))
@@ -258,19 +348,24 @@ class ValveAssembly:
                  result["result"], " [%s]" % reason if reason else "")
         return result
 
-    def set_interlock(self, ok: bool) -> None:
-        """The process interlock -- CIP in progress, vessel not at sampling conditions.
+    def set_air_supply(self, sagged: bool) -> None:
+        """Sag the actuator's air supply, or restore it.
 
-        Toggleable from the config page because a deny path you cannot trigger on demand is
-        a deny path you will not get to show.
+        Toggleable from the config page because a fault you cannot trigger on demand is a
+        fault you will not get to show. This is the *cause*: the supply drops, telemetry
+        reports it, and the next sample comes back `failed-to-seat` a minute later. Two
+        facts about one starved actuator -- and only one of the two firmwares gives a
+        consumer any reason to read them as the same story.
+
+        Nothing is published from here. Air pressure is an analog that takes a few seconds
+        to fall, so the drift below carries it and the next telemetry message reports it,
+        which is what would actually happen.
         """
-        now = time.time()
         with self.lock:
-            if self.interlock_ok == ok:
+            if self.air_sagged == sagged:
                 return
-            self.interlock_ok = ok
-        LOG.info("interlock %s", "satisfied" if ok else "open")
-        self.sink.valve_state(self.state_snapshot(), now)
+            self.air_sagged = sagged
+        LOG.info("air supply %s", "sagging" if sagged else "restored")
 
     # ---- the state machine
 
@@ -287,6 +382,28 @@ class ValveAssembly:
         else:
             self._next_state_at = None
 
+    def _begin_closing(self, now: float) -> None:
+        """Caller holds self.lock. Decide, as the close stroke starts, where it will end.
+
+        Whether the valve seats is settled by the air available while it strokes shut, so it
+        is decided here -- and the position feedback then walks down to whatever was decided
+        rather than snapping there afterwards.
+
+        Nothing in this assembly can see the seat. All it can see is that the feedback
+        stopped short, and `failed-to-seat` is that observation rather than a diagnosis. The
+        first fault of a cycle wins: a stroke timeout has already been recorded by the time
+        we get here, and there is no point telling QA about the same starved actuator twice.
+        """
+        if self.air_supply_bar < AIR_SUPPLY_SEAT_BAR:
+            self.rest_position_pct = RESIDUAL_POSITION_PCT
+            if self._pending_result is None:
+                self._pending_result = CYCLE_FAILED_TO_SEAT
+                LOG.warning("failed to seat at %.2f bar -- feedback resting at %s%%",
+                            self.air_supply_bar, RESIDUAL_POSITION_PCT)
+        else:
+            self.rest_position_pct = 0.0
+        self._enter(CLOSING, now)
+
     def _advance(self, now: float) -> None:
         completed = None
         changed = False
@@ -295,26 +412,42 @@ class ValveAssembly:
             if self._next_state_at is None or now < self._next_state_at:
                 return
             if self.state == UNLOCKING:
-                self.opened_at = now
-                self._enter(OPEN, now)
+                self.sample_start = now
+                if self.air_supply_bar < AIR_SUPPLY_STROKE_BAR:
+                    # Not enough air to finish the opening stroke. No sample is taken, but a
+                    # cycle still happened and an operator still stood there, so it gets a
+                    # completion record like any other -- carrying the reason it is short.
+                    self._pending_result = CYCLE_STROKE_TIMEOUT
+                    LOG.warning("stroke timeout at %.2f bar -- aborting sample %s",
+                                self.air_supply_bar, self.sample_id)
+                    self._begin_closing(now)
+                else:
+                    self._enter(OPEN, now)
                 changed = True
             elif self.state == OPEN:
-                self._enter(CLOSING, now)
+                self._begin_closing(now)
                 changed = True
             elif self.state == CLOSING:
                 self.cycle_count += 1
                 badge = self.active_badge
+                self.last_cycle_result = self._pending_result or CYCLE_NORMAL
                 completed = {
                     "sample_id": self.sample_id,
                     "badge_id": badge.badge_id if badge else None,
                     "badge_holder": badge.holder if badge else None,
-                    "opened_at": iso(self.opened_at) if self.opened_at else None,
-                    "closed_at": iso(now),
-                    "open_duration_s": round(now - self.opened_at, 2) if self.opened_at else None,
+                    "sample_start": iso(self.sample_start) if self.sample_start else None,
+                    "sample_completion": iso(now),
+                    # Close-finish minus open-finish, so about 13.5 s against a 12 s sample
+                    # window: the valve is still passing material while it seats, and the
+                    # honest duration is the one that says so.
+                    "open_duration_s":
+                        round(now - self.sample_start, 2) if self.sample_start else None,
+                    "cycle_result": self.last_cycle_result,
                     "cycle_count": self.cycle_count,
                 }
                 self.active_badge = None
-                self.opened_at = None
+                self.sample_start = None
+                self._pending_result = None
                 self._enter(LOCKED, now)
                 changed = True
 
@@ -322,25 +455,37 @@ class ValveAssembly:
             self.sink.valve_state(self.state_snapshot(), now)
         if completed:
             self.sink.valve_event("sample-complete", completed, now)
-            LOG.info("sample %s complete after %ss", completed["sample_id"],
-                     completed["open_duration_s"])
+            LOG.info("sample %s complete after %ss [%s]", completed["sample_id"],
+                     completed["open_duration_s"], completed["cycle_result"])
 
-    # ---- the line
+    # ---- the assembly's own condition
 
     def _drift(self) -> None:
-        """Sample line pressure and temperature wander; they are not the story.
+        """Actuator air supply and enclosure temperature wander.
 
-        They exist so pattern 2 has an analog to apply a deadband to, and so pattern 1 has
-        something whose loss nobody would mourn -- which is what makes QoS 0 the right
-        choice for the telemetry topic and the wrong one for the event topic.
+        The temperature is the disposable one: it exists so pattern 2 has an analog to put a
+        0.2 degree deadband on and so pattern 1 has something whose loss nobody would mourn,
+        which is what makes QoS 0 right for telemetry and wrong for an event.
+
+        The air supply is not disposable at all, and that is new. It breathes on a 40 s cycle
+        the way a compressor-fed header does, which is the only reason pattern 2's DDATA is
+        ever anything but silent -- see AIR_SUPPLY_BREATH_BAR. It dips while the actuator is
+        stroking, because it does; and when the config page sags it, it walks down to the
+        sagged figure over a few seconds and stays there until somebody restores it. From
+        that moment the next sample is going to fail, and the only thing on the wire that
+        said so in advance is this reading.
         """
         with self.lock:
-            open_now = self.state == OPEN
-            target_p = self.cfg.line_pressure_bar - (0.35 if open_now else 0.0)
-            target_t = self.cfg.line_temperature_c + (1.2 if open_now else 0.0)
-            self.line_pressure_bar += (target_p - self.line_pressure_bar) * 0.25 \
-                + self.rng.gauss(0.0, 0.004)
-            self.line_temperature_c += (target_t - self.line_temperature_c) * 0.25 \
+            stroking = self.state in (UNLOCKING, CLOSING)
+            supply = self.cfg.air_supply_sag_bar if self.air_sagged else self.cfg.air_supply_bar
+            target_p = supply - (0.25 if stroking else 0.0)
+            target_t = self.cfg.enclosure_temperature_c + (0.8 if self.state == OPEN else 0.0)
+            breath = AIR_SUPPLY_BREATH_BAR * math.sin(
+                2.0 * math.pi * (time.time() - self.started) / AIR_SUPPLY_BREATH_PERIOD_S)
+            self.air_supply_base += ((target_p - self.air_supply_base) * 0.25
+                                     + self.rng.gauss(0.0, 0.004))
+            self.air_supply_bar = self.air_supply_base + breath
+            self.enclosure_temperature_c += (target_t - self.enclosure_temperature_c) * 0.25 \
                 + self.rng.gauss(0.0, 0.03)
 
     def _auto_scan(self, now: float) -> None:

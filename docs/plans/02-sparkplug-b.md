@@ -1,52 +1,39 @@
 # 02 — Sparkplug B: the same sample valve, the other firmware
 
-> **Living document.** Updated as the pattern is built — see the [progress log](#progress-log) at
-> the bottom. This file supersedes spec 02 in [`00-master-plan.md`](00-master-plan.md), which
-> described a bioreactor UDT on the Programmable Device Simulator. That design is gone; see
-> [Deviations](#deviations-from-the-earlier-docs).
+> **Build spec.** What exists, what it publishes, and how it was measured. The talk material —
+> the pattern 1 vs 2 comparison table, segment beats, the risk narrative — lives in
+> [`../talk-tracks/02-sparkplug-b.md`](../talk-tracks/02-sparkplug-b.md). Progress log at the bottom.
+>
+> This file supersedes spec 02 in [`00-master-plan.md`](00-master-plan.md).
 
 | | |
 |---|---|
 | **Pattern** | 2 of 7 — Sparkplug B v3.0.0 edge node |
 | **Mechanism tag** | none — Sparkplug payloads carry no envelope, and that is itself the point |
-| **New container** | `sim-valve-spb` — [`services/sim-valve-spb/`](../../services/sim-valve-spb/) |
+| **Container** | `sim-valve-spb` — [`../../services/sim-valve-spb/`](../../services/sim-valve-spb/) |
 | **Config page** | <http://localhost:8086> |
 | **Pairs with** | [`01-native-mqtt.md`](01-native-mqtt.md) — same assembly, plain MQTT |
 | **Depends on** | nothing (Wave 1) |
 | **Blocks** | nothing |
+| **Signal contributed** | Device liveness / session state — **narrative only** (see below) |
 
-## Objective and talk point
+## The device is the same device
 
-**This is not a different device. It is the same device.** Same sanitary sample valve, same RFID
-reader, same badge roster, same interlock, same stroke times, on `BR-202` instead of `BR-201` so
-both can run at once. `valve.py` and `webui.py` are byte-for-byte identical between the two
-build contexts. Everything below is a consequence of the protocol and nothing else, which is why
-the pair is an argument rather than two demos.
+Same sanitary sample valve, same RFID reader, same badge roster, same stroke times, on
+`BR-202` instead of `BR-201` so both can run at once. `valve.py` and `webui.py` are
+byte-for-byte identical between the two build contexts. **Everything that differs between the
+two containers is a difference the protocol caused** — that is the whole reason this pattern
+exists, and any change that breaks the identity breaks the pattern. Fix one copy, copy it
+across, `diff` before committing.
 
-The five minutes: **open both config pages side by side, then look at the wire.**
+**Scope note on the through line.** Pattern 7 joins on `sample-valve-01` — pattern 1's valve, on
+`BR-201`. This valve is `sample-valve-02` on `BR-202`, and its liveness contribution is a stage
+argument, not a section of the composite document. **Do not build a pattern-7 dependency on this
+container**, and do not promise one on stage. If that ever changes, this valve has to move to
+`BR-201` or pattern 7 has to read both, and both are re-scopes.
 
-| | Pattern 1 — plain MQTT | Pattern 2 — Sparkplug B |
-|---|---|---|
-| **Topic** | a text box | derived from three names; there is no field |
-| **QoS** | a dropdown, 0/1/2 | fixed at 0 (`tck-id-topics-ddata-mqtt`) |
-| **Retained** | a checkbox | fixed at false, same clause |
-| **Who enforces the namespace** | a broker ACL somebody remembered to write | the protocol |
-| **Payload** | JSON we invented | protobuf, self-describing |
-| **Datatypes** | whatever `json.dumps` produced; the consumer guesses | declared per metric |
-| **Engineering units** | agreed out of band, or not at all | a metric property, on the wire |
-| **Discovery** | none — someone hand-writes an Ignition tag config and maintains it | DBIRTH builds the tag tree by itself |
-| **Consumer subscription** | `icc26/site1/upstream/br-201/sample-valve-01/#` — one device, by name. A wildcard wide enough for two valves also swallows patterns 5 and 7, so a second valve means editing Engine's config | `spBv1.0/#` — every edge node that will ever exist, already covered |
-| **Loss detection** | none | `seq`, 0–255 rolling; a gap is visible |
-| **Death** | retained JSON on a topic we chose, timestamp frozen at connect, meaning agreed nowhere | NDEATH, spec-mandated topic and payload, every consumer already applies it |
-| **Re-announce** | nothing | `Node Control/Rebirth`, and the host asks for it unprompted |
-| **Adding a metric** | edit the device, edit Ignition, edit the doc, keep three in step | edit the device |
-
-**The honest half of that table:** Sparkplug does not invent a death mechanism, it standardises
-the one MQTT already had. NDEATH *is* a Last Will — same CONNECT-packet registration, same
-frozen payload, same one-will-per-session limit. DDEATH is not a will at all; it is an ordinary
-publish. What changed is that the topic, the payload and the rule are agreed in advance by
-everybody, instead of being three fields in a config page and a paragraph in a wiki. Say that
-out loud — it is more convincing than pretending the plumbing is different.
+The valve takes no commands in either firmware: authorization is decided at the sample port
+against the local roster. A DCMD write to any valve metric is refused and logged.
 
 ---
 
@@ -71,8 +58,8 @@ spBv1.0/{group_id}/{message_type}/{edge_node_id}[/{device_id}]
 
 NDEATH is the one outlier, and only because it is registered as the MQTT Will rather than
 published. Every constant above is quoted with its TCK identifier in
-[`services/sim-valve-spb/sparkplug.py`](../../services/sim-valve-spb/sparkplug.py) and rendered
-on the config page next to the control it disables.
+[`../../services/sim-valve-spb/sparkplug.py`](../../services/sim-valve-spb/sparkplug.py) and
+rendered on the config page next to the control it disables.
 
 Sequencing rules the implementation honours: NBIRTH carries `seq = 0`
 (`tck-id-topics-nbirth-seq-num`) and a `bdSeq` metric matching the will's; NDEATH carries `bdSeq`
@@ -94,24 +81,49 @@ tag appear from nowhere on the first scan.
 | `Valve/State` | String | | |
 | `Valve/IsOpen` | Boolean | | |
 | `Valve/PositionPct` | Float | % | 0.5 |
-| `Interlock/Ok` | Boolean | | |
 | `Badge/LastScanId` `LastScanHolder` `LastScanRole` `LastScanResult` `LastDenyReason` | String | | |
 | `Badge/LastScanTime` | DateTime | | |
 | `Sample/CycleCount` | Int64 | | |
 | `Sample/LastSampleId` | String | | |
 | `Sample/LastSampleTime` | DateTime | | |
 | `Sample/LastOpenDurationS` | Float | s | |
-| `Line/PressureBar` | Float | bar | 0.05 |
-| `Line/TemperatureC` | Float | degC | 0.2 |
+| `Sample/LastCycleResult` | String | | |
+| `Actuator/AirSupplyBar` | Float | bar | 0.05 |
+| `Device/EnclosureTempC` | Float | degC | 0.2 |
 | `Device/FirmwareVersion` `Device/SerialNumber` `Device/Cell` | String | | |
 
 Node-level, on NBIRTH: `bdSeq` (Int64) and `Node Control/Rebirth` (Boolean, writable).
 
+**Four of these changed**, all of them driven by `valve.py`, which is shared byte-for-byte with
+pattern 1:
+
+- **`Line/PressureBar` → `Actuator/AirSupplyBar`** and **`Line/TemperatureC` →
+  `Device/EnclosureTempC`.** A diaphragm valve on a sample port has nothing moving through it
+  while it is shut, so a continuous line reading was either measuring a dead leg or restating
+  BR-201's own vessel instruments. What the assembly genuinely measures all the time is its own
+  condition. Same datatypes, same units, same deadbands — only the thing being measured is now
+  real. See [`01-native-mqtt.md § telemetry`](01-native-mqtt.md).
+- **`Interlock/Ok` is gone** (2026-08-25). Pattern 1 cut the interlock — authorization is the
+  roster and only the roster — and `valve.py` is shared, so the metric has nothing behind it.
+  Nineteen metrics, not twenty.
+- **`Sample/LastCycleResult` is new** — `normal` | `failed-to-seat` | `stroke-timeout`,
+  mirroring `cycle_result` on pattern 1's `event/sample-complete`. `aborted-interlock` was
+  dropped 2026-08-25 with the interlock itself.
+
+The rename earns pattern 2 something it did not have: **`Actuator/AirSupplyBar` is the physical
+cause of `Sample/LastCycleResult`.** A pneumatic actuator starved of air is a valve that will
+not seat, so the deadbanded analog and the fault string are now the same story rather than two
+unrelated metrics — and on the wire you can watch the DDATA that reported the sagging supply
+arrive minutes before the DDATA that reported the failure.
+
+**Built 2026-08-25.** The registry declares the nineteen above; `valve.py` carries the fault
+path. **Not re-measured against a gateway** — the sections below are the 2026-08-17 run.
+
 **Report by exception.** DDATA carries only metrics that moved past their deadband, and the
 deadband lives in the device rather than in the broker or the consumer — it is a property of the
-measurement. A line temperature that wanders 0.05 °C is not news, and saying so is the device's
-job. Compare pattern 1, which publishes the whole telemetry document every five seconds because
-it has no way to express the idea.
+measurement. An enclosure temperature that wanders 0.05 °C is not news, and saying so is the
+device's job. Compare pattern 1, which publishes the whole telemetry document every five seconds
+because it has no way to express the idea.
 
 **Aliases** are on by default, which is what Cirrus's own Transmission does: name *and* alias at
 birth, alias alone in DDATA. It is a real bandwidth saving and a real dependency — a consumer
@@ -127,11 +139,7 @@ exists. `VALVE_SPB_USE_ALIASES=false` puts the names back on the wire.
 This is **not** a command to the valve. It is the host asking the device to re-announce itself,
 and **Ignition's MQTT Engine sends it unprompted** whenever it sees DATA for a device it holds
 no birth certificate for. An edge node that ignores it can sit permanently unknown in the tag
-tree, so answering it is not politeness — it is what makes the integration self-heal. Plain MQTT
-has no equivalent; pattern 1's consumer, having missed nothing in particular, simply stays wrong.
-
-A DCMD write to any valve metric is refused and logged. **The valve still takes no commands**:
-authorization is decided at the sample port against the local roster, in both patterns.
+tree, so answering it is not politeness — it is what makes the integration self-heal.
 
 ---
 
@@ -172,44 +180,22 @@ version guard, needed by nobody at runtime.
 
 ## Infrastructure
 
-**MQTT user `sample-valve-02`**: publishes `spBv1.0/ICC26-Site1-UPSTREAM/#`, subscribes only its
-own NCMD and DCMD topics. Note how much tighter that is than pattern 1's account, and that
-nothing was given up to get it — the protocol already pins the topics, so the ACL can be exact.
+**MQTT user `sample-valve-02`**: `spBv1.0/#`, publish and subscribe, since 2026-08-25. It had
+been pinned to `spBv1.0/ICC26-Site1-UPSTREAM/#` publish and its own two NCMD/DCMD topics —
+tighter than pattern 1's account, and free, because the protocol pins the topics anyway.
+
+**The pin is what broke.** The Sparkplug identity is commissionable on 8086; a group changed to
+`smart_valves` put the NDEATH will outside the grant, and Chariot refuses the CONNECT rather
+than the publish — the will is registered before the session exists. The account was widened
+instead of the page constrained. The cost is recorded in
+[`compose/chariot/README.md`](../../compose/chariot/README.md): the ACL contrast with pattern 1
+is gone, and this account can now publish NCMD/DCMD to any edge node.
 
 Same two caveats as pattern 1: `MQTT_USERS` seeds Chariot on first run only, and
 `compose/postgres/initdb/` runs on an empty volume only.
 
 **MQTT Transmission is not involved.** This edge node owns its own session. Transmission remains
 the publisher for Ignition-originated events in patterns 3–7.
-
----
-
-## Deviations from the earlier docs
-
-| Master plan said | Now | Why |
-|---|---|---|
-| Programmable Device Simulator feeding a `Bioreactor` UDT (temp, pH, DO, agitation, level, OUR), published by MQTT Transmission | A standalone Sparkplug edge node container: the same sample valve as pattern 1 | Pattern 2 has to be the *same device* as pattern 1 for the comparison to mean anything, and it needs its own config page. A device commissioned through the SCADA system it publishes to cannot make that point |
-| Edge node `ICC26-Site1-UPSTREAM` / `UPSTREAM-EDGE-01`, device `BR-201` | Group `ICC26-Site1-UPSTREAM`, node `SAMPLE-VALVE-02`, device `SV-202` | The assembly is its own edge node. The group is unchanged |
-| Deadbands configured in the Transmission tag tree | Deadbands in the device's metric table | They are a property of the measurement |
-| Talk point: free birth/death vs pattern 1, *which claims no lifecycle at all* | Talk point: **spec-mandated vs hand-rolled** birth/death | Pattern 1 now owns its session and has a real will, so the comparison got better rather than weaker |
-
----
-
-## Known consequence — **resolved 2026-08-19**
-
-**Pattern 7 (scripted aggregation) lost its live process values when this pattern stopped being a
-bioreactor.** It had planned to join `plant.batch` (SQL), the LIMS `GET /results/latest`, and live
-`BR-201` tag values, and the tag values came from the Sparkplug bioreactor that no longer exists.
-Three options were recorded here: the valve's own metrics, a standalone process simulator, or
-dropping to two sources.
-
-None of them was taken. Pattern 7 was re-scoped entirely: a **vibration waveform on a downstream
-asset, requested by an asset management system and gated on a DCS steady-state signal**, joining
-none of the three original sources. So this consequence is closed, and closed by replacement rather
-than by repair. See [`00-master-plan.md`](00-master-plan.md) § 07.
-
-Nothing in this file needs to change as a result. Recorded because the open question stood here for
-two days and somebody will come looking for how it ended.
 
 ---
 
@@ -238,6 +224,14 @@ MQTT Engine/Edge Nodes/ICC26-Site1-UPSTREAM/SAMPLE-VALVE-02/
 all four analogs — `%`, `bar`, `degC`, `s` — and those strings exist nowhere except the DBIRTH
 property sets, so they are proof Engine parsed the metric properties, not just the names.
 
+> **Measured against the old nineteen-metric set.** This is what a 2026-08-17 gateway built from
+> the DBIRTH the code emitted *then*. The nineteen-metric set specified above renames the two `Line/*`
+> tags and adds `Sample/LastCycleResult`, which also takes the typed-null count from nine to
+> ten. Unit count is unchanged at four. **Re-measure when it lands** — and note that nothing
+> about the *mechanism* is expected to change, which is the point: adding a metric to a
+> Sparkplug device is a device-side edit, and the tag tree follows on its own. Pattern 1's
+> equivalent change needs its Engine subscription checked by a human.
+
 ### What this does not put on disk, and why that matters
 
 `ignition/config/resources/…/tag-definition/MQTT Engine/Edge Nodes/` holds a `tags.json` for
@@ -265,9 +259,7 @@ NDEATH  seq=None, bdSeq only
 
 NBIRTH carries `seq = 0`, NDEATH carries `bdSeq` and **no `seq` at all** — the two sequencing
 rules the spec is strictest about, both honoured. Nine metrics went out as **typed nulls**,
-including `Badge/LastScanTime` as a DateTime, so a consumer learns the metric exists and what
-type it is before anybody has badged in. Pattern 1 cannot express that: a JSON `null` there
-creates no tag at all.
+including `Badge/LastScanTime` as a DateTime.
 
 ### Rebirth, unprompted, in 6 milliseconds
 
@@ -282,8 +274,7 @@ it reports by exception, so nothing happens until it next has something to say �
               page    runtime.rebirths = 1
 ```
 
-No loop, no operator, no configuration. This is the self-healing property pattern 1 has no
-equivalent for — its consumer, having missed nothing in particular, simply stays wrong.
+No loop, no operator, no configuration.
 
 ### Death, both ways
 
@@ -308,22 +299,27 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 network. It also runs inside `docker build`.
 
 **1 — Birth.** On connect: NBIRTH on `…/NBIRTH/SAMPLE-VALVE-02` (seq 0, `bdSeq`), then DBIRTH on
-`…/DBIRTH/SAMPLE-VALVE-02/SV-202` with all nineteen metrics.
+`…/DBIRTH/SAMPLE-VALVE-02/SV-202` with every device metric — nineteen, ten of them typed nulls.
 
 **2 — The checkpoint that actually matters.** MQTT Engine builds the tag tree from DBIRTH by
-itself — nineteen tags, right datatypes, right units, nobody configured anything. That is both
+itself — every metric, right datatypes, right units, nobody configured anything. That is both
 the proof the hand-written encoder is correct **and** the half of pattern 2 that pattern 1 cannot
 do at all. If it does not appear, check the gateway log for a Rebirth request loop before
 suspecting the encoder.
 
 **3 — Report by exception.** Press a badge on <http://localhost:8086>. One DDATA carrying only
-the metrics that changed — not nineteen. Watch `seq` increment, and note that the line
+the metrics that changed — not the whole set. Watch `seq` increment, and note that the enclosure
 temperature is absent from most DDATA messages because of its deadband.
 
+**3a — Cause and effect on the wire** (once open item 4 lands). Sag the air supply from the
+page. `Actuator/AirSupplyBar` crosses its 0.05 deadband and one DDATA reports it. Then badge
+`B-1042`: the scan is granted, and the sample ends with `Sample/LastCycleResult` =
+`failed-to-seat` in a later DDATA. Two messages, minutes apart, and the first one predicted the
+second. Pattern 1 carries the same two facts in a five-second telemetry document and a
+`cycle_result` string, with nothing connecting them.
+
 **4 — Death, both ways.** `docker kill icc26-sim-valve-spb` → the broker publishes NDEATH with
-the matching `bdSeq`. `docker stop` → DDEATH and an explicit NDEATH, because a clean DISCONNECT
-makes the broker discard the will. Compare with pattern 1's retained JSON on a topic of its own
-choosing.
+the matching `bdSeq`. `docker stop` → DDEATH and an explicit NDEATH.
 
 **5 — Rebirth.** Publish `Node Control/Rebirth = true` on the NCMD topic (or restart MQTT Engine
 and watch it ask by itself) → NBIRTH and DBIRTH again, `seq` back to 0. The page counts how many
@@ -335,17 +331,19 @@ holding a device that no longer exists.
 
 **7 — Aliases.** Set `VALVE_SPB_USE_ALIASES=false`, restart, and watch the DDATA payloads grow.
 
+**8 — The identity check.** `diff services/sim-valve-mqtt/valve.py services/sim-valve-spb/valve.py`
+and the same for `webui.py`. Both must be empty. This is the pattern's real regression test.
+
 ---
 
 ## Open items
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Ignition-side: confirm Engine auto-builds the tag tree, and where in the tag provider it lands | **resolved 2026-08-17.** 19 typed tags under `MQTT Engine/Edge Nodes/ICC26-Site1-UPSTREAM/SAMPLE-VALVE-02/SV-202/`, zero configuration. See *Ingest, as built* |
-| 2 | Sparkplug B 3.0.0 vs the 2.2-era shape Cirrus 5.0.4 also accepts | **resolved 2026-08-17.** Cirrus 5.0.4 accepted the 3.0.0 payloads without complaint — no warnings, no rebirth loop |
-| 3 | Pattern 7's lost tag source | see *Known consequence* above |
-| 4 | `bdSeq` wraps at 256 (Tahu's convention); the spec only says "increment by one" | harmless, noted in the code |
-| 5 | Whether `STATE` / a primary-host application belongs in the demo at all | out of scope for v1 — no host application is claimed |
+| 1 | `bdSeq` wraps at 256 (Tahu's convention); the spec only says "increment by one" | harmless, noted in the code |
+| 2 | Whether `STATE` / a primary-host application belongs in the demo at all | out of scope for v1 — no host application is claimed |
+| 3 | Pattern 2 does not appear on a firehose coloured by `meta.mechanism` | **closed 2026-08-25 — moot.** Spec 08 is cut; there is no firehose. The observation stays as a talk line, see the talk track § *The one place this pattern doesn't fit* |
+| 4 | **The metric set above is ahead of the build** | **closed 2026-08-25 — landed** alongside pattern 1's open item 2. `Interlock/Ok` out, `Sample/LastCycleResult` in, both `Line/*` renamed; `valve.py` carries the fault path and is byte-for-byte identical across both containers. The measured sections above are **still the 2026-08-17 run** and need re-measuring |
 
 ---
 
@@ -355,4 +353,8 @@ holding a device that no longer exists.
 |---|---|
 | 2026-08-17 | **Pattern re-scoped**: bioreactor UDT on the Programmable Device Simulator → the same smart sample valve assembly as pattern 1, as a standalone Sparkplug edge node container. Document created. |
 | 2026-08-17 | `services/sim-valve-spb/` built: hand-written Tahu-verified protobuf encoder, 19 metrics with deadbands and units, NBIRTH/DBIRTH/DDATA/DDEATH/NDEATH, `bdSeq` re-armed per CONNECT, Rebirth honoured, config page on 8086 with the three controls disabled and cited. Compose service, ACL account, seed rows, `.env.example` block. |
-| 2026-08-17 | **Ran against a real gateway for the first time.** Engine built all 19 tags with units from DBIRTH with zero configuration; unprompted Rebirth observed and answered in 6 ms; both death paths measured. Encoder proven on the wire against Chariot. |
+| 2026-08-17 | **Ran against a real gateway for the first time.** Engine built all 19 tags with units from DBIRTH with zero configuration; unprompted Rebirth observed and answered in 6 ms; both death paths measured. Encoder proven on the wire against Chariot. Open items 1 and 2 (tag-tree auto-build, 3.0.0 vs 2.2 acceptance by Cirrus 5.0.4) both resolved here. |
+| 2026-08-19 | Pattern 7's lost tag source resolved elsewhere — it was re-scoped twice and no longer needs this pattern's metrics. Nothing in this file changed as a result. |
+| 2026-08-25 | **`Interlock/Ok` dropped** and `aborted-interlock` removed from `Sample/LastCycleResult`, following pattern 1's decision to cut the interlock; `valve.py` is shared, so this is one edit in two containers. Nineteen declared metrics. **Pattern 1 also cut its `state` topic entirely**, so `Valve/State`, `Valve/IsOpen` and `Valve/PositionPct` are now metrics pattern 2 publishes and pattern 1 has no equivalent for — see pattern 1's open item 7. |
+| 2026-08-23 | **Split.** Talk material and the pattern 1 vs 2 comparison table moved to [`../talk-tracks/02-sparkplug-b.md`](../talk-tracks/02-sparkplug-b.md); this file is the build spec. Deviations table and the resolved *Known consequence* section dropped. Recorded that this pattern's through-line contribution is narrative, not a field in pattern 7's document. |
+| 2026-08-23 | **Metric set follows pattern 1's payload redesign**, because `valve.py` is shared. `Line/PressureBar` → `Actuator/AirSupplyBar` and `Line/TemperatureC` → `Device/EnclosureTempC`: nothing flows through a shut sample valve, so the old pair measured a dead leg or restated BR-201's own instruments. `Sample/LastCycleResult` added, mirroring `cycle_result` — nineteen metrics become twenty and nine typed nulls become ten. Datatypes, units and deadbands all unchanged. The rename buys a causal pair the old metrics never had: the deadbanded air supply is the physical cause of the fault string, so one DDATA predicts another. Measured sections left at nineteen and marked for re-measurement; open item 4 tracks the build. |

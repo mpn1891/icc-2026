@@ -1,11 +1,15 @@
-"""Pattern 3 -- assemble an analyzer result envelope from Ignition tags.
+"""Pattern 3 -- assemble an analyzer result document from Ignition tags.
 
 Nova publishes off HistoricalSampleResults/SampleTime, a vendor field. The tag script on
 that DateTime hands this module the result-folder path; we read the historical UDT siblings
 already bound and return one JSON document. Nothing under ICC26Extensions is read.
 
-meta.correlation_id is sample_id. Pattern 4 carries it through the LIMS and back out under
-mechanism=webhook, so one sample is traceable across two colours on the firehose.
+What goes on the wire is the timestamp and the values the instrument produced -- no `seq`,
+no `source`, no `meta`. An analyzer result is the instrument's document, not the site's, and
+a consumer learns where it came from from the topic it arrived on. The sample id travels as
+`values.sample_id`, which is what the LIMS ingests and what pattern 4 re-stamps as
+`meta.correlation_id` on the way back out, so the sample is still traceable across two
+colours on the firehose without this pattern asserting a field it did not measure.
 
 Jython 2.7: no f-strings, no type hints, integer division is floor division.
 """
@@ -14,10 +18,6 @@ from java.text import SimpleDateFormat
 from java.util import Date, TimeZone
 
 LOGGER_NAME = "opcua_event"
-
-SOURCE_ID = "novaflex-01"
-SOURCE_TYPE = "analyzer"
-MECHANISM = "opcua-event"
 
 # Relative to the result folder the tag script passes in.
 _FIELDS = (
@@ -53,15 +53,11 @@ _FIELDS = (
     "modules_used/osmo",
 )
 
-_seq = [0]
 
-
-def _iso(date=None):
+def _iso(date):
     """ISO-8601 in UTC with milliseconds. SimpleDateFormat is not thread-safe, hence per-call."""
     formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
     formatter.setTimeZone(TimeZone.getTimeZone("UTC"))
-    if date is None:
-        date = Date()
     return formatter.format(date)
 
 
@@ -87,13 +83,8 @@ def _value(qv):
     return value
 
 
-def _next_seq():
-    _seq[0] += 1
-    return _seq[0]
-
-
 def build_novaflex_result(result_folder):
-    """Read HistoricalSampleResults tags under result_folder and return the envelope JSON.
+    """Read HistoricalSampleResults tags under result_folder and return the result JSON.
 
     result_folder is the Ignition path of the UDT result folder, e.g.
     [default]icc26/site1/qc/analyzers/novaflex-01/result -- the tag script strips
@@ -114,15 +105,8 @@ def build_novaflex_result(result_folder):
         logger.warn("novaflex result skipped: SampleTime is not Good")
         return None
 
-    envelope = {
+    document = {
         "ts": sample_time,
-        "seq": _next_seq(),
-        "source": {"id": SOURCE_ID, "type": SOURCE_TYPE},
-        "meta": {
-            "mechanism": MECHANISM,
-            "ingest_ts": _iso(),
-            "correlation_id": _value(by_name["sample_id"]),
-        },
         "values": {
             "sample_id": _value(by_name["sample_id"]),
             "batch_id": _value(by_name["batch_id"]),
@@ -165,4 +149,4 @@ def build_novaflex_result(result_folder):
             },
         },
     }
-    return system.util.jsonEncode(envelope)
+    return system.util.jsonEncode(document)

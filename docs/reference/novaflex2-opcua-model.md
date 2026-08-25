@@ -348,13 +348,18 @@ them separate from their uncorrected twins.
 
 ## 10. MQTT projection (ICC-2026 pattern 03)
 
-Topic `icc26/site1/qc/analyzers/novaflex-01/result`, envelope per `docs/00-architecture.md`:
+Topic `icc26/site1/qc/analyzers/flex-01/result`, envelope per `docs/00-architecture.md`.
+**The device id is `flex-01`, renamed from `novaflex-01` on 2026-08-25** — this document keeps
+`novaflex` in its own name and in the simulator's, because those name the manual and the service
+rather than the instrument on the wire.
+
+
 
 ```json
 {
   "ts": "2026-08-13T18:46:17.700Z",
   "seq": 412,
-  "source": { "id": "novaflex-01", "type": "analyzer" },
+  "source": { "id": "flex-01", "type": "analyzer" },
   "meta": { "mechanism": "opcua-event", "ingest_ts": "2026-08-13T18:46:17.760Z" },
   "values": {
     "sample_id": "S-00042", "batch_id": "BR-2026-014", "vessel_id": "BRX-2000-A",
@@ -377,7 +382,7 @@ Rules for the projection:
   is a vendor field, not `ICC26Extensions/SampleCompleteCounter`. The simulator writes
   `SampleTime` last on the historical tree so the trigger cannot fire before the rest of the
   result is settled. QC does not touch this tree and is a separate event.
-- Read the **historical UDT tags** already bound under `novaflex-01/result/…`. Do not read
+- Read the **historical UDT tags** already bound under `flex-01/result/…`. Do not read
   `ICC26Extensions/ResultJson` — that node is an extension, and the publish path stays on
   vendor tags. Bad quality maps to JSON `null`, never `0`.
 - `values` carries the result, **not `StartTags->Ranges`**. That is 52 of the 141 leaves,

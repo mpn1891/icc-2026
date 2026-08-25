@@ -27,109 +27,6 @@
     "typeId": null,
     "tags": [
       {
-        "dataType": "Int8",
-        "name": "sample_complete_counter",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}SampleCompleteCounter"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc",
-        "documentation": "Demo extension, not the MQTT trigger. The real FLEX2 OPC server has no completion counter at all - SampleResults just changes underneath you. Pattern 3 publishes off result/sample_time (vendor HistoricalSampleResults/SampleTime). This node still increments last in ICC26Extensions so the gap is visible in the address space. A QC run and a failed analysis both leave this untouched. UInt32 on the wire, so Int8 here."
-      },
-      {
-        "dataType": "Int8",
-        "name": "qc_complete_counter",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}QcCompleteCounter"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc",
-        "documentation": "Increments on an onboard QC analysis, which never touches sample_complete_counter. A client watching only sample results silently misses every control run - which is the manual\u0027s own warning at the top of section 9."
-      },
-      {
-        "dataType": "Int4",
-        "name": "state",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}State"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc",
-        "documentation": "0 Idle, 1 Running, 2 Completed, 3 Aborted, 4 Error, 5 Calibrating, 6 QualityControl, 7 Maintenance. Also an extension: the vendor publishes no state tag, only ActiveTasks as free text."
-      },
-      {
-        "dataType": "String",
-        "name": "result_json",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}ResultJson"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc",
-        "documentation": "The whole sample result as one JSON document, written in the same transaction as the leaves below. Read this instead of 39 tags when assembling the MQTT payload: it cannot tear across two samples, and it is one OPC read rather than 39."
-      },
-      {
-        "dataType": "String",
-        "name": "qc_result_json",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}QcResultJson"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc"
-      },
-      {
-        "dataType": "String",
-        "name": "last_error",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}LastError"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc"
-      },
-      {
-        "dataType": "String",
-        "name": "uptime",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}CoreHeartbeat{node_sep}UpTime"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc",
-        "documentation": "Vendor liveness tag. Section 6 of the FLEX2 OPC manual tells you to subscribe to this and to the analyzer clock to confirm the server is updating at all - it is the vendor\u0027s own acceptance test, so it is worth having as a tag."
-      },
-      {
         "dataType": "String",
         "name": "analyzer_id",
         "opcItemPath": {
@@ -144,73 +41,15 @@
         "valueSource": "opc"
       },
       {
-        "dataType": "String",
-        "name": "software_version",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}SoftwareVersion{node_sep}SoftwareVersion"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc"
-      },
-      {
         "name": "command",
         "tagType": "Folder",
         "tags": [
-          {
-            "dataType": "Boolean",
-            "name": "esm_schedule_analysis",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMScheduleAnalysis{node_sep}ESMScheduleAnalysis"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc",
-            "documentation": "Write true to run an analysis. This is the VENDOR\u0027s own trigger, not something added for the demo - the FLEX2 exposes no OPC UA methods at all, only writable bits. Set the sample metadata tags below FIRST: nothing here is atomic and the instrument reads them at the instant the bit goes true. There is also no refusal path - write it while an analysis is running and all that happens is nothing."
-          },
-          {
-            "dataType": "String",
-            "name": "sample_id",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMScheduleAnalysis{node_sep}SampleInformation{node_sep}SampleID"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc",
-            "documentation": "Applied to the NEXT analysis. Read the as-run value back from result/sample_id, never from here - this one is just the request."
-          },
           {
             "dataType": "String",
             "name": "batch_id",
             "opcItemPath": {
               "bindType": "parameter",
               "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMScheduleAnalysis{node_sep}SampleInformation{node_sep}BatchID"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "String",
-            "name": "vessel_id",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMScheduleAnalysis{node_sep}SampleInformation{node_sep}VesselID"
             },
             "opcServer": {
               "bindType": "parameter",
@@ -234,19 +73,64 @@
             "valueSource": "opc"
           },
           {
-            "dataType": "Float8",
-            "name": "vessel_temperature",
+            "dataType": "Boolean",
+            "documentation": "Write true to run an analysis. This is the VENDOR\u0027s own trigger, not something added for the demo - the FLEX2 exposes no OPC UA methods at all, only writable bits. Set the sample metadata tags below FIRST: nothing here is atomic and the instrument reads them at the instant the bit goes true. There is also no refusal path - write it while an analysis is running and all that happens is nothing.",
+            "name": "esm_schedule_analysis",
             "opcItemPath": {
               "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMScheduleAnalysis{node_sep}SampleInformation{node_sep}VesselTemperature"
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMScheduleAnalysis{node_sep}ESMScheduleAnalysis"
             },
             "opcServer": {
               "bindType": "parameter",
               "binding": "{opc_server}"
             },
             "tagType": "AtomicTag",
-            "valueSource": "opc",
-            "documentation": "Degrees C, vendor default 37. The three temperature-corrected calculated results are identities at 37 - change this and watch them separate from their raw twins."
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "Boolean",
+            "documentation": "Aborts a run in progress. State goes to 3 (Aborted) and the counter does not move.",
+            "name": "esm_terminate",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMTerminate{node_sep}ESMTerminate"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "Boolean",
+            "documentation": "Runs an onboard pH/Gas Level 1 control. Increments qc_complete_counter only.",
+            "name": "gas_qc_level1",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}GasQcLevel1{node_sep}GasQcLevel1"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "String",
+            "documentation": "Applied to the NEXT analysis. Read the as-run value back from result/sample_id, never from here - this one is just the request.",
+            "name": "sample_id",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMScheduleAnalysis{node_sep}SampleInformation{node_sep}SampleID"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
           },
           {
             "dataType": "String",
@@ -263,47 +147,11 @@
             "valueSource": "opc"
           },
           {
-            "dataType": "Boolean",
-            "name": "esm_terminate",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMTerminate{node_sep}ESMTerminate"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc",
-            "documentation": "Aborts a run in progress. State goes to 3 (Aborted) and the counter does not move."
-          },
-          {
-            "dataType": "Boolean",
-            "name": "gas_qc_level1",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}GasQcLevel1{node_sep}GasQcLevel1"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc",
-            "documentation": "Runs an onboard pH/Gas Level 1 control. Increments qc_complete_counter only."
-          }
-        ]
-      },
-      {
-        "name": "result",
-        "tagType": "Folder",
-        "tags": [
-          {
             "dataType": "String",
-            "name": "sample_id",
+            "name": "vessel_id",
             "opcItemPath": {
               "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}SampleInformation{node_sep}SampleID"
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMScheduleAnalysis{node_sep}SampleInformation{node_sep}VesselID"
             },
             "opcServer": {
               "bindType": "parameter",
@@ -312,6 +160,70 @@
             "tagType": "AtomicTag",
             "valueSource": "opc"
           },
+          {
+            "dataType": "Float8",
+            "documentation": "Degrees C, vendor default 37. The three temperature-corrected calculated results are identities at 37 - change this and watch them separate from their raw twins.",
+            "name": "vessel_temperature",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMScheduleAnalysis{node_sep}SampleInformation{node_sep}VesselTemperature"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          }
+        ]
+      },
+      {
+        "dataType": "String",
+        "name": "last_error",
+        "opcItemPath": {
+          "bindType": "parameter",
+          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}LastError"
+        },
+        "opcServer": {
+          "bindType": "parameter",
+          "binding": "{opc_server}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "opc"
+      },
+      {
+        "dataType": "Int8",
+        "documentation": "Increments on an onboard QC analysis, which never touches sample_complete_counter. A client watching only sample results silently misses every control run - which is the manual\u0027s own warning at the top of section 9.",
+        "name": "qc_complete_counter",
+        "opcItemPath": {
+          "bindType": "parameter",
+          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}QcCompleteCounter"
+        },
+        "opcServer": {
+          "bindType": "parameter",
+          "binding": "{opc_server}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "opc"
+      },
+      {
+        "dataType": "String",
+        "name": "qc_result_json",
+        "opcItemPath": {
+          "bindType": "parameter",
+          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}QcResultJson"
+        },
+        "opcServer": {
+          "bindType": "parameter",
+          "binding": "{opc_server}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "opc"
+      },
+      {
+        "name": "result",
+        "tagType": "Folder",
+        "tags": [
           {
             "dataType": "String",
             "name": "batch_id",
@@ -327,432 +239,27 @@
             "valueSource": "opc"
           },
           {
-            "dataType": "String",
-            "name": "vessel_id",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}SampleInformation{node_sep}VesselID"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "String",
-            "name": "cell_type",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}SampleInformation{node_sep}CellType"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "String",
-            "name": "sample_source",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}SampleSource"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc",
-            "documentation": "Which sampling path produced this - Manual, ESM, OLS, EXT_OLS."
-          },
-          {
-            "dataType": "String",
-            "name": "operator",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}Operator"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "String",
-            "name": "sample_type",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}SampleType"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "DateTime",
-            "documentation": "THE trigger for the MQTT publish. Vendor HistoricalSampleResults/SampleTime, written last by the simulator after every other historical leaf. A valueChanged script hands the result folder to event stream 03_opcua/novaflex-result, which reads the sibling historical tags and publishes via Transmission. Do not point this at ICC26Extensions.",
-            "eventScripts": [
-              {
-                "eventid": "valueChanged",
-                "script": "\t# Pattern 3: one MQTT publish per HistoricalSampleResults SampleTime change.\n\t# Vendor field, not ICC26Extensions. The event stream reads the historical siblings.\n\tif initialChange:\n\t\treturn\n\tif currentValue is None or currentValue.value is None:\n\t\treturn\n\ttry:\n\t\tif not currentValue.quality.isGood():\n\t\t\treturn\n\texcept:\n\t\treturn\n\tbase = tagPath.rsplit(\"/\", 1)[0]\n\tsystem.eventstream.publishEvent(\"icc-2026\", \"03_opcua/novaflex-result\", str(base), False)\n"
-              }
-            ],
-            "name": "sample_time",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}SampleTime"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "DateTime",
-            "name": "modified_time",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}ModifiedTime"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc",
-            "documentation": "Not sample_time. Runs later if CDV images are reanalyzed or the result is edited after the fact - so a result CAN change after you have already read it. With no vendor completion counter that is a second reason polling cannot be trusted."
-          },
-          {
-            "dataType": "String",
-            "name": "errors",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Errors"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc",
-            "documentation": "Free text, empty when clean. Per-analyte failures also show up as Bad quality on the individual result tag below - the quality IS the error signal, which is the argument for OPC UA over a CSV that can only write a number."
-          },
-          {
-            "name": "gas",
-            "tagType": "Folder",
-            "tags": [
-              {
-                "dataType": "Float8",
-                "name": "ph",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Gas{node_sep}pH{node_sep}Result"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "Unitless."
-              },
-              {
-                "dataType": "Float8",
-                "name": "pco2",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Gas{node_sep}pCO2{node_sep}Result"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "mmHg."
-              },
-              {
-                "dataType": "Float8",
-                "name": "po2",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Gas{node_sep}pO2{node_sep}Result"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "mmHg."
-              }
-            ]
-          },
-          {
-            "name": "chem",
-            "tagType": "Folder",
-            "tags": [
-              {
-                "dataType": "Float8",
-                "name": "na",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}Na{node_sep}Result"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "mmol/L."
-              },
-              {
-                "dataType": "Float8",
-                "name": "k",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}K{node_sep}Result"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "mmol/L."
-              },
-              {
-                "dataType": "Float8",
-                "name": "ca",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}Ca{node_sep}Result"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "mmol/L."
-              },
-              {
-                "dataType": "Float8",
-                "name": "nh4",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}NH4{node_sep}Result"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "Ammonium, mmol/L."
-              },
-              {
-                "dataType": "Float8",
-                "name": "gln",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}Gln{node_sep}Result"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "Glutamine, mmol/L."
-              },
-              {
-                "dataType": "Float8",
-                "name": "glu",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}Glu{node_sep}Result"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "Glutamate, mmol/L."
-              },
-              {
-                "dataType": "Float8",
-                "name": "gluc",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}Gluc{node_sep}Result"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "Glucose, g/L - mass, not molar."
-              },
-              {
-                "dataType": "Float8",
-                "name": "lac",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}Lac{node_sep}Result"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "Lactate, g/L - mass, not molar."
-              }
-            ]
-          },
-          {
-            "dataType": "Float8",
-            "name": "osmo",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Osmo{node_sep}Result"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc",
-            "documentation": "mOsm/kg. Bad_NoData whenever the osmometer is unfitted, which is the demo default. Bad is the correct answer here, not 0 - and modules_used/osmo says False, Good, beside it. See docs/reference/novaflex2-opcua-model.md section 8."
-          },
-          {
-            "name": "cell_density",
-            "tagType": "Folder",
-            "tags": [
-              {
-                "dataType": "Float8",
-                "name": "total_density",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}TotalDensity"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "10^6 cells/mL."
-              },
-              {
-                "dataType": "Float8",
-                "name": "viable_density",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}ViableDensity"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "10^6 cells/mL."
-              },
-              {
-                "dataType": "Float8",
-                "name": "viability_percent",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}Viability"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Float8",
-                "name": "avg_live_diameter_um",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}AvgLiveDiameter"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Int4",
-                "name": "total_cell_count",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}TotalCellCount"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Int4",
-                "name": "total_live_count",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}TotalLiveCount"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Int4",
-                "name": "good_image_count",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}GoodImageCount"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "How many images the density result was actually computed from - the closest thing the FLEX2 publishes to a confidence figure."
-              }
-            ]
-          },
-          {
             "name": "calculated",
             "tagType": "Folder",
             "tags": [
               {
                 "dataType": "Float8",
+                "documentation": "The vendor manual names and types this but never defines it. Treat with care.",
+                "name": "co2_saturation",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CalculatedResults{node_sep}CO2Saturation"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Bicarbonate, mmol/L.",
                 "name": "hco3",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -763,8 +270,7 @@
                   "binding": "{opc_server}"
                 },
                 "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "Bicarbonate, mmol/L."
+                "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
@@ -782,40 +288,25 @@
               },
               {
                 "dataType": "Float8",
-                "name": "co2_saturation",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CalculatedResults{node_sep}CO2Saturation"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "The vendor manual names and types this but never defines it. Treat with care."
-              },
-              {
-                "dataType": "Float8",
-                "name": "ph_corrected",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CalculatedResults{node_sep}pHCorrected"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "Corrected to command/vessel_temperature. Equals ph at the default 37 C."
-              },
-              {
-                "dataType": "Float8",
                 "name": "pco2_corrected",
                 "opcItemPath": {
                   "bindType": "parameter",
                   "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CalculatedResults{node_sep}pCO2Corrected"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Corrected to command/vessel_temperature. Equals ph at the default 37 C.",
+                "name": "ph_corrected",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CalculatedResults{node_sep}pHCorrected"
                 },
                 "opcServer": {
                   "bindType": "parameter",
@@ -839,6 +330,334 @@
                 "valueSource": "opc"
               }
             ]
+          },
+          {
+            "name": "cell_density",
+            "tagType": "Folder",
+            "tags": [
+              {
+                "dataType": "Float8",
+                "name": "avg_live_diameter_um",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}AvgLiveDiameter"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Int4",
+                "documentation": "How many images the density result was actually computed from - the closest thing the FLEX2 publishes to a confidence figure.",
+                "name": "good_image_count",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}GoodImageCount"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Int4",
+                "name": "total_cell_count",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}TotalCellCount"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "10^6 cells/mL.",
+                "name": "total_density",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}TotalDensity"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Int4",
+                "name": "total_live_count",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}TotalLiveCount"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "name": "viability_percent",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}Viability"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "10^6 cells/mL.",
+                "name": "viable_density",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}CellDensity{node_sep}ViableDensity"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              }
+            ]
+          },
+          {
+            "dataType": "String",
+            "name": "cell_type",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}SampleInformation{node_sep}CellType"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "name": "chem",
+            "tagType": "Folder",
+            "tags": [
+              {
+                "dataType": "Float8",
+                "documentation": "mmol/L.",
+                "name": "ca",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}Ca{node_sep}Result"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Glutamine, mmol/L.",
+                "name": "gln",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}Gln{node_sep}Result"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Glutamate, mmol/L.",
+                "name": "glu",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}Glu{node_sep}Result"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Glucose, g/L - mass, not molar.",
+                "name": "gluc",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}Gluc{node_sep}Result"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "mmol/L.",
+                "name": "k",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}K{node_sep}Result"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Lactate, g/L - mass, not molar.",
+                "name": "lac",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}Lac{node_sep}Result"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "mmol/L.",
+                "name": "na",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}Na{node_sep}Result"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Ammonium, mmol/L.",
+                "name": "nh4",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Chem{node_sep}NH4{node_sep}Result"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              }
+            ]
+          },
+          {
+            "dataType": "String",
+            "documentation": "Free text, empty when clean. Per-analyte failures also show up as Bad quality on the individual result tag below - the quality IS the error signal, which is the argument for OPC UA over a CSV that can only write a number.",
+            "name": "errors",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Errors"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "name": "gas",
+            "tagType": "Folder",
+            "tags": [
+              {
+                "dataType": "Float8",
+                "documentation": "mmHg.",
+                "name": "pco2",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Gas{node_sep}pCO2{node_sep}Result"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Unitless.",
+                "name": "ph",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Gas{node_sep}pH{node_sep}Result"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "mmHg.",
+                "name": "po2",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Gas{node_sep}pO2{node_sep}Result"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              }
+            ]
+          },
+          {
+            "dataType": "DateTime",
+            "documentation": "Not sample_time. Runs later if CDV images are reanalyzed or the result is edited after the fact - so a result CAN change after you have already read it. With no vendor completion counter that is a second reason polling cannot be trusted.",
+            "name": "modified_time",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}ModifiedTime"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
           },
           {
             "name": "modules_used",
@@ -888,6 +707,7 @@
               },
               {
                 "dataType": "Boolean",
+                "documentation": "The vendor\u0027s own absent-vs-zero mechanism, and the reason this folder is worth publishing: False here is Good and true - \u0027the osmometer did not take part in this analysis\u0027 - while result/osmo alongside it is Bad_NoData. Without this a consumer cannot tell \u0027not measured\u0027 from \u0027lost in transit\u0027.",
                 "name": "osmo",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -898,12 +718,262 @@
                   "binding": "{opc_server}"
                 },
                 "tagType": "AtomicTag",
-                "valueSource": "opc",
-                "documentation": "The vendor\u0027s own absent-vs-zero mechanism, and the reason this folder is worth publishing: False here is Good and true - \u0027the osmometer did not take part in this analysis\u0027 - while result/osmo alongside it is Bad_NoData. Without this a consumer cannot tell \u0027not measured\u0027 from \u0027lost in transit\u0027."
+                "valueSource": "opc"
               }
             ]
+          },
+          {
+            "dataType": "String",
+            "name": "operator",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}Operator"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "Float8",
+            "documentation": "mOsm/kg. Bad_NoData whenever the osmometer is unfitted, which is the demo default. Bad is the correct answer here, not 0 - and modules_used/osmo says False, Good, beside it. See docs/reference/novaflex2-opcua-model.md section 8.",
+            "name": "osmo",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}Osmo{node_sep}Result"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "String",
+            "name": "sample_id",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}SampleInformation{node_sep}SampleID"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "String",
+            "documentation": "Which sampling path produced this - Manual, ESM, OLS, EXT_OLS.",
+            "name": "sample_source",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}SampleSource"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "DateTime",
+            "documentation": "THE trigger for the MQTT publish. Vendor HistoricalSampleResults/SampleTime, written last by the simulator after every other historical leaf. A valueChanged script hands the result folder to event stream 03_opcua/novaflex-result, which reads the sibling historical tags and publishes via Transmission. Do not point this at ICC26Extensions.",
+            "eventScripts": [
+              {
+                "eventid": "valueChanged",
+                "script": "\t# Pattern 3: one MQTT publish per HistoricalSampleResults SampleTime change.\n\t# Vendor field, not ICC26Extensions. The event stream reads the historical siblings.\n\tif initialChange:\n\t\treturn\n\tif currentValue is None or currentValue.value is None:\n\t\treturn\n\ttry:\n\t\tif not currentValue.quality.isGood():\n\t\t\treturn\n\texcept:\n\t\treturn\n\tbase \u003d tagPath.rsplit(\"/\", 1)[0]\n\tsystem.eventstream.publishEvent(\"icc-2026\", \"03_opcua/novaflex-result\", str(base), False)\n"
+              }
+            ],
+            "name": "sample_time",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}SampleTime"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "String",
+            "name": "sample_type",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}SampleType"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "String",
+            "name": "vessel_id",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}SampleInformation{node_sep}VesselID"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
           }
         ]
+      },
+      {
+        "dataType": "String",
+        "documentation": "The whole sample result as one JSON document, written in the same transaction as the leaves below. Read this instead of 39 tags when assembling the MQTT payload: it cannot tear across two samples, and it is one OPC read rather than 39.",
+        "name": "result_json",
+        "opcItemPath": {
+          "bindType": "parameter",
+          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}ResultJson"
+        },
+        "opcServer": {
+          "bindType": "parameter",
+          "binding": "{opc_server}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "opc"
+      },
+      {
+        "dataType": "Int8",
+        "documentation": "Demo extension, not the MQTT trigger. The real FLEX2 OPC server has no completion counter at all - SampleResults just changes underneath you. Pattern 3 publishes off result/sample_time (vendor HistoricalSampleResults/SampleTime). This node still increments last in ICC26Extensions so the gap is visible in the address space. A QC run and a failed analysis both leave this untouched. UInt32 on the wire, so Int8 here.",
+        "name": "sample_complete_counter",
+        "opcItemPath": {
+          "bindType": "parameter",
+          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}SampleCompleteCounter"
+        },
+        "opcServer": {
+          "bindType": "parameter",
+          "binding": "{opc_server}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "opc"
+      },
+      {
+        "dataType": "String",
+        "name": "software_version",
+        "opcItemPath": {
+          "bindType": "parameter",
+          "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}SoftwareVersion{node_sep}SoftwareVersion"
+        },
+        "opcServer": {
+          "bindType": "parameter",
+          "binding": "{opc_server}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "opc"
+      },
+      {
+        "dataType": "Int4",
+        "documentation": "0 Idle, 1 Running, 2 Completed, 3 Aborted, 4 Error, 5 Calibrating, 6 QualityControl, 7 Maintenance. Also an extension: the vendor publishes no state tag, only ActiveTasks as free text.",
+        "name": "state",
+        "opcItemPath": {
+          "bindType": "parameter",
+          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}State"
+        },
+        "opcServer": {
+          "bindType": "parameter",
+          "binding": "{opc_server}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "opc"
+      },
+      {
+        "dataType": "String",
+        "documentation": "Vendor liveness tag. Section 6 of the FLEX2 OPC manual tells you to subscribe to this and to the analyzer clock to confirm the server is updating at all - it is the vendor\u0027s own acceptance test, so it is worth having as a tag.",
+        "name": "uptime",
+        "opcItemPath": {
+          "bindType": "parameter",
+          "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}CoreHeartbeat{node_sep}UpTime"
+        },
+        "opcServer": {
+          "bindType": "parameter",
+          "binding": "{opc_server}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "opc"
+      }
+    ]
+  },
+  {
+    "name": "sample_valve",
+    "parameters": {
+      "cycle_result_path": {
+        "dataType": "String",
+        "value": null
+      },
+      "sample_id_path": {
+        "dataType": "String",
+        "value": null
+      },
+      "sample_time_path": {
+        "dataType": "String",
+        "value": null
+      }
+    },
+    "tagType": "UdtType",
+    "typeId": null,
+    "tags": [
+      {
+        "dataType": "String",
+        "documentation": "The identifier minted by the sample valve and carried unchanged into downstream analysis.",
+        "name": "last_sample_id",
+        "sourceTagPath": {
+          "bindType": "parameter",
+          "binding": "{sample_id_path}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "reference"
+      },
+      {
+        "dataType": "String",
+        "documentation": "The transport-native completion time: String for plain MQTT, DateTime for Sparkplug B.",
+        "name": "last_sample_time_raw",
+        "sourceTagPath": {
+          "bindType": "parameter",
+          "binding": "{sample_time_path}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "reference"
+      },
+      {
+        "dataType": "DateTime",
+        "documentation": "Completion time normalized to DateTime. Plain MQTT sends ISO-8601 text; Sparkplug B sends a typed DateTime.",
+        "expression": "if(\n\tisNull({[.]last_sample_time_raw}),\n\tnull,\n\tif(\n\t\ttypeOf({[.]last_sample_time_raw}) \u003d \"String\",\n\t\ttoDate(\n\t\t\tsubstring({[.]last_sample_time_raw}, 0, 4) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 5, 7) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 8, 10) + \".\" +\n\t\t\tsubstring({[.]last_sample_time_raw}, 11, 13) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 14, 16) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 17, 19) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 20, 23) + \"+0000\"\n\t\t),\n\t\ttoDate({[.]last_sample_time_raw})\n\t)\n)",
+        "name": "last_sample_time",
+        "tagType": "AtomicTag",
+        "valueSource": "expr"
+      },
+      {
+        "dataType": "String",
+        "documentation": "The valve cycle outcome: normal, failed-to-seat, or stroke-timeout.",
+        "name": "last_cycle_result",
+        "sourceTagPath": {
+          "bindType": "parameter",
+          "binding": "{cycle_result_path}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "reference"
+      },
+      {
+        "dataType": "Int8",
+        "documentation": "Seconds since the last completed sample. The analysis trigger rejects stale retained events.",
+        "expression": "if(\n\tisNull({[.]last_sample_time}),\n\tnull,\n\tsecondsBetween({[.]last_sample_time}, now())\n)",
+        "name": "last_sample_age_s",
+        "tagType": "AtomicTag",
+        "valueSource": "expr"
       }
     ]
   },
@@ -913,20 +983,14 @@
     "typeId": null,
     "tags": [
       {
-        "name": "asset_data",
-        "tagType": "Folder",
-        "tags": [
-          {
-            "name": "agitator_vibration",
-            "tagType": "UdtInstance",
-            "typeId": "vibration_sensor"
-          }
-        ]
-      },
-      {
         "name": "process_data",
         "tagType": "Folder",
         "tags": [
+          {
+            "name": "sample_valve",
+            "tagType": "UdtInstance",
+            "typeId": "sample_valve"
+          },
           {
             "name": "vessel_do",
             "tagType": "AtomicTag",
@@ -970,6 +1034,42 @@
     "typeId": null,
     "tags": [
       {
+        "name": "command",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "dataType": "String",
+            "documentation": "Name applied to the NEXT triggered count. Left empty, the instrument auto-names it SAMPLE-nnnn. Read back the as-run name from result/sample_name, not from here - this one is just the request.",
+            "name": "sample_name",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/Command/SampleName"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "Boolean",
+            "documentation": "Write true to run a new analysis. The instrument clears it back to false as soon as it accepts the request, so this is a one-shot: a client that never resets the bit still gets exactly one count per write. Ignored (and logged) if a count is already running - check state first. Set sample_name before writing this, not after.",
+            "name": "start_request",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/Command/StartRequest"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          }
+        ]
+      },
+      {
         "dataType": "Int8",
         "documentation": "THE trigger. Monotonic, written last by the instrument after every result field and after state - so when this changes, the whole result branch is settled and consistent. Subscribe to this one tag; do not drive anything off the individual result values. A failed count does NOT increment it. UInt32 on the wire, so Int8 here: it does not fit an Int4.",
         "name": "count_completed_counter",
@@ -985,33 +1085,82 @@
         "valueSource": "opc"
       },
       {
-        "dataType": "Int4",
-        "documentation": "0 Idle, 1 Running, 2 Completed, 3 Aborted, 4 Error. Error and Aborted leave count_completed_counter untouched, which is the point of the counter.",
-        "name": "state",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/State"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc"
-      },
-      {
-        "dataType": "Int8",
-        "name": "session_id",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/SessionId"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc"
+        "name": "optics",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "dataType": "Float8",
+            "documentation": "Live setting, writable. Write it, run a count, and the result\u0027s frozen Settings snapshot shows the new value - which is why a result carries its settings at all.",
+            "name": "brightfield_light_intensity",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Brightfield/LightIntensity"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "Boolean",
+            "name": "cube1_installed",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Cube1/Installed"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "Float8",
+            "name": "cube1_light_intensity",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Cube1/LightIntensity"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "String",
+            "name": "cube1_name",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Cube1/CubeName"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "Boolean",
+            "documentation": "False by default. Set it true and the cube2 result tags come alive on the next count - the cheapest way to show absent-vs-zero live.",
+            "name": "cube2_installed",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Cube2/Installed"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          }
+        ]
       },
       {
         "dataType": "String",
@@ -1029,88 +1178,9 @@
         "valueSource": "opc"
       },
       {
-        "dataType": "String",
-        "documentation": "The whole result as one JSON document, written in the same transaction as the leaves below. Read this instead of 33 tags when assembling the MQTT payload: it cannot tear across two counts, and it is one OPC read rather than 33.",
-        "name": "result_json",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/ResultJson"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc"
-      },
-      {
-        "name": "command",
-        "tagType": "Folder",
-        "tags": [
-          {
-            "dataType": "Boolean",
-            "documentation": "Write true to run a new analysis. The instrument clears it back to false as soon as it accepts the request, so this is a one-shot: a client that never resets the bit still gets exactly one count per write. Ignored (and logged) if a count is already running - check state first. Set sample_name before writing this, not after.",
-            "name": "start_request",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/Command/StartRequest"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "String",
-            "documentation": "Name applied to the NEXT triggered count. Left empty, the instrument auto-names it SAMPLE-nnnn. Read back the as-run name from result/sample_name, not from here - this one is just the request.",
-            "name": "sample_name",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/Command/SampleName"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          }
-        ]
-      },
-      {
         "name": "result",
         "tagType": "Folder",
         "tags": [
-          {
-            "dataType": "Int8",
-            "name": "count_id",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/CountId"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "String",
-            "name": "sample_name",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/SampleName"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
           {
             "dataType": "DateTime",
             "documentation": "Acquisition instant, not write time. Every leaf of a result carries this same SourceTimestamp - that is how you prove a set of reads is one count and not a mixture of two.",
@@ -1118,21 +1188,6 @@
             "opcItemPath": {
               "bindType": "parameter",
               "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/AcquisitionTime"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "Int4",
-            "documentation": "0 BrightfieldBased, 1 FluorescenceBased. On a 0, every fluorescence tag below goes Bad_NoData - the cube was fitted but not used.",
-            "name": "count_mode",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/CountMode"
             },
             "opcServer": {
               "bindType": "parameter",
@@ -1157,121 +1212,15 @@
             "valueSource": "opc"
           },
           {
-            "name": "sample",
-            "tagType": "Folder",
-            "tags": [
-              {
-                "dataType": "Int4",
-                "documentation": "0 Brightfield, 1 Fluorescence.",
-                "name": "type",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/Type"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Boolean",
-                "name": "stain_correction_applied",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/StainCorrectionApplied"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Boolean",
-                "name": "pre_dilution_correction_applied",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/PreDilutionCorrectionApplied"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Float8",
-                "documentation": "cells/mL. Instrument range is 1e4 to 1e7 (Appendix B); outside it the value is out of spec, not misscaled.",
-                "name": "total_concentration",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/TotalConcentration"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Int8",
-                "name": "total_cells_counted",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/TotalCellsCounted"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              }
-            ]
-          },
-          {
             "name": "brightfield",
             "tagType": "Folder",
             "tags": [
               {
                 "dataType": "Float8",
-                "name": "live_concentration",
+                "name": "dead_average_size_um",
                 "opcItemPath": {
                   "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/LiveConcentration"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Int8",
-                "name": "live_cells_counted",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/LiveCellsCounted"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Float8",
-                "name": "dead_concentration",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/DeadConcentration"
+                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/DeadAverageSize"
                 },
                 "opcServer": {
                   "bindType": "parameter",
@@ -1296,11 +1245,10 @@
               },
               {
                 "dataType": "Float8",
-                "documentation": "Trypan-blue viability as the instrument computed it. Derivable from the live/dead counts, but publish this one - a QC record that disagrees with the instrument printout is worse than no record.",
-                "name": "viability_percent",
+                "name": "dead_concentration",
                 "opcItemPath": {
                   "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/ViabilityPercent"
+                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/DeadConcentration"
                 },
                 "opcServer": {
                   "bindType": "parameter",
@@ -1324,11 +1272,40 @@
                 "valueSource": "opc"
               },
               {
-                "dataType": "Float8",
-                "name": "dead_average_size_um",
+                "dataType": "Int8",
+                "name": "live_cells_counted",
                 "opcItemPath": {
                   "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/DeadAverageSize"
+                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/LiveCellsCounted"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "name": "live_concentration",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/LiveConcentration"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Trypan-blue viability as the instrument computed it. Derivable from the live/dead counts, but publish this one - a QC record that disagrees with the instrument printout is worse than no record.",
+                "name": "viability_percent",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/ViabilityPercent"
                 },
                 "opcServer": {
                   "bindType": "parameter",
@@ -1340,166 +1317,56 @@
             ]
           },
           {
+            "dataType": "Int8",
+            "name": "count_id",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/CountId"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
+            "dataType": "Int4",
+            "documentation": "0 BrightfieldBased, 1 FluorescenceBased. On a 0, every fluorescence tag below goes Bad_NoData - the cube was fitted but not used.",
+            "name": "count_mode",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/CountMode"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
+          },
+          {
             "name": "fluorescence",
             "tagType": "Folder",
             "tags": [
               {
-                "name": "cube1",
-                "tagType": "Folder",
-                "tags": [
-                  {
-                    "dataType": "String",
-                    "name": "cube_name",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/CubeName"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Float8",
-                    "name": "concentration",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/Concentration"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Float8",
-                    "name": "percent_of_brightfield",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/PercentOfBrightfield"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Int8",
-                    "name": "cells_counted",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/CellsCounted"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Float8",
-                    "name": "average_size_um",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/AverageSize"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  }
-                ]
-              },
-              {
-                "name": "cube2",
-                "tagType": "Folder",
-                "tags": [
-                  {
-                    "dataType": "String",
-                    "documentation": "Bad_NoData whenever slot 2 is empty, which is the demo default. Bad is the correct answer here, not 0 - see docs/reference/countess-3fl-opcua-model.md section 8.",
-                    "name": "cube_name",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/CubeName"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Float8",
-                    "name": "concentration",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/Concentration"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Float8",
-                    "name": "percent_of_brightfield",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/PercentOfBrightfield"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Int8",
-                    "name": "cells_counted",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/CellsCounted"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Float8",
-                    "name": "average_size_um",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/AverageSize"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  }
-                ]
-              },
-              {
                 "name": "combined",
                 "tagType": "Folder",
                 "tags": [
+                  {
+                    "dataType": "Int8",
+                    "name": "cells_counted",
+                    "opcItemPath": {
+                      "bindType": "parameter",
+                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Combined/CellsCounted"
+                    },
+                    "opcServer": {
+                      "bindType": "parameter",
+                      "binding": "{opc_server}"
+                    },
+                    "tagType": "AtomicTag",
+                    "valueSource": "opc"
+                  },
                   {
                     "dataType": "Float8",
                     "documentation": "Union of both channels, not their sum - a double-positive cell is counted once. Absent unless both cubes are fitted. Never synthesize this from cube1 + cube2.",
@@ -1528,13 +1395,152 @@
                     },
                     "tagType": "AtomicTag",
                     "valueSource": "opc"
+                  }
+                ]
+              },
+              {
+                "name": "cube1",
+                "tagType": "Folder",
+                "tags": [
+                  {
+                    "dataType": "Float8",
+                    "name": "average_size_um",
+                    "opcItemPath": {
+                      "bindType": "parameter",
+                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/AverageSize"
+                    },
+                    "opcServer": {
+                      "bindType": "parameter",
+                      "binding": "{opc_server}"
+                    },
+                    "tagType": "AtomicTag",
+                    "valueSource": "opc"
                   },
                   {
                     "dataType": "Int8",
                     "name": "cells_counted",
                     "opcItemPath": {
                       "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Combined/CellsCounted"
+                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/CellsCounted"
+                    },
+                    "opcServer": {
+                      "bindType": "parameter",
+                      "binding": "{opc_server}"
+                    },
+                    "tagType": "AtomicTag",
+                    "valueSource": "opc"
+                  },
+                  {
+                    "dataType": "Float8",
+                    "name": "concentration",
+                    "opcItemPath": {
+                      "bindType": "parameter",
+                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/Concentration"
+                    },
+                    "opcServer": {
+                      "bindType": "parameter",
+                      "binding": "{opc_server}"
+                    },
+                    "tagType": "AtomicTag",
+                    "valueSource": "opc"
+                  },
+                  {
+                    "dataType": "String",
+                    "name": "cube_name",
+                    "opcItemPath": {
+                      "bindType": "parameter",
+                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/CubeName"
+                    },
+                    "opcServer": {
+                      "bindType": "parameter",
+                      "binding": "{opc_server}"
+                    },
+                    "tagType": "AtomicTag",
+                    "valueSource": "opc"
+                  },
+                  {
+                    "dataType": "Float8",
+                    "name": "percent_of_brightfield",
+                    "opcItemPath": {
+                      "bindType": "parameter",
+                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/PercentOfBrightfield"
+                    },
+                    "opcServer": {
+                      "bindType": "parameter",
+                      "binding": "{opc_server}"
+                    },
+                    "tagType": "AtomicTag",
+                    "valueSource": "opc"
+                  }
+                ]
+              },
+              {
+                "name": "cube2",
+                "tagType": "Folder",
+                "tags": [
+                  {
+                    "dataType": "Float8",
+                    "name": "average_size_um",
+                    "opcItemPath": {
+                      "bindType": "parameter",
+                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/AverageSize"
+                    },
+                    "opcServer": {
+                      "bindType": "parameter",
+                      "binding": "{opc_server}"
+                    },
+                    "tagType": "AtomicTag",
+                    "valueSource": "opc"
+                  },
+                  {
+                    "dataType": "Int8",
+                    "name": "cells_counted",
+                    "opcItemPath": {
+                      "bindType": "parameter",
+                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/CellsCounted"
+                    },
+                    "opcServer": {
+                      "bindType": "parameter",
+                      "binding": "{opc_server}"
+                    },
+                    "tagType": "AtomicTag",
+                    "valueSource": "opc"
+                  },
+                  {
+                    "dataType": "Float8",
+                    "name": "concentration",
+                    "opcItemPath": {
+                      "bindType": "parameter",
+                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/Concentration"
+                    },
+                    "opcServer": {
+                      "bindType": "parameter",
+                      "binding": "{opc_server}"
+                    },
+                    "tagType": "AtomicTag",
+                    "valueSource": "opc"
+                  },
+                  {
+                    "dataType": "String",
+                    "documentation": "Bad_NoData whenever slot 2 is empty, which is the demo default. Bad is the correct answer here, not 0 - see docs/reference/countess-3fl-opcua-model.md section 8.",
+                    "name": "cube_name",
+                    "opcItemPath": {
+                      "bindType": "parameter",
+                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/CubeName"
+                    },
+                    "opcServer": {
+                      "bindType": "parameter",
+                      "binding": "{opc_server}"
+                    },
+                    "tagType": "AtomicTag",
+                    "valueSource": "opc"
+                  },
+                  {
+                    "dataType": "Float8",
+                    "name": "percent_of_brightfield",
+                    "opcItemPath": {
+                      "bindType": "parameter",
+                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/PercentOfBrightfield"
                     },
                     "opcServer": {
                       "bindType": "parameter",
@@ -1582,86 +1588,144 @@
                 "valueSource": "opc"
               }
             ]
+          },
+          {
+            "name": "sample",
+            "tagType": "Folder",
+            "tags": [
+              {
+                "dataType": "Boolean",
+                "name": "pre_dilution_correction_applied",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/PreDilutionCorrectionApplied"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Boolean",
+                "name": "stain_correction_applied",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/StainCorrectionApplied"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Int8",
+                "name": "total_cells_counted",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/TotalCellsCounted"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "cells/mL. Instrument range is 1e4 to 1e7 (Appendix B); outside it the value is out of spec, not misscaled.",
+                "name": "total_concentration",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/TotalConcentration"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              },
+              {
+                "dataType": "Int4",
+                "documentation": "0 Brightfield, 1 Fluorescence.",
+                "name": "type",
+                "opcItemPath": {
+                  "bindType": "parameter",
+                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/Type"
+                },
+                "opcServer": {
+                  "bindType": "parameter",
+                  "binding": "{opc_server}"
+                },
+                "tagType": "AtomicTag",
+                "valueSource": "opc"
+              }
+            ]
+          },
+          {
+            "dataType": "String",
+            "name": "sample_name",
+            "opcItemPath": {
+              "bindType": "parameter",
+              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/SampleName"
+            },
+            "opcServer": {
+              "bindType": "parameter",
+              "binding": "{opc_server}"
+            },
+            "tagType": "AtomicTag",
+            "valueSource": "opc"
           }
         ]
       },
       {
-        "name": "optics",
-        "tagType": "Folder",
-        "tags": [
-          {
-            "dataType": "Float8",
-            "documentation": "Live setting, writable. Write it, run a count, and the result\u0027s frozen Settings snapshot shows the new value - which is why a result carries its settings at all.",
-            "name": "brightfield_light_intensity",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Brightfield/LightIntensity"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "Float8",
-            "name": "cube1_light_intensity",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Cube1/LightIntensity"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "String",
-            "name": "cube1_name",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Cube1/CubeName"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "Boolean",
-            "name": "cube1_installed",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Cube1/Installed"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "Boolean",
-            "documentation": "False by default. Set it true and the cube2 result tags come alive on the next count - the cheapest way to show absent-vs-zero live.",
-            "name": "cube2_installed",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Cube2/Installed"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          }
-        ]
+        "dataType": "String",
+        "documentation": "The whole result as one JSON document, written in the same transaction as the leaves below. Read this instead of 33 tags when assembling the MQTT payload: it cannot tear across two counts, and it is one OPC read rather than 33.",
+        "name": "result_json",
+        "opcItemPath": {
+          "bindType": "parameter",
+          "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/ResultJson"
+        },
+        "opcServer": {
+          "bindType": "parameter",
+          "binding": "{opc_server}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "opc"
+      },
+      {
+        "dataType": "Int8",
+        "name": "session_id",
+        "opcItemPath": {
+          "bindType": "parameter",
+          "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/SessionId"
+        },
+        "opcServer": {
+          "bindType": "parameter",
+          "binding": "{opc_server}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "opc"
+      },
+      {
+        "dataType": "Int4",
+        "documentation": "0 Idle, 1 Running, 2 Completed, 3 Aborted, 4 Error. Error and Aborted leave count_completed_counter untouched, which is the point of the counter.",
+        "name": "state",
+        "opcItemPath": {
+          "bindType": "parameter",
+          "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/State"
+        },
+        "opcServer": {
+          "bindType": "parameter",
+          "binding": "{opc_server}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "opc"
       }
     ]
   },
@@ -1669,253 +1733,5 @@
     "name": "git_test",
     "tagType": "UdtType",
     "typeId": null
-  },
-  {
-    "name": "vibration_sensor",
-    "parameters": {
-      "channel_index": {
-        "dataType": "Integer",
-        "value": null
-      },
-      "gw_serial": {
-        "dataType": "String",
-        "value": null
-      },
-      "mqtt_topic": {
-        "dataType": "String",
-        "value": "icc26/site1/upstream/vibration-gw/cmd/collect"
-      },
-      "resolution": {
-        "dataType": "Integer",
-        "value": 4096
-      },
-      "uns_path": {
-        "dataType": "String",
-        "value": null
-      }
-    },
-    "tagType": "UdtType",
-    "typeId": null,
-    "tags": [
-      {
-        "name": "channel_index",
-        "tagType": "AtomicTag",
-        "value": {
-          "bindType": "parameter",
-          "binding": "{channel_index}"
-        },
-        "valueSource": "memory"
-      },
-      {
-        "dataType": "Boolean",
-        "defaultValue": false,
-        "documentation": "Set true to request a waveform collection. Cleared automatically once the command is published.",
-        "name": "collect_request",
-        "tagType": "AtomicTag",
-        "valueSource": "memory"
-      },
-      {
-        "dataType": "Boolean",
-        "defaultValue": false,
-        "name": "collect_steady_state",
-        "tagType": "AtomicTag",
-        "valueSource": "memory"
-      },
-      {
-        "dataType": "Boolean",
-        "eventScripts": [
-          {
-            "eventid": "valueChanged",
-            "script": "\t# One-shot observer request out to the local vibration gateway.\n\t# Fires on the rising edge of steady_state \u0026\u0026 collect_request.\n\tif initialChange or not currentValue.value:\n\t\treturn\n\t\n\timport sys\n\t\n\t# Lines of resolution the gateway accepts: powers of two, 512 .. 4194304.\n\tLOR_VALUES \u003d [512 \u003c\u003c i for i in range(14)]\n\t\n\tlogger \u003d system.util.getLogger(\"vibration_sensor.collect\")\n\tbase \u003d tagPath.rsplit(\"/\", 1)[0]\n\t\n\ttopic, gwSerial, channelIndex, resolution \u003d [\n\t\tqv.value\n\t\tfor qv in system.tag.readBlocking([\n\t\t\tbase + \"/mqtt_topic\",\n\t\t\tbase + \"/gw_serial\",\n\t\t\tbase + \"/channel_index\",\n\t\t\tbase + \"/resolution\",\n\t\t])\n\t]\n\t\n\tif not topic or not gwSerial or resolution is None:\n\t\tlogger.warn(\n\t\t\t\"collect skipped for %s: mqtt_topic, gw_serial or resolution is unset\" % base\n\t\t)\n\t\treturn\n\t\n\t# Comes back as a java.lang.Long off an Int8 tag; coerce before the membership test.\n\tresolution \u003d int(resolution)\n\tif resolution not in LOR_VALUES:\n\t\tlogger.warnf(\n\t\t\t\"collect skipped for %s: resolution %s is not one of %s\",\n\t\t\tbase, resolution, LOR_VALUES\n\t\t)\n\t\treturn\n\t\n\tpayload \u003d {\n\t\t\"type\": \"observerrequest\",\n\t\t\"channelIndex\": channelIndex,\n\t\t\"action\": \"wiredcollectnow\",\n\t\t\"settings\": {\n\t\t\t\"lor\": resolution,\n\t\t\t\"sendto\": \"cloud\",\n\t\t},\n\t\t\"gwSerial\": gwSerial,\n\t}\n\t\n\ttry:\n\t\tsystem.cirruslink.transmission.publish(\n\t\t\t\"chariot_broker\", topic, system.util.jsonEncode(payload), 1, False\n\t\t)\n\texcept:\n\t\tlogger.error(\"collect handoff to %s failed\" % topic, sys.exc_info()[1])\n\t\treturn\n\t\n\t# publish() neither raises nor returns a status when MQTT Transmission\n\t# drops the message - it logs its own warning under ClientsManager. So\n\t# this line means handed to the module, NOT delivered to the broker.\n\tlogger.infof(\n\t\t\"wiredcollectnow handed to %s for %s ch\u003d%s lor\u003d%s\",\n\t\ttopic, gwSerial, channelIndex, resolution\n\t)\n\t\n\t# Stamp when we asked, then one-shot clear the request so the next collect\n\t# needs a fresh trigger. This timestamp and the capture time that comes back\n\t# on the waveform are the whole of this pattern\u0027s request/response story -\n\t# there is no correlation id, because the PM system does not need one.\n\tsystem.tag.writeBlocking(\n\t\t[base + \"/last_request_ts\", base + \"/collect_request\"],\n\t\t[system.date.now(), False],\n\t)\n"
-          }
-        ],
-        "expression": "{[.]collect_steady_state} \u0026\u0026 {[.]collect_request}",
-        "name": "collect_trigger",
-        "tagType": "AtomicTag",
-        "valueSource": "expr"
-      },
-      {
-        "dataType": "String",
-        "documentation": "Gateway serial. Must stay String - undeclared it defaults to numeric and publishes gwSerial unquoted.",
-        "name": "gw_serial",
-        "tagType": "AtomicTag",
-        "value": {
-          "bindType": "parameter",
-          "binding": "{gw_serial}"
-        },
-        "valueSource": "memory"
-      },
-      {
-        "dataType": "DateTime",
-        "documentation": "When the collect command was handed to MQTT Transmission. Pairs with waveform/captured_at - together they are this pattern\u0027s request/response trace, in place of a correlation id.",
-        "name": "last_request_ts",
-        "tagType": "AtomicTag",
-        "valueSource": "memory"
-      },
-      {
-        "dataType": "String",
-        "documentation": "Fleet control topic the collect command is published to. Every gateway subscribes to it and self-selects on gwSerial, so this is the same string for every instance; override per instance only if a site runs a separate fleet.",
-        "name": "mqtt_topic",
-        "tagType": "AtomicTag",
-        "value": {
-          "bindType": "parameter",
-          "binding": "{mqtt_topic}"
-        },
-        "valueSource": "memory"
-      },
-      {
-        "name": "readings",
-        "tagType": "Folder",
-        "tags": [
-          {
-            "dataType": "Float8",
-            "documentation": "Referenced from MQTT Engine custom-namespace ingest of the sensor telemetry topic.",
-            "name": "crest_factor",
-            "sourceTagPath": "[MQTT Engine]icc26/{uns_path}/telemetry/values/crest_factor",
-            "tagType": "AtomicTag",
-            "valueSource": "reference"
-          },
-          {
-            "dataType": "Float8",
-            "documentation": "Referenced from MQTT Engine custom-namespace ingest of the sensor telemetry topic.",
-            "name": "peak_accel_g",
-            "sourceTagPath": "[MQTT Engine]icc26/{uns_path}/telemetry/values/peak_accel_g",
-            "tagType": "AtomicTag",
-            "valueSource": "reference"
-          },
-          {
-            "dataType": "Float8",
-            "documentation": "Referenced from MQTT Engine custom-namespace ingest of the sensor telemetry topic.",
-            "name": "rms_velocity_mm_s",
-            "sourceTagPath": "[MQTT Engine]icc26/{uns_path}/telemetry/values/rms_velocity_mm_s",
-            "tagType": "AtomicTag",
-            "valueSource": "reference"
-          },
-          {
-            "dataType": "Float8",
-            "documentation": "Referenced from MQTT Engine custom-namespace ingest of the sensor telemetry topic.",
-            "name": "temperature_c",
-            "sourceTagPath": "[MQTT Engine]icc26/{uns_path}/telemetry/values/temperature_c",
-            "tagType": "AtomicTag",
-            "valueSource": "reference"
-          }
-        ]
-      },
-      {
-        "dataType": "Int8",
-        "documentation": "Lines of resolution sent as settings.lor. Must be a power of two from 512 to 4194304; the collect is rejected otherwise. The simulator caps this at MAX_LOR (65536) - 4096 is ~37 KB on the wire, 32768 is ~300 KB.",
-        "name": "resolution",
-        "tagType": "AtomicTag",
-        "value": {
-          "bindType": "parameter",
-          "binding": "{resolution}"
-        },
-        "valueSource": "memory"
-      },
-      {
-        "name": "waveform",
-        "tagType": "Folder",
-        "tags": [
-          {
-            "name": "box_whisker",
-            "tagType": "Folder",
-            "tags": [
-              {
-                "dataType": "Boolean",
-                "documentation": "True when outlier_count / sample_count is at or below vibsim.MAX_OUTLIER_FRACTION (Tukey fences on this capture). Bearing impacts push the fraction up as defect severity grows.",
-                "name": "check_ok",
-                "tagType": "AtomicTag",
-                "valueSource": "memory"
-              },
-              {
-                "dataType": "Float8",
-                "documentation": "Tukey upper fence: q3 + 1.5 * iqr. Points above this are outliers.",
-                "name": "fence_high",
-                "tagType": "AtomicTag",
-                "valueSource": "memory"
-              },
-              {
-                "dataType": "Float8",
-                "documentation": "Tukey lower fence: q1 - 1.5 * iqr. Points below this are outliers.",
-                "name": "fence_low",
-                "tagType": "AtomicTag",
-                "valueSource": "memory"
-              },
-              {
-                "dataType": "Float8",
-                "name": "iqr",
-                "tagType": "AtomicTag",
-                "valueSource": "memory"
-              },
-              {
-                "dataType": "Float8",
-                "name": "max",
-                "tagType": "AtomicTag",
-                "valueSource": "memory"
-              },
-              {
-                "dataType": "Float8",
-                "name": "median",
-                "tagType": "AtomicTag",
-                "valueSource": "memory"
-              },
-              {
-                "dataType": "Float8",
-                "name": "min",
-                "tagType": "AtomicTag",
-                "valueSource": "memory"
-              },
-              {
-                "dataType": "Int4",
-                "documentation": "Samples outside [fence_low, fence_high]. Rises with impulsive BPFO content as the defect grows.",
-                "name": "outlier_count",
-                "tagType": "AtomicTag",
-                "valueSource": "memory"
-              },
-              {
-                "dataType": "Float8",
-                "documentation": "25th percentile of the capture (g).",
-                "name": "q1",
-                "tagType": "AtomicTag",
-                "valueSource": "memory"
-              },
-              {
-                "dataType": "Float8",
-                "documentation": "75th percentile of the capture (g).",
-                "name": "q3",
-                "tagType": "AtomicTag",
-                "valueSource": "memory"
-              }
-            ]
-          },
-          {
-            "dataType": "DateTime",
-            "documentation": "Capture START time, taken from the waveform payload\u0027s ts field - deliberately not the publish time. This is the timestamp the PM system keys on.",
-            "name": "captured_at",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
-            "dataType": "Document",
-            "documentation": "Latest time waveform, written by the vibration-gw-listener event stream. Holds the vendor wiredCollection document (data, sampleRate, gwSerial, wiredChannel, timestamp).",
-            "name": "latest",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
-            "dataType": "Int4",
-            "name": "sample_count",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
-            "dataType": "Int4",
-            "name": "sample_rate_hz",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          }
-        ]
-      }
-    ]
   }
 ]

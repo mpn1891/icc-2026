@@ -1,25 +1,6 @@
 [
   {
-    "name": "countess-01",
-    "parameters": {
-      "device_id": {
-        "dataType": "String",
-        "value": "Countess-01"
-      },
-      "opc_server": {
-        "dataType": "String",
-        "value": "cell_analyzer"
-      },
-      "uns_path": {
-        "dataType": "String",
-        "value": "site1/qc/analyzers/countess-01"
-      }
-    },
-    "tagType": "UdtInstance",
-    "typeId": "cell_analyzer"
-  },
-  {
-    "name": "novaflex-01",
+    "name": "flex-01",
     "parameters": {
       "device_id": {
         "dataType": "String",

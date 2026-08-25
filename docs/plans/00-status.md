@@ -1,161 +1,61 @@
 # Status
 
-> **Updated 2026-08-20.** Conference is ~4 weeks out.
->
-> **The stale-image blocker is CLEARED.** A gateway rebuilt from the repo loads Cirrus **5.0.4**
-> Engine, Transmission and Distributor with no compatibility warnings. `tasks.py` now forces
-> `--build` on both `up` and `seed`, so a stale tag cannot come back quietly.
->
-> **Patterns 1 and 2 are built, run and verified end-to-end.** Both valve containers were built
-> and run for the first time on 2026-08-17, both produced Ignition tags, and every checkpoint
-> passed. Findings live in [`01-native-mqtt.md`](01-native-mqtt.md) and
-> [`02-sparkplug-b.md`](02-sparkplug-b.md), each under *Ingest, as built*.
->
-> **Pattern 3 is done on the Nova path** (broker-verified 2026-08-20): vendor `SampleTime` →
-> Event Stream `03_opcua/novaflex-result` → Transmission →
-> `icc26/site1/qc/analyzers/novaflex-01/result` with `meta.mechanism = "opcua-event"` and
-> `meta.correlation_id` = `sample_id` (broker-watched 2026-08-20, e.g. `S-00140`). Countess
-> stays in compose as a second designed OPC UA analyzer for the talk contrast; **MQTT publish
-> is intentionally not wired** — not an open Pattern 3 work item.
->
-> **Pattern 4 is verified end-to-end** on this checkout. Ingest, reject, atomic
-> approve, webhook publish (`mechanism: webhook`), 409 replay, 401 wrong secret,
-> and outbox survival across `docker restart icc26-lims` all held. Talk track:
-> [`../04-lims-webhook.md`](../04-lims-webhook.md).
+> **Updated 2026-08-25.** Conference is ~4 weeks out.
 
-What is true right now and what to do next. Durable knowledge does not live here — it lives in
-[`../00-architecture.md`](../00-architecture.md). Work still to be built lives in
-[`00-master-plan.md`](00-master-plan.md). If this file disagrees with either, this file is newer,
-and the fix is to move the fact rather than keep two copies.
+What is built and what is not — nothing else. This file was 208 lines on 2026-08-25 and was
+gutted the same day, because most of it was either duplicated or archaeology:
 
-## Do this next
+- **Durable facts and traps** → [`../00-architecture.md`](../00-architecture.md). The `pg_db`
+  datasource look-alike, the `flex-01` half-rename, the Transmission `TARGET` warning, the
+  API-key traps, the `br-202` mistake, and *Working rules* all live there now.
+- **What to build, and in what order** → [`00-master-plan.md`](00-master-plan.md) § *Order*.
+- **Part 1 history, the clone-test checkpoints, the proven/disproven list** → deleted. Git has
+  them; the last revision carrying them is on this branch.
 
-**Patterns 5, 6 and 7 were re-sourced on 2026-08-19, and the shared-topic set-piece was dropped.**
-This is the largest design change since pattern 2 stopped being a bioreactor, so read
-[`../00-architecture.md` § *Patterns 4, 5 and 6 used to share one
-topic*](../00-architecture.md) before touching any of them. In short: 5 becomes CDC on **Odoo**,
-6 becomes a Modbus poll of a **MET ONE particle counter**, 7 is leaning toward a **vibration
-waveform gated on DCS steady-state and requested by an asset management system**. Each mechanism
-now gets the source that genuinely forces it, and no two patterns carry the same data.
+If this file disagrees with either of the other two, this file is newer, and the fix is to move
+the fact rather than keep two copies.
 
-**Two work items remaining, and they are genuinely independent.**
+## Built
 
-1. **Build 08's fallback firehose.** It depends on no pattern, and it is the only deliverable
-   whose absence is visible from the audience.
-2. **Pattern 6's Modbus simulator.** The longest new build of the remaining two; start it
-   earliest.
+| | State |
+|---|---|
+| **Infra** | Done. A gateway rebuilt from the repo loads Cirrus **5.0.4** Engine, Transmission and Distributor with no compatibility warnings. `tasks.py` forces `--build` on `up` and `seed`, so a stale image cannot come back quietly. |
+| **01 — native MQTT** | Built, run and broker-verified 2026-08-17. Findings in [`01-native-mqtt.md`](01-native-mqtt.md) § *Ingest, as built*; talk track at [`../talk-tracks/01-native-mqtt.md`](../talk-tracks/01-native-mqtt.md). |
+| **02 — Sparkplug B** | Same. [`02-sparkplug-b.md`](02-sparkplug-b.md) § *Ingest, as built*, [`../talk-tracks/02-sparkplug-b.md`](../talk-tracks/02-sparkplug-b.md). |
+| **03 — OPC UA → MQTT** | Nova path built and broker-verified 2026-08-20 (`S-00140` watched live). **Currently broken by the half-landed `flex-01` rename** — see the master plan's order, item 2. The Countess is out of the demo. [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md). |
+| **04 — LIMS webhook** | Verified end-to-end 2026-08-20: ingest, reject, atomic approve, webhook publish, 409 replay, 401 wrong secret, and outbox survival across `docker restart icc26-lims`. **Remaining:** both review outcomes publish `analyst` + `disposition` pass/fail. [`04-lims-webhook.md`](04-lims-webhook.md), [`../talk-tracks/04-lims-webhook.md`](../talk-tracks/04-lims-webhook.md). |
 
-Countess MQTT publish on `count_completed_counter` is optional polish if wanted later; nothing
-depends on it, and Pattern 3 does not wait on it.
+## Not built
 
-Newly dead, and worth deleting rather than maintaining: `mes.batch_event` has no consumer at all
-(Odoo replaces the hand-made MES table), and `04-cdc.sql`'s publication points at two tables
-nothing reads. Comments in both SQL files now say so. Retire both with pattern 5's spec.
+**05, 06 and 07.** All three were re-sourced on 2026-08-23 and refined on 2026-08-25; the
+2026-08-19 Odoo / Modbus MET ONE / vibration-AMS-DCS plan is withdrawn. The specs are the master
+plan entries; read
+[`../00-architecture.md` § *Sources as of 2026-08-23*](../00-architecture.md) before touching
+any of them.
 
-`00-next-step.md` is **done** and kept only as the record of what was run. Everything durable
-from it has moved into [`../00-architecture.md`](../00-architecture.md) and the two pattern specs.
+**Talk tracks for 03, 05, 06 and 07** — written as the closing step of each pattern, per the
+master plan's two-document convention.
 
-Rules that are still live:
+**Pattern 7's event store** — unspecified, and it blocks 07's spec rather than just its build.
 
-- **`icc26_ign-data` is no longer precious.** It was the only place a working 5.0.4 Engine and
-  Transmission existed; the image carries them now, so the main checkout can be nuked and
-  reseeded like any other. That still costs one commissioning wizard and one API key.
-- **Two checkouts still cannot run at once**, and stopping the other is not enough — its
-  containers must be *removed*, because a name is claimed by an existing container whether it is
-  running or not. `python tasks.py down`.
-- **Do not `git commit` from inside the scratch clone.** Sync it the other way:
-  `git -C ...icc26-clone fetch C:/Users/matt/repos/icc-2026 main && git reset --hard FETCH_HEAD`.
+## Changed on 2026-08-25
 
-## Also outstanding
+The master plan revision cut four things loose. Reasoning for all of them:
+[`../00-architecture.md` § *Cut on 2026-08-25*](../00-architecture.md).
 
-- **MQTT Engine connects to Chariot with no username at all.** Its server config
-  (`com.cirruslink.mqtt.engine.gateway/server/Chariot SCADA/config.json`) has `"username": ""`,
-  and it only works because `allowAnonymous` is still `true` — Chariot's client list shows it
-  connected with `username: None` beside `ign-transmission`, which is authenticated properly.
-  **Turning `allowAnonymous` off before the talk will break Engine**, and with it both patterns 1
-  and 2, unless the `ign-engine` credential is set first. Found 2026-08-17; deliberately not
-  fixed in the same pass as the pattern work.
-- **Per-machine Ignition 8.3 API key** — `tasks.py scan` uses verified HTTPS only. After seeding,
-  each user must create a secure-channel key in Gateway UI → Platform → Security → API Keys,
-  grant its security level Gateway read/write access, and put the complete `name:secret` value in
-  `.env` as `IGNITION_API_TOKEN_HTTPS`. The first key cannot be automated because its creation
-  API already requires authenticated write access. Two traps met on 2026-08-17: the variable was
-  once called `IGNITION_API_TOKEN`, and an older `.env` still carrying that name reads as "no
-  token" with no error; and a key is bound to the gateway that minted it, so a key from another
-  checkout returns 401 and looks identical to no key at all.
-- **Postgres JDBC datasource `ICC26`** → `jdbc:postgresql://postgres:5432/icc26`, user `icc26`.
-  Patterns 6 and 7 need it; not created yet (no `database-connection` resource in the repo).
-- **Transmission logs `Failed to subscribe to TARGET elements`** immediately after connecting.
-  Unexplained — possibly the `ign-transmission` ACL, possibly transmitter config. It connects, so
-  it may block nothing; decide how hard to chase it before the pattern work starts.
-- **The OPC UA connection** (`ignition/opc-connection/Ignition OPC UA Server/config.json`) holds
-  two `Embedded` secrets, one paired with a keystore in gitignored `local/`. Fine as-is unless
-  the loopback connection faults on a clone. Pattern 3 uses OPC UA.
+- **Spec 08 is cut.** No Perspective views, no mechanism-coloured firehose, no
+  `demo-runbook.md`. The demo surface is `mosquitto_sub` on `icc26/#`, the two valve config
+  pages on 8085/8086, and the LIMS approval screen on 8000. There is no pattern 8.
+- **The Countess is out of the demo.** Its server, compose service, `opc-connection/cell_analyzer`
+  and the `cell_analyzer` UDT type stay in the repo as the worked example; the `countess-01`
+  instance is deleted and its MQTT publish will not be wired.
+- **Pattern 6 moved into `qc/analyzers`.**
+- **Pattern 7 needs an event store** for patterns 1, 3, 5 and 6.
 
-## Where Part 1 stands
+## Still open, and not on the order
 
-`tasks.py` lifecycle and guardrails, the config/compose edits, and the first commit are all
-done — 5 commits on `main` at <https://github.com/mpn1891/icc-2026>, 946 tracked files. The
-clone test ran on 2026-08-09 against a real clone and the two highest-risk unknowns came out
-clean.
-
-**Proven, not assumed:**
-
-- The clone-seed path takes the right branch against a real gateway and leaves `git status`
-  completely clean. This was the highest-risk unverified thing in Part 1.
-- Ignition 8.3 regenerates all three identity paths when they are absent.
-- Ignition content travels: default tag provider, the `icc-2026` project, its event streams,
-  and a regenerated gitignored `.resources/` cache.
-- Chariot config is fully reproducible from compose against a fresh volume.
-- The guardrails hard-fail against a real missing-module clone, not just stubs.
-- The A1–A4 state machine, via `tests/test_tasks.py` — 22 checks, no Docker needed. Re-run after
-  touching `tasks.py`.
-
-**Disproven, and worth remembering:**
-
-- That `verify-modules` passing means the gateway will load those modules. It does not.
-- ~~That the repo alone reproduces the working stack.~~ **It does, as of 2026-08-17**: a cold
-  `nuke` + `seed` + `up` in a clean clone produced a 5.0.4 gateway, both valves, and green
-  health. The only item on this list that has flipped back.
-
-**Settled 2026-08-17:** `Embedded` ciphertext **is** portable between gateways. A gateway seeded
-from an empty volume connected Transmission to Chariot as `ign-transmission` — confirmed in
-Chariot's client list as well as the gateway log, with zero decrypt errors. No Secret Provider.
-
-## Re-running the clone test
-
-The checkpoints are still the right ones. Bring the main stack down first (two checkouts cannot
-run at once), then in a scratch clone with `COMPOSE_PROJECT_NAME=icc26test` in `.env` and the
-`.modl` files copied in:
-
-| # | Check | Pass |
-|---|---|---|
-| 0 | `seed` and `up` with no `.modl` files | both exit non-zero, neither invokes compose |
-| 1 | `seed` prints the **clone-seed** banner | not the full-seed one — otherwise it is about to overwrite the checkout |
-| 2 | `git status --short` after seed | completely empty |
-| 3 | `tasks.py health` | all green (start Chariot's trial by hand first) |
-| 4 | Content travelled | tag provider and the `icc-2026` project present, with at least one event stream under it. Tag *values* are empty and that is correct — `valueStore.idb` is gitignored |
-| 5 | Secrets verdict | Transmission connected as `ign-transmission`, no decrypt errors |
-
-Do not `git commit` from inside the scratch clone, and do not `nuke` the main checkout.
-
-## Working rules
-
-- **Commit only what you meant to change.** Every gateway write stamps `lastModification*` into
-  neighbouring `resource.json` files. `git add` your files, then `git restore .` for the rest.
-- **Never commit** `ignition/config/local/`, `ignition/config/resources/local/`,
-  `valueStore.idb`, `.modl` files, or `.env`.
-- **Unknown gateway schemas: UI first, then read `git status`, then commit.** Known formats
-  (tags, project scripts, WebDev, Perspective views) can be authored as files. WebDev python
-  resources need `"resource-type": "python-resource"` in `config.json` — any other discriminator
-  mounts the URL and then 500s.
-- **On-disk config/project changes: `python tasks.py scan`**, not a container restart. Restart
-  only if scan is unavailable (no API key) or you changed a container-consumed `.env` secret.
-- **Changed container-consumed `.env` secrets need `python tasks.py restart ignition`**, not
-  `scan`; the API token is read directly by `tasks.py` and needs no restart.
-- **Before the talk:** set `allowAnonymous` back to `false` and confirm every client still
-  connects with its own credential. **Start with MQTT Engine** — it is the one that is currently
-  anonymous, see *Also outstanding*.
-- **The scratch clone is downstream of main, always.** It has no unique work in it; bring it
-  current with `git -C ...icc26-clone fetch C:/Users/matt/repos/icc-2026 main` then
-  `git reset --hard FETCH_HEAD`. Its `.env` is gitignored and survives, which is the point.
+- `04-cdc.sql` publishes both `bes.batch_event` and `lims.sample_result`. Drop the LIMS table
+  with pattern 5's spec; do not tail both. `payload` jsonb already exists, so `qualified_window`
+  needs no schema change.
+- [`00-next-step.md`](00-next-step.md) is **done**, and kept only as the record of what was run
+  on 2026-08-17. Everything durable from it has moved.

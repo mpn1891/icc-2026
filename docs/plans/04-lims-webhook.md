@@ -6,16 +6,17 @@
 > topic*](../00-architecture.md).
 >
 > **Built 2026-08-20 and broker-verified the same day.** Talk track:
-> [`../04-lims-webhook.md`](../04-lims-webhook.md). Schema and the `lims-bridge` subscribe grant
+> [`../talk-tracks/04-lims-webhook.md`](../talk-tracks/04-lims-webhook.md). Schema and the `lims-bridge` subscribe grant
 > take effect on an empty volume; on this checkout they were applied live (`migrate-04-lims.sql`
 > + Chariot `PUT /mqttusers/lims-bridge`) without a nuke. `python tasks.py nuke` then `seed`
-> remains the clean-room path — do it before pattern 5 initializes Odoo.
+> remains the clean-room path. Odoo is no longer in the stack (2026-08-23).
 
 ## Objective
 
 A sample result produced by the pattern-3 analyzer is received by the LIMS off the event backbone,
-held unapproved, released by a human, and only then pushed into Ignition over HTTP and published
-to `icc26/site1/qc/lims/sample-result` with `meta.mechanism = "webhook"`.
+held unreviewed, released by a human, and only then pushed into Ignition over HTTP and published
+to `icc26/site1/qc/lims/sample-result` with `meta.mechanism = "webhook"`, `analyst`, and
+`disposition` ∈ `pass | fail`. Both approve and reject publish.
 
 ## Talk point
 
@@ -48,7 +49,7 @@ pattern having to share a topic with the other.
 | | Sketch in `00-master-plan.md` | As specified here | Why |
 |---|---|---|---|
 | Data origin | a generator invents sample results on an interval | **subscribes to `icc26/site1/qc/analyzers/+/result`**; the generator survives as a fallback | A service inventing numbers is the least convincing artifact on the stage. Chaining pattern 3 into 4 makes one sample's journey the spine of the talk |
-| Inbound transport | n/a (the LIMS was the origin) | **MQTT subscribe** | Nothing in this stack currently *consumes* the backbone except the firehose. "One event backbone" is a weak claim if the only subscriber is a dashboard |
+| Inbound transport | n/a (the LIMS was the origin) | **MQTT subscribe** | Nothing else in this stack *consumes* the backbone except pattern 7. "One event backbone" is a weak claim with no subscribers on it — and since the firehose was cut (2026-08-25) this pattern and pattern 7 are the only two there are |
 | Webhook trigger | on insert / sample-complete | **on manual approval**, and only on approval | Gives the callback a real reason to be asynchronous |
 | Approval UI | Perspective | **served by the LIMS itself on `:8000`** | Same house style as the two valve config pages on 8085/8086. A LIMS screen should look like a LIMS, not like SCADA, and it keeps Perspective off this pattern's critical path |
 | LIMS MQTT publish rights | `sample-result` + `batch/event` | **none — `publishTopics: []`** | See [The cycle hazard](#the-cycle-hazard) |
@@ -61,7 +62,7 @@ pattern having to share a topic with the other.
 ```
 opcua-novaflex ──OPC UA──▶ Ignition ──Event Stream──▶ Transmission
                                                           │
-                          icc26/site1/qc/analyzers/novaflex-01/result   (mechanism: opcua-event)
+                          icc26/site1/qc/analyzers/flex-01/result   (mechanism: opcua-event)
                                                           │
                                               subscribe (QoS 1, lims-bridge)
                                                           ▼
@@ -79,8 +80,10 @@ opcua-novaflex ──OPC UA──▶ Ignition ──Event Stream──▶ Transm
 ```
 
 `meta.correlation_id` is stamped once, upstream, and survives the whole chain, so one sample is
-traceable across two colours on the firehose. **This requires a one-line addition to pattern 3** —
-see [Ignition resources](#ignition-resources).
+traceable across two `meta.mechanism` values on the wire — `opcua-event` then `webhook`, visible
+side by side in one `mosquitto_sub`. (This used to be phrased as "two colours on the firehose";
+the firehose was cut on 2026-08-25 and the terminal is the demo surface.) **This requires a
+one-line addition to pattern 3** — see [Ignition resources](#ignition-resources).
 
 ## Decisions, and the reasoning
 
@@ -90,7 +93,7 @@ see [Ignition resources](#ignition-resources).
 a sample is several rows, and the earlier draft of this spec published one message per *row* to
 match the row-granular CDC stream that pattern 5 was going to produce from the same table.
 
-Pattern 5 moved to Odoo, so that constraint is gone and the message can be the domain object
+Pattern 5 no longer tails this table, so the message can be the domain object
 instead of the table's shape. Keep the analyte list short anyway, so the payload stays readable on
 a projector:
 
@@ -114,8 +117,10 @@ No auto-approve timer. Consequences to accept deliberately:
 - **A pending queue builds up** while the analyzer cycles every 120 s. Good stage material rather
   than a problem: a screen showing fourteen samples awaiting QA release is what a real LIMS looks
   like at 9 a.m., and it makes Approve the most legible click in the talk.
-- **`rejected` must publish nothing**, mirroring pattern 3's rule that a failed or aborted run
-  does not publish.
+- **Both review outcomes publish.** Approve writes `disposition=pass`; reject writes
+  `disposition=fail`. Each path writes one outbox row. Pattern 7 listens for the review,
+  not only for a pass. (Until 2026-08-23 reject was silent, mirroring pattern 3's
+  abort-does-not-publish rule. That is withdrawn.)
 
 ### The cycle hazard
 
@@ -136,20 +141,22 @@ was load-bearing: attempt counters on the result row would have made **every ret
 every UPDATE a CDC event**, so the webhook's failure handling would have generated spurious
 pattern-5 traffic precisely during the demo where it was failing on purpose.
 
-Pattern 5 moved to Odoo, so that hazard is gone and the decision now stands on ordinary grounds:
+Pattern 5 tails `bes.batch_event`, not this table, so that hazard is gone and the
+decision now stands on ordinary grounds:
 delivery state is not domain state, and an outbox you can query, retry and show on screen is worth
 a table. Recorded rather than quietly re-justified, because a reason that has evaporated is worth
 knowing about — if this table ever looks like overkill, the argument that put it there is no longer
 the argument keeping it there.
 
-## Schema change — do it in one nuke, and before Odoo exists
+## Schema change — do it in one nuke
 
 Two files change, and both only take effect on an empty volume (`../00-architecture.md` §
 *Postgres*). Batch them into a single `tasks.py nuke` + `seed`, which costs one commissioning
 wizard and one API key.
 
-**Sequencing rule:** the same `nuke` destroys Odoo's database. Land this before pattern 5
-initializes Odoo, or plan on re-initializing it.
+**Sequencing rule (withdrawn 2026-08-23):** this used to say "nuke before Odoo init."
+Odoo is no longer in the stack. `nuke` still rebuilds `icc26`; do it before pattern 5
+connects Debezium if the publication is changing.
 
 `compose/postgres/initdb/02-schema.sql`:
 
@@ -179,8 +186,7 @@ CREATE INDEX ix_webhook_delivery_due ON lims.webhook_delivery (state, next_try_a
 
 An earlier draft added a `release_seq` column and sequence, so pattern 6 could watermark on the
 order results were *released* rather than the order they arrived. Pattern 6 no longer polls the
-LIMS, so it is cut — and the argument survives in better form, on a particle counter's record
-buffer. See `00-master-plan.md` § 06.
+LIMS, so it is cut. See `00-master-plan.md` § 06.
 
 `compose/chariot/mqtt-users.json` — replace the `lims-bridge` entry:
 
@@ -199,9 +205,9 @@ Its `icc26/site1/upstream/br-201/batch/event` publish grant was for pattern 5, w
 through Transmission like everything else. Nothing loses a grant it was using.
 
 Also worth doing while the file is open: `02-schema.sql` calls `lims.sample_result` "the single
-most important table in the demo" and `mes.batch_event` "pattern 5's other CDC source." Neither is
-true now. `mes.batch_event` has **no consumer at all**, and `04-cdc.sql`'s publication should be
-retired with pattern 5's spec rather than left pointing at two tables nothing reads.
+most important table in the demo." That is not true — only pattern 4 writes it. Pattern 5
+CDC-tails `bes.batch_event` (2026-08-23); drop `lims.sample_result` from `04-cdc.sql` when
+that spec is written so a LIMS approval is not also a CDC event.
 
 ## Files to create
 
@@ -241,7 +247,7 @@ Surfaces:
 |---|---|---|
 | `GET /` | the approval screen | server-rendered HTML: pending queue, Approve / Reject, and the outbox with its attempt counts |
 | `POST /samples/{sample_id}/approve` | approval | form-posted by the screen; also curl-able |
-| `POST /samples/{sample_id}/reject` | approval | publishes nothing, ever |
+| `POST /samples/{sample_id}/reject` | review | same outbox path as approve; `disposition=fail` |
 | `POST /webhook/disable` · `/enable` | the failure demo | disable stops the drainer, not the enqueue — the outbox is meant to fill up |
 | `POST /trigger` | fallback generator | synthesises one sample without an analyzer |
 | `GET /healthz` | compose healthcheck | broker connected + DB reachable |
@@ -348,7 +354,8 @@ f-strings, no type hints.
 
 Dedupe is a **module-level bounded dict** (last ~500 keys), not a table. A gateway restart loses
 the window, which is honest and acceptable; a durable version needs the `ICC26` JDBC datasource,
-which does not exist yet (`00-status.md`). Since pattern 4 no longer blocks anything, adopting that
+which does not exist yet — and note the `pg_db` look-alike trap in
+[`../00-architecture.md` § *Postgres*](../00-architecture.md). Since pattern 4 no longer blocks anything, adopting that
 datasource later is a small separate change rather than a scheduling risk.
 
 ## MQTT user and topics
@@ -364,10 +371,10 @@ datasource later is a small separate change rather than a scheduling risk.
 `../00-architecture.md` flags `qc/lims/sample-result` as putting a software system in the
 line-or-cell slot, and says to revisit at spec 04. Revisited, and **kept as-is.**
 
-The doc's own precedent points the other way — `mes.batch_event` published to
+The doc's own precedent points the other way — `bes.batch_event` published to
 `upstream/br-201/batch/event` and named its source system in the payload, and by that rule a sample
 result drawn from BR-201 belongs under BR-201 too. It is the better address. But the topic is
-referenced by an ACL entry, the firehose colouring and the runbook, and the conference is four
+referenced by an ACL entry and by pattern 7's subscription, and the conference is four
 weeks out. Changing it buys correctness in a document and risks the demo.
 
 So it stays, and becomes a spoken aside instead: *here is a violation of our own rule that we
@@ -397,6 +404,7 @@ Per `../00-architecture.md` § *Payload envelope*. One message per sample.
     "batch_id": "B-2026-0042",
     "collected_at": "2026-08-19T14:03:22.145Z",
     "analyst": "mnorris",
+    "disposition": "pass",
     "results": [
       { "analyte": "glucose",    "value": 4.21,  "uom": "g/L" },
       { "analyte": "lactate",    "value": 1.08,  "uom": "g/L" },
@@ -415,7 +423,7 @@ the point of the whole pattern.
 Falsifiable, in order. Do not proceed past a red one.
 
 1. **Pattern 3 is actually on the broker.** `mosquitto_sub` on
-   `icc26/site1/qc/analyzers/novaflex-01/result`, trigger `ESMScheduleAnalysis`, exactly one
+   `icc26/site1/qc/analyzers/flex-01/result`, trigger `ESMScheduleAnalysis`, exactly one
    message per completed sample. It has never been watched (`00-status.md`).
 2. `correlation_id` is present in that message.
 3. Nuke, reseed, confirm the schema: `status`, `verified_at`, `uq_sample_analyte` and
@@ -425,8 +433,9 @@ Falsifiable, in order. Do not proceed past a red one.
 5. One analyzer message → three rows, all `status='received'`.
 6. **Redelivery is a no-op.** Republish the same captured message; row count does not change.
 7. Approve → three rows flip to `verified` with `verified_at` and `analyst`; **one** outbox row;
-   **one** message on `icc26/site1/qc/lims/sample-result`, `mechanism` is `webhook`.
-8. **Reject publishes nothing.** Watch the topic across a full reject; silence.
+   **one** message on `icc26/site1/qc/lims/sample-result`, `mechanism` is `webhook`,
+   `disposition` is `pass`.
+8. **Reject publishes `disposition=fail`.** Same topic, same outbox path, `analyst` set. Not silence.
 9. Replay a delivered idempotency key by hand → `409`, and **no** second message.
 10. Wrong secret → `401`, no message.
 11. **The outbox survives a restart.** Disable the drainer, approve two samples, `docker restart
@@ -503,7 +512,8 @@ argument this pattern makes about durability.
 | The instrument operator (`values.operator`) is dropped | No column for it; `analyst` is the approver, a different person and the one an audit trail cares about |
 | `qc/lims/sample-result` still names a system in the line-or-cell slot | Kept for schedule reasons, and *less* defensible than it was. See above |
 | **Cut:** `GET /results?since_id=N`, `GET /results/latest`, the Debezium-tailed insert | Patterns 6, 7 and 5 respectively, all of which now have their own sources. The surfaces would have had no consumers |
-| **Cut:** `release_seq` and the three-watermark demo | Pattern 6 no longer polls the LIMS. The argument survives in stronger form on a particle counter's record buffer |
+| **Cut:** `release_seq` and the three-watermark demo | Pattern 6 no longer polls the LIMS |
+| **Remaining 2026-08-23:** reject is still silent in the running service | Spec now requires `disposition` pass/fail on both review outcomes; implement before pattern 7 |
 
 ## Closing step
 
@@ -513,10 +523,11 @@ sets it.
 
 Then update, in this order:
 
-- `00-status.md` — what is built, what was disproven, and whether pattern 3's publish held up.
+- `00-status.md` — the built/not-built table only; durable findings go to `../00-architecture.md`
+  and sequencing to `00-master-plan.md` § *Order*.
 - `services/README.md` — the `lims/` row still reads *implementation undecided*, and § *The LIMS
   contract* still describes four surfaces.
 - `../00-architecture.md` — record that `meta.correlation_id` has a working first user, and that
   the retired surfaces are retired rather than pending.
-- `compose/postgres/initdb/02-schema.sql` and `04-cdc.sql` — comments still describe the
-  convergence design. `mes.batch_event` has no consumer; say so where somebody will read it.
+- `compose/postgres/initdb/02-schema.sql` and `04-cdc.sql` — comments: pattern 4 only on
+  `lims.sample_result`; pattern 5 CDC-tails `bes.batch_event`.

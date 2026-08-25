@@ -11,13 +11,13 @@ PostgreSQL 17, all under `docker compose`, all version controlled.
 
 | # | Pattern | Demo subject | Built |
 |---|---------|--------------|-------|
-| 1 | Native MQTT pub/sub | Smart sample valve assembly — RFID badge scan opens a bioreactor sample valve | services built |
-| 2 | Sparkplug B edge node | **The same valve assembly**, other firmware — birth/death, RBE, self-describing metrics | services built |
-| 3 | OPC UA → MQTT | Nova Flex analyzer; Ignition publishes on sample-complete | step 4 |
-| 4 | Webhook / Push API | Event-capable but non-MQTT system POSTing to Ignition | step 5 |
-| 5 | CDC / log tailing | Postgres WAL → Debezium → Ignition | step 6 |
-| 6 | Poll / diff | REST and SQL polled on an incrementing high-water mark | step 7 |
-| 7 | Scripted aggregation | Gateway script joining Postgres + REST + tags into one publish | step 8 |
+| 1 | Native MQTT pub/sub | Smart sample valve assembly — RFID badge scan opens a bioreactor sample valve | built |
+| 2 | Sparkplug B edge node | **The same valve assembly**, other firmware — birth/death, RBE, self-describing metrics | built |
+| 3 | OPC UA → MQTT | Nova Flex analyzer (`flex-01`); Ignition publishes on sample-complete | built |
+| 4 | Webhook / Push API | LIMS review POSTs to Ignition; remaining: pass/fail on both outcomes | built, pass/fail open |
+| 5 | CDC / log tailing | Ignition batch timer → `bes.batch_event` → Debezium → MQTT | planned |
+| 6 | Poll / diff | MET ONE HTTP API in `qc/analyzers`, Ignition poll → Event Stream | planned |
+| 7 | Scripted aggregation | LIMS-review listener joins valve, Nova, batch phase, nearest MET ONE | planned |
 
 **Patterns 1 and 2 are one device in two firmwares**, which is the point of running both: a
 badge-operated sample valve on `BR-201` speaking plain MQTT, and the identical assembly on
@@ -26,10 +26,14 @@ difference between those two pages is as much of the talk as the traffic. On one
 a text box, the QoS is a dropdown and Retained is a checkbox. On the other, the same three
 controls are disabled, each labelled with the clause of the specification that fixed it.
 
-**Current state: step 1 complete — infrastructure only.** Postgres, Ignition and Chariot come
-up and talk to each other. Patterns 1 and 2 have their simulator containers and config pages
-built; the Ignition-side ingest for them is not wired yet. What is true today and what is next:
+**Current state:** infrastructure, patterns 1–3, and pattern 4 (minus pass/fail) are built.
+Patterns 5–7 were re-sourced on 2026-08-23. On 2026-08-25 the presentation/firehose/runbook spec
+was cut (the demo surface is the broker itself plus the three product screens the services
+already serve), the Countess came out of the demo, and pattern 7 gained a requirement for an
+event store. What is true today and what is next:
 [`docs/plans/00-status.md`](docs/plans/00-status.md).
+
+There is no pattern 8 — the numbering stops at 7.
 
 ## Prerequisites
 
@@ -243,9 +247,8 @@ should not need to know how data arrived in order to find it.
 icc26/{site}/{area}/{line-or-cell}/{device}/{message_type}
 ```
 
-Patterns 4, 5 and 6 deliberately publish to the **same** topic
-(`icc26/site1/qc/lims/sample-result`). Same data, three acquisition mechanisms, one
-destination — swap between them live and no subscriber notices. The mechanism lives in the
-payload's `meta.mechanism` field, not in the topic.
+Each pattern publishes to its **own** topic. The mechanism lives in the payload's
+`meta.mechanism` field, never in the address. Pattern 7 is the join: it listens for the
+LIMS review and publishes one sample-chain document.
 
 Full namespace and payload envelope in [`docs/00-architecture.md`](docs/00-architecture.md#topic-namespace).
