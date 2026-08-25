@@ -132,7 +132,7 @@ vendor product with 104 writable bits and zero methods, because a SCADA tag writ
 invoke a method.
 
 Done: `result/sample_time` → Event Stream `03_opcua/novaflex-result` →
-`icc26/site1/qc/analyzers/flex-01/result`, `mechanism=opcua-event`. Verify: one message
+`icc26/site1/qc/analyzers/novaflex-01/result`, `mechanism=opcua-event`. Verify: one message
 per completed sample, never per-value, nothing on abort/fail/QC. Talk point:
 event-on-completion, keyed off the field the vendor actually ships.
 
@@ -271,12 +271,7 @@ so it is last of the seven, and it is still **the designated cut** if the schedu
 1. **04 pass/fail.** Small, and pattern 7 listens for that message. Confirmed unbuilt:
    `services/lims/app.py` `reject()` writes no outbox row, and the payload builder has no
    `disposition` key at all.
-2. **Finish or revert the `flex-01` rename.** The UDT instance is renamed and four other places
-   are not, so pattern 3 currently publishes to a topic the plan no longer names and its trigger
-   is bound to a path that no longer exists. Patterns 4 and 7 have no upstream until this is
-   settled. The four places are listed in
-   [`../00-architecture.md` § *Topic namespace*](../00-architecture.md).
-3. **The sample id correlation.** The valve mints `S-YYYYMMDD-NNNN`, the Nova mints `S-NNNNN`,
+2. **The sample id correlation.** The valve mints `S-YYYYMMDD-NNNN`, the Nova mints `S-NNNNN`,
    and nothing joins them — so pattern 7's valve-open → analysis leg does not correlate today.
    Ignition writes the valve's id into the Nova's writable `SampleInformation/SampleID`, **and
    the valve stamps that id into `meta.correlation_id`**, which it does not do today (open item 1
@@ -284,18 +279,18 @@ so it is last of the seven, and it is still **the designated cut** if the schedu
    specified until it lands**, because both derived flags are evaluated at the sample-open
    instant. See
    [`../00-architecture.md` § *The sample id, and pattern 1 mints it*](../00-architecture.md).
-4. **05 and 06 in parallel.** 05 is the timer + the `ICC26` JDBC datasource + Debezium; create
+3. **05 and 06 in parallel.** 05 is the timer + the `ICC26` JDBC datasource + Debezium; create
    the datasource first and read the `pg_db` look-alike trap in
    [`../00-architecture.md` § *Postgres*](../00-architecture.md) before you do. The `bioreactor`
    UDT also needs its phase tag. 06 is the MET ONE simulator + poll script + Event Stream; it
    waits on vendor API notes, so stub the routes if they have not arrived — the excursion flag
    and its limit config are ours, not the vendor's, and need not wait on somebody else's PDF.
-5. **Decide pattern 7's event store.** New on 2026-08-25 and unspecified. Patterns 1, 3, 5 and 6
+4. **Decide pattern 7's event store.** New on 2026-08-25 and unspecified. Patterns 1, 3, 5 and 6
    have to be persisted somewhere 07 can query, because both of its flags are evaluated against
    the *past*. Two candidates: Ignition tag history on the bound tags, or an `events` table in
    `icc26` written by the same Event Streams that publish. This blocks writing 07's spec, not
    just building it.
-6. **07** — the composite aggregate, last of the seven.
+5. **07** — the composite aggregate, last of the seven.
 
 Each item ends with: `tasks.py health` green, the pattern's verification passing, `git status`
 showing only the files you meant to touch, push.

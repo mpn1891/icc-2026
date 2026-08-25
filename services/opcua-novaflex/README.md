@@ -40,17 +40,13 @@ it last, after every other historical leaf, so a tag-change is a settled result:
 nsu=http://icc26.demo/UA/NovaflexII/;s=OPCSystemObjects->HistoricalSampleResults->SampleTime
 ```
 
-Ignition: tag-change on `flex-01/result/sample_time` → Event Stream `03_opcua/novaflex-result`
-→ Transmission to `icc26/site1/qc/analyzers/flex-01/result`.
+Ignition: tag-change on `novaflex-01/result/sample_time` → Event Stream `03_opcua/novaflex-result`
+→ Transmission to `icc26/site1/qc/analyzers/novaflex-01/result`.
 
-> **Renamed 2026-08-25:** the UDT instance and the topic went from `novaflex-01` to `flex-01`.
-> This directory, the compose service and the Event Stream name keep `novaflex` — they name the
-> simulator, not the instrument on the wire. **The rename is not finished in config**: the
-> instance's `uns_path` parameter, `opcua_event.SOURCE_ID`, the Event Stream's handler topic and
-> `03-seed.sql`'s equipment id all still read `novaflex-01`, and the tag-change script is bound
-> to a path the renamed instance no longer creates. Finish it in one pass or revert it — the
-> four places are listed in
-> [`docs/00-architecture.md` § *Topic namespace*](../../docs/00-architecture.md).
+The UDT instance, the topic, `uns_path`, the Event Stream handler topic, and
+`03-seed.sql`'s equipment id are all `novaflex-01`. This directory, the compose service and
+the Event Stream *name* keep `novaflex` because they name the simulator, not a second
+instrument id.
 
 `ICC26Extensions` is still in the address space (counter, state, ResultJson) so the missing
 vendor trigger is visible on a browse. The MQTT path does not read it.
@@ -191,17 +187,17 @@ this: 26 assertions, all green, 911 nodes across the three trees.
    copyable because the only per-connection secret, `keyStoreAliasPassword`, is Embedded
    ciphertext valid for the whole gateway. Drop the signature rather than trying to forge it —
    the resource genuinely was modified externally, and the gateway is fine being told so.
-2. **`bioanalyzer` UDT + `flex-01` instance** — written as files, see below.
+2. **`bioanalyzer` UDT + `novaflex-01` instance** — written as files, see below.
 3. **MQTT publish** — tag-change on `result/sample_time` (vendor `HistoricalSampleResults/SampleTime`)
    hands the result folder to Event Stream `03_opcua/novaflex-result`. Transform
    `opcua_event.build_novaflex_result` reads the historical UDT siblings and Transmission
-   publishes to `icc26/site1/qc/analyzers/flex-01/result`, `meta.mechanism = "opcua-event"`.
+   publishes to `icc26/site1/qc/analyzers/novaflex-01/result`, `meta.mechanism = "opcua-event"`.
    Does not use `ICC26Extensions`.
 
 ### The UDT
 
-`bioanalyzer` (in `tag-type-definition/default/udts.json`), instantiated as `flex-01` at
-`[default]icc26/site1/qc/analyzers/flex-01`.
+`bioanalyzer` (in `tag-type-definition/default/udts.json`), instantiated as `novaflex-01` at
+`[default]icc26/site1/qc/analyzers/novaflex-01`.
 
 A **second type**, not a widened `cell_analyzer`: the frame is identical but the measurements are
 completely different, and two honest types beat one type with half its members permanently Bad.

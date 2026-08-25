@@ -62,7 +62,7 @@ pattern having to share a topic with the other.
 ```
 opcua-novaflex ──OPC UA──▶ Ignition ──Event Stream──▶ Transmission
                                                           │
-                          icc26/site1/qc/analyzers/flex-01/result   (mechanism: opcua-event)
+                          icc26/site1/qc/analyzers/novaflex-01/result   (mechanism: opcua-event)
                                                           │
                                               subscribe (QoS 1, lims-bridge)
                                                           ▼
@@ -423,7 +423,7 @@ the point of the whole pattern.
 Falsifiable, in order. Do not proceed past a red one.
 
 1. **Pattern 3 is actually on the broker.** `mosquitto_sub` on
-   `icc26/site1/qc/analyzers/flex-01/result`, trigger `ESMScheduleAnalysis`, exactly one
+   `icc26/site1/qc/analyzers/novaflex-01/result`, trigger `ESMScheduleAnalysis`, exactly one
    message per completed sample. It has never been watched (`00-status.md`).
 2. `correlation_id` is present in that message.
 3. Nuke, reseed, confirm the schema: `status`, `verified_at`, `uq_sample_analyte` and

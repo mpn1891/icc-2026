@@ -6,8 +6,8 @@ What is built and what is not — nothing else. This file was 208 lines on 2026-
 gutted the same day, because most of it was either duplicated or archaeology:
 
 - **Durable facts and traps** → [`../00-architecture.md`](../00-architecture.md). The `pg_db`
-  datasource look-alike, the `flex-01` half-rename, the Transmission `TARGET` warning, the
-  API-key traps, the `br-202` mistake, and *Working rules* all live there now.
+  datasource look-alike, the Transmission `TARGET` warning, the API-key traps, the `br-202`
+  mistake, and *Working rules* all live there now.
 - **What to build, and in what order** → [`00-master-plan.md`](00-master-plan.md) § *Order*.
 - **Part 1 history, the clone-test checkpoints, the proven/disproven list** → deleted. Git has
   them; the last revision carrying them is on this branch.
@@ -22,7 +22,7 @@ the fact rather than keep two copies.
 | **Infra** | Done. A gateway rebuilt from the repo loads Cirrus **5.0.4** Engine, Transmission and Distributor with no compatibility warnings. `tasks.py` forces `--build` on `up` and `seed`, so a stale image cannot come back quietly. |
 | **01 — native MQTT** | Built, run and broker-verified 2026-08-17. Findings in [`01-native-mqtt.md`](01-native-mqtt.md) § *Ingest, as built*; talk track at [`../talk-tracks/01-native-mqtt.md`](../talk-tracks/01-native-mqtt.md). |
 | **02 — Sparkplug B** | Same. [`02-sparkplug-b.md`](02-sparkplug-b.md) § *Ingest, as built*, [`../talk-tracks/02-sparkplug-b.md`](../talk-tracks/02-sparkplug-b.md). |
-| **03 — OPC UA → MQTT** | Nova path built and broker-verified 2026-08-20 (`S-00140` watched live). **Currently broken by the half-landed `flex-01` rename** — see the master plan's order, item 2. The Countess is out of the demo. [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md). |
+| **03 — OPC UA → MQTT** | Nova path built and broker-verified 2026-08-20 (`S-00140` watched live). Device id is `novaflex-01`. The Countess is out of the demo. [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md). |
 | **04 — LIMS webhook** | Verified end-to-end 2026-08-20: ingest, reject, atomic approve, webhook publish, 409 replay, 401 wrong secret, and outbox survival across `docker restart icc26-lims`. **Remaining:** both review outcomes publish `analyst` + `disposition` pass/fail. [`04-lims-webhook.md`](04-lims-webhook.md), [`../talk-tracks/04-lims-webhook.md`](../talk-tracks/04-lims-webhook.md). |
 
 ## Not built

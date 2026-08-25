@@ -1,6 +1,6 @@
 [
   {
-    "name": "flex-01",
+    "name": "novaflex-01",
     "parameters": {
       "device_id": {
         "dataType": "String",

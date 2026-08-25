@@ -13,7 +13,7 @@ PostgreSQL 17, all under `docker compose`, all version controlled.
 |---|---------|--------------|-------|
 | 1 | Native MQTT pub/sub | Smart sample valve assembly — RFID badge scan opens a bioreactor sample valve | built |
 | 2 | Sparkplug B edge node | **The same valve assembly**, other firmware — birth/death, RBE, self-describing metrics | built |
-| 3 | OPC UA → MQTT | Nova Flex analyzer (`flex-01`); Ignition publishes on sample-complete | built |
+| 3 | OPC UA → MQTT | Nova Flex analyzer (`novaflex-01`); Ignition publishes on sample-complete | built |
 | 4 | Webhook / Push API | LIMS review POSTs to Ignition; remaining: pass/fail on both outcomes | built, pass/fail open |
 | 5 | CDC / log tailing | Ignition batch timer → `bes.batch_event` → Debezium → MQTT | planned |
 | 6 | Poll / diff | MET ONE HTTP API in `qc/analyzers`, Ignition poll → Event Stream | planned |

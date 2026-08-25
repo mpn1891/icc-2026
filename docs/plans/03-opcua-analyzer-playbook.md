@@ -30,7 +30,7 @@ not as a second running instrument.
 | Compose service | `opcua-countess` | `opcua-novaflex` |
 | Ignition connection | `opc-connection/cell_analyzer/` (UI) | `opc-connection/bioanalyzer/` (**copied as files**, see step 6) |
 | UDT type | `tag-type-definition/default/udts.json` → `cell_analyzer` | → `bioanalyzer` |
-| UDT instance | `tag-definition/default/icc26/site1/qc/analyzers/udts.json` → `countess-01` | → `flex-01` |
+| UDT instance | `tag-definition/default/icc26/site1/qc/analyzers/udts.json` → `countess-01` | → `novaflex-01` |
 
 The two were not alternatives — they were a pair, and the pair was the argument: the Countess
 has no vendor OPC server, so its address space is the one we would design; the FLEX2 has one, so
@@ -38,14 +38,11 @@ its address space is the one a vendor actually ships. **Only the FLEX2 is in the
 the argument is made by describing the Countess rather than running it.
 See [What actually happened with the Novaflex](#what-actually-happened-with-the-novaflex--built).
 
-**Naming, 2026-08-25:** the UDT instance and the topic are `flex-01`, renamed from `novaflex-01`.
-The directory `services/opcua-novaflex`, the compose service, the Event Stream
-`03_opcua/novaflex-result` and the reference model doc keep `novaflex` — they name the simulator
-and its source manual. **The rename is not finished in config** — `uns_path`, `SOURCE_ID`, the
-Event Stream's handler topic and `03-seed.sql` still say `novaflex-01`, and the tag-change script
-is bound to a path the renamed instance no longer creates. See
-[`../00-architecture.md` § *Topic namespace*](../00-architecture.md) for the four places, and
-finish it in one pass.
+**Naming:** the UDT instance and the topic are `novaflex-01`. The directory
+`services/opcua-novaflex`, the compose service, the Event Stream `03_opcua/novaflex-result`
+and the reference model doc keep `novaflex` — they name the simulator and its source
+manual. A shorter `flex-01` was considered on 2026-08-25 and reverted; do not rename one
+place without the others.
 
 ---
 
@@ -189,13 +186,13 @@ status code — and the contrast between the two is a talk point, not an embarra
 **Novaflex — built.** No new OPC UA nodes. Trigger is the vendor `SampleTime` already on
 `HistoricalSampleResults`.
 
-1. Tag-change script on `[default]icc26/site1/qc/analyzers/flex-01/result/sample_time`
+1. Tag-change script on `[default]icc26/site1/qc/analyzers/novaflex-01/result/sample_time`
    (skips `initialChange` and Bad quality).
 2. `system.eventstream.publishEvent("icc-2026", "03_opcua/novaflex-result", resultFolder, False)`.
 3. Event Stream transform `opcua_event.build_novaflex_result` reads the historical UDT siblings
    (Bad → JSON `null`) and returns `ts` plus `values` — no `seq`, `source` or `meta`. The
    instrument's document, not the site's; provenance is the topic it arrived on.
-4. MQTT Transmission handler publishes to `icc26/site1/qc/analyzers/flex-01/result`.
+4. MQTT Transmission handler publishes to `icc26/site1/qc/analyzers/novaflex-01/result`.
 
 The simulator writes `SampleTime` **last** on the historical tree so the script cannot fire
 before the rest of the result is on the wire. `ICC26Extensions` is still in the address space
@@ -212,7 +209,7 @@ Verify Nova: trigger `ESMScheduleAnalysis`, then
 
 ```
 docker run --rm -it --network icc26 eclipse-mosquitto:2 `
-  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/qc/analyzers/flex-01/result' -v
+  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/qc/analyzers/novaflex-01/result' -v
 ```
 
 One message per completed sample, never per-value, carrying `ts` and `values` only. A failed or
@@ -270,7 +267,7 @@ than the Countess's rather than shorter.
 | Host port | 4840 | **4841** | ✓ |
 | Namespace URI | `…/UA/Countess3FL/` | `…/UA/NovaflexII/` | ✓ |
 | Cycle | 5 s run, 180 s | 8 s run, 120 s | ✓ |
-| Topic | `…/countess-01/result` | `…/flex-01/result` | ✓ |
+| Topic | `…/countess-01/result` | `…/novaflex-01/result` | ✓ |
 | **Data model source** | vendor Appendix E, 71 columns | **vendor OPC manual §9, ~400 tags** | ✗ "none — the analyte list *is* the spec" |
 | **Address space** | ours, DI + LADS | **Nova's**, flat `OPCSystemObjects` / `OPCSystemCommands` | ✗ assumed same shape |
 | **Trigger node** | `CountCompletedCounter` | `ICC26Extensions->SampleCompleteCounter` | ✗ vendor has **no counter at all** |
@@ -311,6 +308,5 @@ Dockerfile, and the compose block. Every gotcha table below applied unchanged an
 the second run.
 
 The Novaflex OPC connection and UDT are built. MQTT publish is built off `SampleTime` (step 9)
-and was broker-verified 2026-08-20 — on what was then `novaflex-01/result`; finish the `flex-01`
-rename before trusting that path again. Countess has no publish and will not get one — worked
-example only.
+and was broker-verified 2026-08-20 on `novaflex-01/result`. Countess has no publish and will
+not get one — worked example only.

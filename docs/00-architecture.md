@@ -144,7 +144,7 @@ icc26/site1/upstream/br-201/sample-valve-01/event/badge-scan       # 1  every ba
 icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete  # 1  only when a sample ran
 icc26/site1/upstream/br-201/sample-valve-01/status     # 1  online/offline, retained; also the LWT
 icc26/site1/upstream/br-201/sample-valve-01/telemetry  # 1  air supply / enclosure temp, every 5 s
-icc26/site1/qc/analyzers/flex-01/result                # 3  Nova result (renamed from novaflex-01, 2026-08-25)
+icc26/site1/qc/analyzers/novaflex-01/result            # 3  Nova result
 icc26/site1/qc/lims/sample-result                      # 4  review: analyst + pass/fail
 icc26/site1/upstream/br-201/batch/event                # 5  CDC of bes.batch_event
 icc26/site1/qc/analyzers/particle-counter-01/result    # 6  MET ONE analysis (provisional)
@@ -204,25 +204,12 @@ split would be the first exception. The cost is the "environmental reading taken
 reactor" framing: the reactor association now lives in the payload and in pattern 7's join,
 not in the address. Nothing on stage depends on the old address.
 
-**Pattern 3's device id is `flex-01`, renamed from `novaflex-01` on 2026-08-25.** Topic and
-Ignition UDT instance both. The service, the compose entry, the Event Stream name and the
-reference model doc all keep `novaflex` — those name the *simulator and its source manual*, not
-the instrument on the wire.
-
-> **The rename is half-landed, and pattern 3 does not publish until it is finished.** The UDT
-> *instance* is renamed; four other places still say `novaflex-01`:
->
-> | Where | Effect |
-> |---|---|
-> | the instance's own `uns_path` parameter, in `tag-definition/.../qc/analyzers/udts.json` | named one thing, parametrized as another |
-> | `script-python/opcua_event/code.py` → `SOURCE_ID` | envelope still says `"source": {"id": "novaflex-01"}` |
-> | `event-streams/03_opcua/novaflex-result/config.json` → handler `topic` | still publishes to the old topic |
-> | `compose/postgres/initdb/03-seed.sql` → `plant.equipment` | equipment id no longer matches the topic id, which the rule above requires |
->
-> The tag-change script is bound to
-> `[default]icc26/site1/qc/analyzers/novaflex-01/result/sample_time` — a path the renamed
-> instance no longer creates, **so the trigger fires on nothing.** Finish it in one pass or
-> revert it; half-done is the one state that fails silently.
+**Pattern 3's device id is `novaflex-01`.** Topic, Ignition UDT instance, `uns_path`, Event
+Stream handler topic, and `plant.equipment` id all use that name. The service directory, the
+compose entry, the Event Stream name `03_opcua/novaflex-result`, and the reference model doc
+keep `novaflex` because those name the *simulator and its source manual*, not a second
+instrument id. A shorter `flex-01` was considered on 2026-08-25 and reverted so the running
+gateway and the files stay aligned; revisit later if wanted, and rename every place in one pass.
 
 **There is no `mes` area, deliberately.** An MES is a piece of software, not a place, and an
 area slot filled with a system name is the same mistake as organising by ingestion mechanism —
@@ -425,7 +412,7 @@ Every non-Sparkplug payload **that Ignition publishes** — patterns 3, 4, 5, 6 
 {
   "ts": "2026-08-07T14:03:22.145Z",
   "seq": 1041,
-  "source": { "id": "flex-01", "type": "analyzer" },
+  "source": { "id": "novaflex-01", "type": "analyzer" },
   "meta": { "mechanism": "cdc", "ingest_ts": "…", "correlation_id": "…" },
   "values": { }
 }

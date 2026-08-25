@@ -81,7 +81,7 @@ in between. Silence becomes evidence, and so does a gap.
 ## Pattern 3 — OPC UA → MQTT Bridge / Event Streams
 
 **Demo asset:** Cell analyzer (VCD / viability) — the Nova Biomedical BioProfile FLEX2,
-addressed as `flex-01` (renamed from `novaflex-01` on 2026-08-25)
+addressed as `novaflex-01`
 
 - Qualified instrument that cannot be touched; bridge sits at the gateway
 - The Countess is **out of the demo** as of 2026-08-25 — the "model we would design versus the
