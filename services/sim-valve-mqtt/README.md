@@ -25,8 +25,8 @@ That is the entire contract with the outside world, and all three are somebody's
 Put it next to <http://localhost:8086> and read the two pages side by side.
 
 The same three settings apply to **all** message types, which is the flaw worth pointing at:
-a badge scan is an audit record that must not be lost, and a line temperature is disposable,
-and this page cannot tell them apart.
+a badge scan is an audit record that must not be lost, an enclosure temperature is
+disposable, and this page cannot tell them apart.
 
 ## Topics
 
@@ -34,11 +34,24 @@ Derived from whatever is in the Topic field. Shipped default:
 
 | Topic | Dir | Default QoS | Default retained |
 |---|---|---|---|
-| `icc26/site1/upstream/br-201/sample-valve-01/event` | pub | 1 | yes |
-| `icc26/site1/upstream/br-201/sample-valve-01/state` | pub | 1 | yes |
+| `icc26/site1/upstream/br-201/sample-valve-01/event/badge-scan` | pub | 1 | yes |
+| `icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete` | pub | 1 | yes |
+| `icc26/site1/upstream/br-201/sample-valve-01/status` | pub | 1 | yes |
 | `icc26/site1/upstream/br-201/sample-valve-01/telemetry` | pub | 1 | yes |
 
-`state` also carries the **Last Will**, with `values.state = "offline"`.
+`event/<subtype>` is a two-token message type, the same shape as `cmd/<verb>`;
+`icc26/+/+/+/+/event/#` still catches both, because `#` matches zero levels. They are two
+topics because the two documents carry different field sets, and one `event/values/` folder
+would hold the union of two schemas with half the tags stale.
+
+`status` is the **birth/will pair** and nothing else: the device publishes
+`values.state = "online"` as its first message after CONNACK, and the broker publishes
+`values.state = "offline"` from the Last Will. Both retained — untick Retained and the pair is
+worth nothing, because a subscriber that arrives tomorrow is told neither.
+
+**Valve position is on no topic at all.** The `state` topic was cut on 2026-08-25; the four
+states exist only on the config page, and outside the box a sample is two events fifteen
+seconds apart with silence in between.
 
 Nothing is subscribed. The valve takes no commands: authorization is decided against the
 local roster, because a sample port that stops working when the broker does is not one
@@ -60,26 +73,38 @@ The envelope from [`docs/00-architecture.md`](../../docs/00-architecture.md), wi
   "values": {
     "badge_id": "B-2087", "badge_holder": "Sam Okafor", "badge_role": "maintenance",
     "result": "denied", "deny_reason": "badge-not-authorized",
-    "valve_state": "locked", "sample_id": null
+    "scan_time": "2026-08-17T18:22:04.512Z", "sample_id": null
   }
 }
 ```
 
-Events are `badge-scan` and `sample-complete`. Deny reasons: `badge-unknown`,
-`badge-not-authorized`, `training-expired`, `interlock-open`, `valve-busy` — checked in that
-order, so who you are is decided before what the valve happens to be doing.
+`event/badge-scan` carries `badge_id`, `badge_holder`, `badge_role`, `result`, `deny_reason`,
+`scan_time` and `sample_id` — the last one `null` on a denial, because a denial belongs to no
+sample. `event/sample-complete` carries `sample_id`, `badge_id`, `badge_holder`,
+`sample_start`, `sample_completion`, `open_duration_s`, `cycle_result` and `cycle_count`.
+
+Deny reasons: `badge-unknown`, `badge-not-authorized`, `valve-busy` — checked in that order,
+so who you are is decided before what the valve happens to be doing. There is nothing else
+that can refuse a sample: authorization is the roster and only the roster.
+
+`cycle_result` is `normal`, `failed-to-seat` or `stroke-timeout`, and the cause is physical.
+The actuator is pneumatic, so a supply that has sagged below 4.5 bar is a valve whose position
+feedback does not come back to 0 % on close (`failed-to-seat`), and below 2.5 bar it cannot
+finish the opening stroke at all (`stroke-timeout`). `telemetry.air_supply_bar` is the reading
+that says so, minutes in advance, on a topic with no relationship to the event.
 
 ## Badge roster
 
-`BADGE_ROSTER` is `id:holder:role:status` entries, comma separated. The default carries one
-authorized analyst, one badge refused for its role, and one whose training lapsed:
+`BADGE_ROSTER` is `id:holder:role:status` entries, comma separated. Two ship — one authorized
+analyst and one badge refused for its role. The third denial needs no roster entry:
 
 | Badge | Holder | Role | Status |
 |---|---|---|---|
 | `B-1042` | Jordan Reyes | qc-analyst | authorized |
 | `B-2087` | Sam Okafor | maintenance | not-authorized |
-| `B-3311` | Alex Chen | qc-analyst | training-expired |
 | `B-9999` | — | — | not on the roster at all |
+
+`valve-busy` is `B-1042` pressed twice in quick succession.
 
 ## Two things that look like bugs and are not
 
@@ -89,8 +114,8 @@ about that from inside a hand-rolled protocol, and it is one of the things the S
 variant answers.
 
 **A retained message outlives the config that produced it.** Change the topic on the page and
-the old retained state sits at the old topic until something clears it. The page says so when
-it happens.
+the old retained documents sit at the old topics until something clears them — including a
+`status` that says `online` and will never be corrected. The page says so when it happens.
 
 ## Environment
 
@@ -104,6 +129,9 @@ it happens.
 | `BADGE_ROSTER` | see above | |
 | `SAMPLE_WINDOW_S` / `VALVE_STROKE_S` | `12` / `1.5` | |
 | `TELEMETRY_INTERVAL_S` | `5` | |
+| `AIR_SUPPLY_BAR` | `5.5` | nominal actuator supply |
+| `AIR_SUPPLY_SAG_BAR` | `3.2` | what the page's sag button drops it to; between the seat threshold (4.5) and the stroke threshold (2.5), so it produces `failed-to-seat`. Below 2.5 the same button produces `stroke-timeout` |
+| `ENCLOSURE_TEMPERATURE_C` | `31.5` | |
 | `SCAN_INTERVAL_S` | `90` | free-running background scans; **`0` disables them** for a scripted stage run |
 | `UI_PORT` | `8080` | container-side; compose maps it to 8085 |
 | `CONFIG_PATH` | `/data/config.json` | commissioned settings, on a named volume |
@@ -115,9 +143,15 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
   mosquitto_sub -h chariot -u observer -P observer -t 'icc26/#' -v
 ```
 
-Press a badge button on the page. One `event` message per scan; on a granted scan the `state`
-topic moves `locked → unlocking → open → closing → locked` and a `sample-complete` event
-follows.
+Press a badge button on the page. One `event/badge-scan` per scan; on a granted scan an
+`event/sample-complete` follows about fifteen seconds later, and **nothing lands in between** —
+the page walks `unlocking → open → closing → locked` while the wire stays silent.
 
-`docker stop icc26-sim-valve-mqtt` disconnects cleanly, so the will is discarded and never
-fires. `docker kill icc26-sim-valve-mqtt` is what proves it works.
+Sag the air supply, then press `B-1042`: the scan is granted and the sample completes
+`failed-to-seat`. Restore the supply and the next one is `normal`.
+
+`docker kill icc26-sim-valve-mqtt` fires the will: `status` goes to `offline`, published by
+the broker, with a `ts` that is when the session *connected*. `docker stop` disconnects
+cleanly, so the broker discards the will — and `offline` lands anyway, published by the device
+on its way out with the same frozen timestamp. Only `kill` proves the will works; both prove
+the timestamp is wrong.

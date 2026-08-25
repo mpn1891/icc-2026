@@ -28,7 +28,7 @@ class ConfigProvider:
     """What the page can ask the device for, and do to it.
 
     The two variants implement `state()` and `apply()` very differently -- that asymmetry is
-    the content -- but the simulator controls (`scan`, `set_interlock`) are identical,
+    the content -- but the simulator controls (`scan`, `set_air_supply`) are identical,
     because the physical device is identical.
     """
 
@@ -42,7 +42,7 @@ class ConfigProvider:
     def scan(self, badge_id: str) -> dict:
         raise NotImplementedError
 
-    def set_interlock(self, ok: bool) -> None:
+    def set_air_supply(self, sagged: bool) -> None:
         raise NotImplementedError
 
 
@@ -107,8 +107,11 @@ class _Handler(BaseHTTPRequestHandler):
                 result = self.provider.scan(badge_id)
                 return self._send_json(200, {"ok": True, "scan": result,
                                              "state": self.provider.state()})
-            if path == "/api/interlock":
-                self.provider.set_interlock(bool(payload.get("ok")))
+            if path == "/api/air-supply":
+                # The simulator's one physical control: starve the pneumatic actuator, or
+                # give it its air back. Everything the fault path does downstream follows
+                # from this one boolean.
+                self.provider.set_air_supply(bool(payload.get("sagged")))
                 return self._send_json(200, {"ok": True, "state": self.provider.state()})
         except Exception as exc:  # a config page must never take the device down with it
             LOG.exception("request to %s failed", path)

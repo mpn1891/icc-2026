@@ -10,7 +10,7 @@
 | | |
 |---|---|
 | **Pattern** | 1 of 7 — native MQTT pub/sub, hand-rolled everything |
-| **Mechanism tag** | `meta.mechanism = "native-mqtt"` |
+| **Mechanism tag** | **none** — this device carries no `meta` at all |
 | **Container** | `sim-valve-mqtt` — [`services/sim-valve-mqtt/`](../../services/sim-valve-mqtt/) |
 | **Config page** | <http://localhost:8085> — this *is* the demo, as much as the traffic |
 | **Depends on** | nothing |
@@ -43,8 +43,9 @@ page has the same three controls greyed out. **Put the two screenshots side by s
 argument makes itself**, before a single message crosses the wire.
 
 **2. The device knows nothing about itself, so everything else must be agreed.** The payload
-shape is ours. The death certificate is a retained JSON document on a topic we picked, whose
-timestamp is wrong by construction. Datatypes are whatever `json.dumps` produced. Every one of
+shape is ours. The death certificate is a retained JSON document on a `status` topic we picked,
+paired with an `online` message on connect by convention alone, and its timestamp is wrong by
+construction. Datatypes are whatever `json.dumps` produced. Every one of
 those has to be written down somewhere and kept in step forever — and the place it gets written
 down is an Ignition tag configuration, by hand, which is exactly the work pattern 2 does not do.
 
@@ -76,12 +77,12 @@ Four topics, all outbound, nothing subscribed:
 |---|---|---|---|
 | `…/sample-valve-01/event/badge-scan` | 1 | yes | One per badge presented, granted or denied |
 | `…/sample-valve-01/event/sample-complete` | 1 | yes | One per sample that actually ran |
-| `…/sample-valve-01/state` | 1 | yes | Valve position; **also the Last Will** |
+| `…/sample-valve-01/status` | 1 | yes | `online` \| `offline`; **also the Last Will** |
 | `…/sample-valve-01/telemetry` | 1 | yes | Actuator air supply, enclosure temperature, every 5 s |
 
 **The QoS and Retained columns are identical down the table, and that is the finding.** The page
 offers one of each, applied to every topic it derives. The honest settings would be QoS 1
-unretained for the two event subtypes, QoS 1 retained for state, QoS 0 unretained for telemetry
+unretained for the two event subtypes, QoS 1 retained for `status`, QoS 0 unretained for telemetry
 — three different answers the device cannot express, now spread across four topics.
 
 **Why the events are two topics** is worth thirty seconds, because it is a decision somebody had
@@ -96,26 +97,25 @@ A badge scan on the wire:
 
 ```json
 {
-  "ts": "2026-08-17T18:22:04.512Z",
-  "seq": 41,
-  "source": { "id": "sample-valve-01", "type": "sample-valve" },
-  "meta": {
-    "mechanism": "native-mqtt",
-    "ingest_ts": "2026-08-17T18:22:04.512Z",
-    "event": "badge-scan",
-    "cell": "br-201",
-    "assembly_serial": "SV-2000-0417"
-  },
+  "ts": "2026-08-25T20:30:47.041Z",
   "values": {
     "badge_id": "B-2087",
     "badge_holder": "Sam Okafor",
     "badge_role": "maintenance",
     "result": "denied",
     "deny_reason": "badge-not-authorized",
+    "scan_time": "2026-08-25T20:30:47.041Z",
     "sample_id": null
   }
 }
 ```
+
+**Read the whole document out loud — that is all of it.** A timestamp and a bag of values. It
+does not say what it is, where it came from, what device sent it, how it arrived, or whether
+you missed the one before. Every one of those answers lives in the topic string somebody typed
+into a text box on the config page, which is the argument of this segment in a single payload.
+Pattern 2's equivalent carries datatypes, engineering units, aliases and a spec-mandated
+sequence number, and nobody had to agree any of it.
 
 **This valve mints the sample id**, because the sample begins when material leaves the reactor.
 It travels as `values.sample_id` and everything downstream carries it unchanged — the Nova
@@ -125,7 +125,7 @@ carries `null`, because a denial belongs to no sample.
 ## The risk beat — four things measured, not asserted
 
 **1. The death certificate cannot say when the device died.** The Last Will goes out on the
-`state` topic carrying `state: "offline"`, and its timestamp is **the moment the session
+`status` topic carrying `state: "offline"`, and its timestamp is **the moment the session
 connected** — a will is registered in the CONNECT packet, before the death it describes. So the
 payload `ts` is stale by exactly the length of the session, whatever that happened to be.
 Measured both ways:
@@ -187,10 +187,10 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 | Beat | Trigger | What lands |
 |---|---|---|
 | Both pages, side by side | 8085 and 8086 | The pattern, before any traffic exists |
-| A granted sample | Press `B-1042` | `event/badge-scan` granted + `sample_id`, `state` walks `unlocking → open → closing → locked`, then 15 s later `event/sample-complete` |
-| Every denial | `B-2087`, `B-3311`, `B-9999`, interlock off, `B-1042` twice | One `event/badge-scan` each, **nothing on `sample-complete`**, **no state change** |
+| A granted sample | Press `B-1042` | `event/badge-scan` granted + `sample_id`, then 15 s later `event/sample-complete` — **and nothing in between**, though the page shows the valve stroking |
+| Every denial | `B-2087`, `B-9999`, `B-1042` twice | One `event/badge-scan` each, **nothing on `sample-complete`** |
 | The valve misbehaves | Sag the air supply, press `B-1042` | Granted — authorization knows nothing about air pressure — then `cycle_result: failed-to-seat`. **The telemetry had been saying so for minutes** |
-| Retain does the work | Second `mosquitto_sub` | Retained `state` arrives before anything happens |
+| Retain does the work | Second `mosquitto_sub` | Retained `status: online` arrives before anything happens |
 | The death certificate | `docker kill icc26-sim-valve-mqtt` | Retained `offline` will lands — read its `ts` out loud, then read the `note` field out loud |
 | …and turn Retain off | Uncheck on the page, repeat | The new subscriber gets **nothing** |
 | The ACL | Set topic to `icc26/site1/qc/lims/sample-result` | Refused (needs `allowAnonymous: false`) |
@@ -200,11 +200,13 @@ by hand, so a re-addressed valve publishes happily to the broker while Ignition'
 frozen. That gap *is* a talk point — the text box and the subscription are kept in step by a
 human and nothing else — but leave it and the rest of the demo is dead.
 
-Roster: `B-1042` authorized, `B-2087` wrong role, `B-3311` training expired, anything else
-unknown. All three denial paths are demonstrable without editing config on stage.
+Roster: `B-1042` authorized, `B-2087` wrong role, anything else unknown (the page offers
+`B-9999`). `valve-busy` is the third denial — press `B-1042` twice in quick succession. All
+three paths are demonstrable without editing config on stage.
 
 **`docker stop` disconnects cleanly and the broker discards the will** — only `kill` proves the
-will works. Both are worth showing, because the stop path is the one that surprises people.
+will works. Both are worth showing, because the stop path is the one that surprises people: the
+device publishes the same frozen `offline` document itself, so it *looks* like the will fired.
 
 ## Progress log
 
@@ -212,4 +214,5 @@ will works. Both are worth showing, because the stop path is the one that surpri
 |---|---|
 | 2026-08-23 | Talk track split out of [`plans/01-native-mqtt.md`](../plans/01-native-mqtt.md), which stays the build spec. Through-line signal and GxP hook folded in; `meta.correlation_id` added to the envelope. |
 | 2026-08-23 | Moved to `docs/talk-tracks/`; links repointed here and in every inbound file. Risk beat 1 rewritten — the two staleness numbers were being read as a comparison when they only reflect session length, and the real finding is that the graceful path fails by a second route. |
+| 2026-08-25 | **Follows the `state` → `status` redesign in the spec.** The valve no longer publishes position at all, so the granted-sample beat is two events fifteen seconds apart with silence in between — the page strokes, the wire does not. `status` is the birth/will pair only (`online` on connect, `offline` by will), which sharpens risk beat 1: the topic now means exactly one thing and *still* cannot say when the device died. Interlock and `training-expired` cut; the third denial is `valve-busy`. |
 | 2026-08-23 | **Follows the payload redesign in the spec.** Four topics, not three: `event` splits into `event/badge-scan` and `event/sample-complete`, with a thirty-second aside on why. `meta.correlation_id` dropped — the sample id travels as `values.sample_id`. Telemetry is now actuator air supply and enclosure temperature, which buys a new stage beat: sag the air, the scan is still granted, and the sample comes back `failed-to-seat` with the warning sitting in the telemetry nobody was reading. Risk beat 2 gains the will's `note` field — *it told you, in English, in a field nothing parses*. The null-tag finding gains the two-branch asymmetry. |

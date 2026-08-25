@@ -169,9 +169,11 @@
         <tbody id="plan"></tbody>
       </table>
       <p class="sim-note" style="margin:.9rem 0 0">
-        One topic, one QoS and one retained flag apply to all three. This page cannot tell a
+        One topic, one QoS and one retained flag apply to all four. This page cannot tell a
         badge scan apart from a temperature reading, so whichever setting is right for one of
-        them is wrong for another &mdash; and nothing here will warn you.
+        them is wrong for another &mdash; and nothing here will warn you. Retained is right
+        for <code>status</code> and leaves stale events on the broker for the next subscriber
+        to mistake for live ones.
       </p>
     </div>
   </section>
@@ -185,9 +187,13 @@
         <dt>Payload</dt><dd id="will-payload">&hellip;</dd>
       </dl>
       <p class="sim-note" style="margin:.9rem 0 0">
-        Registered in the CONNECT packet, so its timestamp is when this session
-        <em>started</em>, not when it ended. Nothing on the backbone knows this topic means
-        &ldquo;death&rdquo; unless it was told separately.
+        One topic, two messages: the device publishes <code>online</code> itself as its first
+        message after connecting, and the broker publishes <code>offline</code> from this will
+        if the session ever breaks without a proper disconnect. Registered in the CONNECT
+        packet, so its timestamp is when this session <em>started</em>, not when it ended.
+        Nothing on the backbone knows this topic means &ldquo;death&rdquo; unless it was told
+        separately &mdash; and untick Retained above and the pair is worth nothing at all,
+        because whoever subscribes tomorrow is told neither.
       </p>
     </div>
   </section>
@@ -195,19 +201,25 @@
   <section class="sim">
     <h2>Simulator controls &mdash; not part of the device</h2>
     <div class="body">
-      <p class="sim-note">A real assembly has an RFID reader here. These buttons stand in for
-        presenting a badge to it.</p>
+      <p class="sim-note">A real assembly has an RFID reader here, and a plant air header
+        behind the actuator. These buttons stand in for both.</p>
       <div class="badges" id="badges"></div>
-      <button type="button" class="ghost" id="interlock" style="margin-top:1rem"></button>
+      <button type="button" class="ghost" id="air-supply" style="margin-top:1rem"></button>
       <div class="state-line">
         valve <span class="v" id="v-state">&hellip;</span>
         &middot; position <span class="v" id="v-pos">&hellip;</span>%
         &middot; cycles <span class="v" id="v-cycles">&hellip;</span>
-        &middot; line <span class="v" id="v-press">&hellip;</span> bar /
-        <span class="v" id="v-temp">&hellip;</span> &deg;C
+        &middot; last cycle <span class="v" id="v-cycle-result">&hellip;</span>
+        &middot; air <span class="v" id="v-air">&hellip;</span> bar
+        &middot; enclosure <span class="v" id="v-temp">&hellip;</span> &deg;C
         &middot; published <span class="v" id="v-pub">&hellip;</span>
       </div>
       <div class="state-line" id="last-scan" style="border-top:none;padding-top:.2rem"></div>
+      <p class="sim-note" style="margin:.9rem 0 0">
+        The valve state on this line is on <em>no topic</em>. It is here and nowhere else
+        &mdash; a subscriber watching the broker sees the badge scan, then fifteen seconds of
+        nothing, then the completed sample.
+      </p>
     </div>
   </section>
 
@@ -218,7 +230,7 @@
 "use strict";
 var $ = function (id) { return document.getElementById(id); };
 var dirty = false;   // never overwrite what someone is halfway through typing
-var interlockOk = true;
+var airSagged = false;
 
 function esc(s) {
   return String(s === null || s === undefined ? "" : s)
@@ -245,7 +257,8 @@ function renderStatic(s) {
 
   $("will-topic").textContent = s.will.topic;
   $("will-qos").textContent = s.will.qos + " / " + (s.will.retain ? "retained" : "not retained");
-  $("will-payload").textContent = 'state = "' + s.will.payload_state + '"';
+  $("will-payload").textContent = 'state = "' + s.will.birth_state + '" on connect, "' +
+    s.will.payload_state + '" by will';
 
   var b = "";
   for (var j = 0; j < s.roster.length; j++) {
@@ -266,14 +279,15 @@ function renderRuntime(s) {
   $("v-state").textContent = v.state;
   $("v-pos").textContent = v.position_pct;
   $("v-cycles").textContent = v.cycle_count;
-  $("v-press").textContent = t.line_pressure_bar;
-  $("v-temp").textContent = t.line_temperature_c;
+  $("v-cycle-result").textContent = s.runtime.last_cycle_result || "—";
+  $("v-air").textContent = t.air_supply_bar;
+  $("v-temp").textContent = t.enclosure_temperature_c;
   $("v-pub").textContent = s.runtime.published;
 
-  interlockOk = v.interlock_ok;
-  $("interlock").textContent = interlockOk
-    ? "Interlock satisfied — click to open it (CIP in progress)"
-    : "Interlock open — click to satisfy it";
+  airSagged = s.runtime.air_sagged;
+  $("air-supply").textContent = airSagged
+    ? "Air supply sagging — click to restore it (next sample seats normally)"
+    : "Air supply nominal — click to sag it (next sample fails to seat)";
 
   var ls = s.runtime.last_scan;
   $("last-scan").innerHTML = ls
@@ -331,8 +345,8 @@ $("badges").addEventListener("click", function (e) {
     .then(function (r) { if (r.state) { apply(r.state); } });
 });
 
-$("interlock").addEventListener("click", function () {
-  post("/api/interlock", { ok: !interlockOk })
+$("air-supply").addEventListener("click", function () {
+  post("/api/air-supply", { sagged: !airSagged })
     .then(function (r) { if (r.state) { apply(r.state); } });
 });
 

@@ -49,7 +49,7 @@ pattern having to share a topic with the other.
 | | Sketch in `00-master-plan.md` | As specified here | Why |
 |---|---|---|---|
 | Data origin | a generator invents sample results on an interval | **subscribes to `icc26/site1/qc/analyzers/+/result`**; the generator survives as a fallback | A service inventing numbers is the least convincing artifact on the stage. Chaining pattern 3 into 4 makes one sample's journey the spine of the talk |
-| Inbound transport | n/a (the LIMS was the origin) | **MQTT subscribe** | Nothing in this stack currently *consumes* the backbone except the firehose. "One event backbone" is a weak claim if the only subscriber is a dashboard |
+| Inbound transport | n/a (the LIMS was the origin) | **MQTT subscribe** | Nothing else in this stack *consumes* the backbone except pattern 7. "One event backbone" is a weak claim with no subscribers on it — and since the firehose was cut (2026-08-25) this pattern and pattern 7 are the only two there are |
 | Webhook trigger | on insert / sample-complete | **on manual approval**, and only on approval | Gives the callback a real reason to be asynchronous |
 | Approval UI | Perspective | **served by the LIMS itself on `:8000`** | Same house style as the two valve config pages on 8085/8086. A LIMS screen should look like a LIMS, not like SCADA, and it keeps Perspective off this pattern's critical path |
 | LIMS MQTT publish rights | `sample-result` + `batch/event` | **none — `publishTopics: []`** | See [The cycle hazard](#the-cycle-hazard) |
@@ -62,7 +62,7 @@ pattern having to share a topic with the other.
 ```
 opcua-novaflex ──OPC UA──▶ Ignition ──Event Stream──▶ Transmission
                                                           │
-                          icc26/site1/qc/analyzers/novaflex-01/result   (mechanism: opcua-event)
+                          icc26/site1/qc/analyzers/flex-01/result   (mechanism: opcua-event)
                                                           │
                                               subscribe (QoS 1, lims-bridge)
                                                           ▼
@@ -80,8 +80,10 @@ opcua-novaflex ──OPC UA──▶ Ignition ──Event Stream──▶ Transm
 ```
 
 `meta.correlation_id` is stamped once, upstream, and survives the whole chain, so one sample is
-traceable across two colours on the firehose. **This requires a one-line addition to pattern 3** —
-see [Ignition resources](#ignition-resources).
+traceable across two `meta.mechanism` values on the wire — `opcua-event` then `webhook`, visible
+side by side in one `mosquitto_sub`. (This used to be phrased as "two colours on the firehose";
+the firehose was cut on 2026-08-25 and the terminal is the demo surface.) **This requires a
+one-line addition to pattern 3** — see [Ignition resources](#ignition-resources).
 
 ## Decisions, and the reasoning
 
@@ -139,7 +141,7 @@ was load-bearing: attempt counters on the result row would have made **every ret
 every UPDATE a CDC event**, so the webhook's failure handling would have generated spurious
 pattern-5 traffic precisely during the demo where it was failing on purpose.
 
-Pattern 5 tails `mes.batch_event`, not this table, so that hazard is gone and the
+Pattern 5 tails `bes.batch_event`, not this table, so that hazard is gone and the
 decision now stands on ordinary grounds:
 delivery state is not domain state, and an outbox you can query, retry and show on screen is worth
 a table. Recorded rather than quietly re-justified, because a reason that has evaporated is worth
@@ -204,7 +206,7 @@ through Transmission like everything else. Nothing loses a grant it was using.
 
 Also worth doing while the file is open: `02-schema.sql` calls `lims.sample_result` "the single
 most important table in the demo." That is not true — only pattern 4 writes it. Pattern 5
-CDC-tails `mes.batch_event` (2026-08-23); drop `lims.sample_result` from `04-cdc.sql` when
+CDC-tails `bes.batch_event` (2026-08-23); drop `lims.sample_result` from `04-cdc.sql` when
 that spec is written so a LIMS approval is not also a CDC event.
 
 ## Files to create
@@ -352,7 +354,8 @@ f-strings, no type hints.
 
 Dedupe is a **module-level bounded dict** (last ~500 keys), not a table. A gateway restart loses
 the window, which is honest and acceptable; a durable version needs the `ICC26` JDBC datasource,
-which does not exist yet (`00-status.md`). Since pattern 4 no longer blocks anything, adopting that
+which does not exist yet — and note the `pg_db` look-alike trap in
+[`../00-architecture.md` § *Postgres*](../00-architecture.md). Since pattern 4 no longer blocks anything, adopting that
 datasource later is a small separate change rather than a scheduling risk.
 
 ## MQTT user and topics
@@ -368,10 +371,10 @@ datasource later is a small separate change rather than a scheduling risk.
 `../00-architecture.md` flags `qc/lims/sample-result` as putting a software system in the
 line-or-cell slot, and says to revisit at spec 04. Revisited, and **kept as-is.**
 
-The doc's own precedent points the other way — `mes.batch_event` published to
+The doc's own precedent points the other way — `bes.batch_event` published to
 `upstream/br-201/batch/event` and named its source system in the payload, and by that rule a sample
 result drawn from BR-201 belongs under BR-201 too. It is the better address. But the topic is
-referenced by an ACL entry, the firehose colouring and the runbook, and the conference is four
+referenced by an ACL entry and by pattern 7's subscription, and the conference is four
 weeks out. Changing it buys correctness in a document and risks the demo.
 
 So it stays, and becomes a spoken aside instead: *here is a violation of our own rule that we
@@ -420,7 +423,7 @@ the point of the whole pattern.
 Falsifiable, in order. Do not proceed past a red one.
 
 1. **Pattern 3 is actually on the broker.** `mosquitto_sub` on
-   `icc26/site1/qc/analyzers/novaflex-01/result`, trigger `ESMScheduleAnalysis`, exactly one
+   `icc26/site1/qc/analyzers/flex-01/result`, trigger `ESMScheduleAnalysis`, exactly one
    message per completed sample. It has never been watched (`00-status.md`).
 2. `correlation_id` is present in that message.
 3. Nuke, reseed, confirm the schema: `status`, `verified_at`, `uq_sample_analyte` and
@@ -520,10 +523,11 @@ sets it.
 
 Then update, in this order:
 
-- `00-status.md` — what is built, what was disproven, and whether pattern 3's publish held up.
+- `00-status.md` — the built/not-built table only; durable findings go to `../00-architecture.md`
+  and sequencing to `00-master-plan.md` § *Order*.
 - `services/README.md` — the `lims/` row still reads *implementation undecided*, and § *The LIMS
   contract* still describes four surfaces.
 - `../00-architecture.md` — record that `meta.correlation_id` has a working first user, and that
   the retired surfaces are retired rather than pending.
 - `compose/postgres/initdb/02-schema.sql` and `04-cdc.sql` — comments: pattern 4 only on
-  `lims.sample_result`; pattern 5 CDC-tails `mes.batch_event`.
+  `lims.sample_result`; pattern 5 CDC-tails `bes.batch_event`.

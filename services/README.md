@@ -7,10 +7,10 @@ backbone to attach these to.
 |---|---|---|
 | `sim-valve-mqtt/` | 1 — native MQTT pub/sub | **built and wired into compose.** Smart sample valve assembly on `BR-201`; config page on <http://localhost:8085>. **Ignition ingest verified 2026-08-17**: the Engine custom namespace auto-creates a JSON-shaped tag tree, and a null field creates no tag at all ([spec](../docs/plans/01-native-mqtt.md), [talk track](../docs/talk-tracks/01-native-mqtt.md)) |
 | `sim-valve-spb/` | 2 — Sparkplug B edge node | **built and wired into compose**, and it is the **same device** as `sim-valve-mqtt/`, not a different one (see below). Config page on <http://localhost:8086>. **Ignition ingest verified 2026-08-17**: MQTT Engine built all 19 typed tags with their engineering units straight from DBIRTH, with no configuration at all ([spec](../docs/plans/02-sparkplug-b.md), [talk track](../docs/talk-tracks/02-sparkplug-b.md)) |
-| `opcua-countess/` | 3 — OPC UA example | **server built and wired into compose.** Simulated Countess 3 FL cell counter; address space per [`docs/reference/countess-3fl-opcua-model.md`](../docs/reference/countess-3fl-opcua-model.md). Ignition side: connection + `cell_analyzer` UDT done. **MQTT publish not wired** — second designed analyzer UA server for the talk contrast alongside Nova; optional polish later, nothing depends on it |
-| `opcua-novaflex/` | 3 — OPC UA → MQTT | **server built and wired into compose**, and it runs **alongside** `opcua-countess/`, not instead of it (see below). Simulated Nova BioProfile FLEX2; address space transcribed from the real vendor server per [`docs/reference/novaflex2-opcua-model.md`](../docs/reference/novaflex2-opcua-model.md). Ignition side: connection + `bioanalyzer` UDT + instance **verified bound — 57/57 tags monitored**. **MQTT publish built 2026-08-19, broker-verified 2026-08-20**: `result/sample_time` (vendor `HistoricalSampleResults/SampleTime`) → Event Stream `03_opcua/novaflex-result` → `icc26/site1/qc/analyzers/novaflex-01/result` with `meta.mechanism = "opcua-event"`. Does not use `ICC26Extensions` |
+| `opcua-countess/` | 3 — OPC UA example, **out of the demo** | **server built and wired into compose**, and it stays there as the worked example. Simulated Countess 3 FL cell counter; address space per [`docs/reference/countess-3fl-opcua-model.md`](../docs/reference/countess-3fl-opcua-model.md). Ignition side: `opc-connection/cell_analyzer` and the `cell_analyzer` UDT type remain; the `countess-01` instance is deleted. **MQTT publish will not be wired** — dropped from the demo 2026-08-25, not deferred |
+| `opcua-novaflex/` | 3 — OPC UA → MQTT | **server built and wired into compose**, and since 2026-08-25 it is **pattern 3's only instrument** (see below). Simulated Nova BioProfile FLEX2; address space transcribed from the real vendor server per [`docs/reference/novaflex2-opcua-model.md`](../docs/reference/novaflex2-opcua-model.md). Ignition side: connection + `bioanalyzer` UDT + instance **verified bound — 57/57 tags monitored**. **MQTT publish built 2026-08-19, broker-verified 2026-08-20**: `result/sample_time` (vendor `HistoricalSampleResults/SampleTime`) → Event Stream `03_opcua/novaflex-result` → `icc26/site1/qc/analyzers/flex-01/result` with `meta.mechanism = "opcua-event"`. Does not use `ICC26Extensions` |
 | `lims/` | 4 — approval webhook | **built and wired into compose.** Approval screen on <http://localhost:8000>. Subscribes to the analyzer topic as `lims-bridge` (publish grant empty), holds results for human review, POSTs through a transactional outbox ([spec](../docs/plans/04-lims-webhook.md), [talk track](../docs/talk-tracks/04-lims-webhook.md)). **Remaining:** publish both outcomes with `disposition` pass/fail |
-| `sim-metone/` | 6 — poll / diff | **planned.** Simulated Hach MET ONE environmental analyzer with an HTTP API. Ignition polls for particle-count analysis events and relays them through an Event Stream. Vendor API notes TBD |
+| `sim-metone/` | 6 — poll / diff | **planned.** Simulated Hach MET ONE environmental analyzer with an HTTP API. Ignition polls for particle-count analysis events and relays them through an Event Stream to `icc26/site1/qc/analyzers/particle-counter-01/result` — the analyzer path, beside the Nova, moved there 2026-08-25. Each analysis carries `values.status` ∈ `normal | excursion` against a configured cleanroom limit. Vendor API notes TBD |
 
 `sim-vibration/` — the pattern-1 vibration gateway superseded by the sample valve on
 2026-08-17 — was **deleted on 2026-08-23**, along with the `vibsim` script module and both
@@ -22,8 +22,8 @@ namespace is **not** part of that retired set: it is the sample valve's ingest s
 ## Why patterns 1 and 2 are the same device
 
 `valve.py` and `webui.py` are **byte-for-byte identical** in both build contexts — same badge
-roster, same interlock, same state machine, same stroke times, same simulator controls. Fix
-one, copy it across, and `diff` the two before committing.
+roster, same state machine, same stroke times, same stroke faults, same simulator controls.
+Fix one, copy it across, and `diff` the two before committing.
 
 That is the experiment's control. If the two containers differed in anything but the protocol,
 every difference you could see on stage would be arguable. They do not, so the differences are
@@ -42,10 +42,12 @@ the protocol's:
 Both are publish-only. Nothing on the backbone can open either valve; authorization is decided
 at the sample port against a local badge roster.
 
-## Why pattern 3 runs two analyzers
+## Why pattern 3 built two analyzers, and demos one
 
-They were originally sketched as alternatives. They are not, and the reason only became clear
-once the FLEX2's vendor OPC manual was read:
+They were originally sketched as alternatives. They are not — they are a pair, and the reason
+only became clear once the FLEX2's vendor OPC manual was read. **Only the FLEX2 is in the demo
+as of 2026-08-25**; the Countess stays in compose as the worked example, and the contrast below
+is now something said on stage rather than something shown running:
 
 | | `opcua-countess` | `opcua-novaflex` |
 |---|---|---|
@@ -55,17 +57,17 @@ once the FLEX2's vendor OPC manual was read:
 | Actions | a method *and* a command bit | **command bits only.** No methods at all |
 | Refusing a bad request | `Bad_InvalidState` from the method | nothing — the write returns `Good` regardless |
 
-The Countess is the model we wish vendors shipped. The FLEX2 is what they ship. One of them
-alone is a demo; the pair is an argument — and it settles §6.1 of the Countess model doc, which
-claimed command bits are what actually ships because a SCADA tag cannot invoke a method. Here is
-a 2024 vendor product with 104 writable bits and zero methods.
+The Countess is the model we wish vendors shipped. The FLEX2 is what they ship. That argument
+is worth making, and it survives the cut — it just gets made in a sentence now. It settles §6.1
+of the Countess model doc, which claimed command bits are what actually ships because a SCADA tag
+cannot invoke a method. Here is a 2024 vendor product with 104 writable bits and zero methods.
 
 The FLEX2's missing trigger is why `opcua-novaflex` publishes an `ICC26Extensions` branch. It is
 a separate top-level object with a `README` variable inside it saying it is not vendor, because
 a tag export taken from that simulator will outlive anyone's memory of which half was invented.
 
 Pattern 5 (CDC) adds no service of its own here — it is the `quay.io/debezium/server` image
-configured from `compose/debezium/`, tailing `mes.batch_event`. Pattern 7 is a gateway script,
+configured from `compose/debezium/`, tailing `bes.batch_event`. Pattern 7 is a gateway script,
 not a container.
 
 ## The LIMS contract — one surface since 2026-08-19
@@ -91,5 +93,5 @@ SENAITE was worth considering when four patterns depended on this. For one webho
 service is the right size. See [`../docs/plans/04-lims-webhook.md`](../docs/plans/04-lims-webhook.md).
 
 The Postgres schema (`compose/postgres/initdb/02-schema.sql`) has `status` / `verified_at`
-on `lims.sample_result` and the `lims.webhook_delivery` outbox. `mes.batch_event` in the same
+on `lims.sample_result` and the `lims.webhook_delivery` outbox. `bes.batch_event` in the same
 file is pattern 5's CDC source again (2026-08-23).

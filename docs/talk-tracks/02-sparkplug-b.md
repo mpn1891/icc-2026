@@ -10,23 +10,31 @@
 | | |
 |---|---|
 | **Pattern** | 2 of 7 — Sparkplug B v3.0.0 edge node |
-| **Mechanism tag** | none — Sparkplug payloads carry no envelope, and that is itself the point |
+| **Mechanism tag** | none — Sparkplug payloads carry no envelope. **Nor does pattern 1 any more**, which changes what that observation means; see § *The one place this pattern doesn't fit* |
 | **Container** | `sim-valve-spb` — [`services/sim-valve-spb/`](../../services/sim-valve-spb/) |
 | **Config page** | <http://localhost:8086> |
 | **Depends on** | nothing |
 | **Blocks** | nothing |
 | **Signal contributed** | **Device liveness / session state** — narrative, not a field in pattern 7 |
-| **GxP hook** | You can prove the valve was alive when it said nothing. Silence becomes evidence |
+| **GxP hook** | You can prove the valve was alive when it said nothing — and the spec-enforced sequence number tells you whether you *missed* messages in between. Silence becomes evidence, and so does a gap |
 
 **On the signal:** pattern 7 joins on `sample-valve-01` — pattern 1's valve, on `BR-201`. This
 one is `sample-valve-02` on `BR-202`, and it contributes the liveness *argument* on stage rather
 than a section of the composite document. Say "silence becomes evidence" here; do not promise
 the audience a Sparkplug field in pattern 7's payload.
 
+**The hook has two halves, and the second is the stronger one.** Liveness answers *was it
+alive?*; `seq` answers *did I get everything it said?* — a per-edge-node counter the spec
+mandates, so a gap is a detected loss rather than an unnoticed one. Pattern 1 has **nothing** —
+it used to carry a `seq` that looked like it did this job and did not, and on 2026-08-25 even
+that was cut along with the rest of its envelope. For an audit trail, "I know I am missing scan
+41" is a different position from "the record is complete as far as I know", and only one of the
+two valves can say it. The comparison table below has the row; this is the sentence.
+
 ## The segment
 
 **Intro.** **This is not a different device. It is the same device.** Same sanitary sample
-valve, same RFID reader, same badge roster, same interlock, same stroke times — on `BR-202`
+valve, same RFID reader, same badge roster, same stroke times — on `BR-202`
 instead of `BR-201` so both can run at once. `valve.py` and `webui.py` are byte-for-byte
 identical between the two build contexts. Everything that differs between the two containers is
 a difference **the protocol caused**, which is why the pair is an argument rather than two demos.
@@ -53,7 +61,7 @@ is a claim pattern 1 cannot make.
 | **Discovery** | none — someone hand-writes an Ignition tag config and maintains it | DBIRTH builds the tag tree by itself |
 | **Consumer subscription** | `icc26/site1/upstream/br-201/sample-valve-01/#` — one device, by name. A wildcard wide enough for two valves also swallows patterns 5 and 7, so a second valve means editing Engine's config | `spBv1.0/#` — every edge node that will ever exist, already covered |
 | **Message taxonomy** | invented per device — this valve split its events into `badge-scan` and `sample-complete` on topics it chose, and every consumer has to be told | one metric list, declared once in DBIRTH |
-| **Loss detection** | none. It *looks* like there is — the envelope has a `seq` — but it is a process-local counter shared across all four topics, gapped by design and reset to 0 on restart | `seq`, 0–255 rolling, per edge node; a gap is visible |
+| **Loss detection** | none, and no longer even the appearance of one — the `seq` that used to look like it did this job was cut with the envelope on 2026-08-25 | `seq`, 0–255 rolling, per edge node; a gap is visible |
 | **A null value** | no tag is created at all | a typed null: the tag exists, correctly typed, empty |
 | **Death, what it says** | retained JSON on a topic we chose, timestamp frozen at connect, meaning agreed nowhere | NDEATH — spec-mandated topic and payload, never retained, and `bdSeq` says *which session* died |
 | **Death, how fast** | broker notices at TCP teardown, else at keepalive expiry | **identical** — NDEATH is the same Last Will. No gain here, and don't claim one |
@@ -76,7 +84,7 @@ session it currently believes is alive. That closes a real race — a delayed wi
 session, arriving after the device has already reconnected, marks a live device dead. Pattern 1's
 will carries nothing to match sessions with, so its consumer simply believes it. Sparkplug also
 forbids retain on NDEATH, which is why pattern 2's death certificate cannot do what pattern 1's
-retained `state` does: sit in the broker and replay to every new subscriber as current.
+retained `status` does: sit in the broker and replay to every new subscriber as current.
 
 Everything else that changed is that the topic, the payload and the rule are agreed in advance by
 everybody, instead of being three fields in a config page and a paragraph in a wiki. That is
@@ -184,10 +192,22 @@ that rebooted — but do not read a `bdSeq` of 0 as "never reconnected".
 
 ## The one place this pattern doesn't fit
 
-**Pattern 2 will not appear on a firehose that colours by `meta.mechanism`** — Sparkplug
-payloads carry no envelope, by design. Either colour it by topic prefix as a special case, or
-say out loud that **the one pattern which needed no agreement is the one that does not fit the
-field we invented to track agreements.** The second is the better line.
+**Sparkplug payloads carry no `meta.mechanism`** — no envelope at all, by design. There used to
+be a concrete cost to that: pattern 2 would have been the one pattern missing from a firehose
+view that coloured by the field. **Spec 08 was cut on 2026-08-25 and there is no such view**, so
+the cost is gone and only the observation remains — and the observation is the good part.
+
+**Sharpened the same day:** pattern 1's envelope was cut too, so the field-device patterns are
+now *both* outside the convention and the tag belongs only to the five patterns Ignition
+publishes. Do not claim this as a point against pattern 1 — it is a point about the field:
+
+> **The one pattern which needed no agreement is the one that does not fit the field we invented
+> to track agreements.**
+
+Still worth saying out loud. On the wire it shows as a practical thing rather than a gap: every
+other pattern is a JSON document under `icc26/`, and this one is protobuf under `spBv1.0/`, so
+`mosquitto_sub` needs a second subscription and prints bytes instead of text. That *is* the
+point, delivered by the demo surface rather than by a legend.
 
 ## Progress log
 
@@ -195,4 +215,5 @@ field we invented to track agreements.** The second is the better line.
 |---|---|
 | 2026-08-23 | Talk track split out of [`plans/02-sparkplug-b.md`](../plans/02-sparkplug-b.md), which stays the build spec. Through-line signal and GxP hook folded in; the pattern 1 vs 2 comparison table now lives here and here only. |
 | 2026-08-23 | Moved to `docs/talk-tracks/`; links repointed here and in every inbound file. *Say the honest half* now states that NDEATH is **not faster** (same TCP-teardown / keepalive detection) and names `bdSeq` as the one genuinely mechanical gain, which also sets up the existing "do not over-claim `bdSeq`" caveat. Death row in the comparison table split into *what it says* / *how fast*. |
+| 2026-08-25 | **Pattern 1's envelope was cut**, so the loss-detection row and the GxP hook's second half both change: pattern 1 no longer even *appears* to offer loss detection. The mechanism-tag observation is sharpened — both field-device patterns are now outside the envelope convention, which makes it a point about field devices rather than a point against pattern 1. |
 | 2026-08-23 | **Follows pattern 1's payload redesign**, since `valve.py` is shared. Metrics go to twenty: the two `Line/*` analogs become `Actuator/AirSupplyBar` and `Device/EnclosureTempC`, and `Sample/LastCycleResult` is new. New stage beat — *cause, then effect* — because the deadbanded air supply is the physical cause of the fault string, so one DDATA predicts another. Two comparison rows added: **message taxonomy** (pattern 1 invented an event taxonomy and has to tell every consumer; this side declares one metric list in DBIRTH) and a corrected **loss detection** row, since pattern 1's envelope *has* a `seq` that looks like it does the job and does not. Tag-tree count marked "say the number you can see" — verified at nineteen, specified at twenty. |

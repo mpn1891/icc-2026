@@ -13,10 +13,10 @@ PostgreSQL 17, all under `docker compose`, all version controlled.
 |---|---------|--------------|-------|
 | 1 | Native MQTT pub/sub | Smart sample valve assembly — RFID badge scan opens a bioreactor sample valve | built |
 | 2 | Sparkplug B edge node | **The same valve assembly**, other firmware — birth/death, RBE, self-describing metrics | built |
-| 3 | OPC UA → MQTT | Nova Flex analyzer; Ignition publishes on sample-complete | built |
+| 3 | OPC UA → MQTT | Nova Flex analyzer (`flex-01`); Ignition publishes on sample-complete | built |
 | 4 | Webhook / Push API | LIMS review POSTs to Ignition; remaining: pass/fail on both outcomes | built, pass/fail open |
-| 5 | CDC / log tailing | Ignition batch timer → `mes.batch_event` → Debezium → MQTT | planned |
-| 6 | Poll / diff | MET ONE HTTP API, Ignition poll → Event Stream | planned |
+| 5 | CDC / log tailing | Ignition batch timer → `bes.batch_event` → Debezium → MQTT | planned |
+| 6 | Poll / diff | MET ONE HTTP API in `qc/analyzers`, Ignition poll → Event Stream | planned |
 | 7 | Scripted aggregation | LIMS-review listener joins valve, Nova, batch phase, nearest MET ONE | planned |
 
 **Patterns 1 and 2 are one device in two firmwares**, which is the point of running both: a
@@ -27,8 +27,13 @@ a text box, the QoS is a dropdown and Retained is a checkbox. On the other, the 
 controls are disabled, each labelled with the clause of the specification that fixed it.
 
 **Current state:** infrastructure, patterns 1–3, and pattern 4 (minus pass/fail) are built.
-Patterns 5–7 were re-sourced on 2026-08-23. What is true today and what is next:
+Patterns 5–7 were re-sourced on 2026-08-23. On 2026-08-25 the presentation/firehose/runbook spec
+was cut (the demo surface is the broker itself plus the three product screens the services
+already serve), the Countess came out of the demo, and pattern 7 gained a requirement for an
+event store. What is true today and what is next:
 [`docs/plans/00-status.md`](docs/plans/00-status.md).
+
+There is no pattern 8 — the numbering stops at 7.
 
 ## Prerequisites
 

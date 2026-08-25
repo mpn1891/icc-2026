@@ -19,8 +19,8 @@
 
 ## The device is the same device
 
-Same sanitary sample valve, same RFID reader, same badge roster, same interlock, same stroke
-times, on `BR-202` instead of `BR-201` so both can run at once. `valve.py` and `webui.py` are
+Same sanitary sample valve, same RFID reader, same badge roster, same stroke times, on
+`BR-202` instead of `BR-201` so both can run at once. `valve.py` and `webui.py` are
 byte-for-byte identical between the two build contexts. **Everything that differs between the
 two containers is a difference the protocol caused** — that is the whole reason this pattern
 exists, and any change that breaks the identity breaks the pattern. Fix one copy, copy it
@@ -71,7 +71,7 @@ means re-arming the will on every disconnect before paho reconnects.
 
 ## Metrics
 
-Twenty, all declared in DBIRTH with name, alias, datatype and — where they have one — an
+Nineteen, all declared in DBIRTH with name, alias, datatype and — where they have one — an
 engineering unit. Metrics with no value yet go out as **typed nulls**, so a consumer learns
 `Badge/LastScanId` exists and is a String before anybody has badged in, rather than watching a
 tag appear from nowhere on the first scan.
@@ -81,7 +81,6 @@ tag appear from nowhere on the first scan.
 | `Valve/State` | String | | |
 | `Valve/IsOpen` | Boolean | | |
 | `Valve/PositionPct` | Float | % | 0.5 |
-| `Interlock/Ok` | Boolean | | |
 | `Badge/LastScanId` `LastScanHolder` `LastScanRole` `LastScanResult` `LastDenyReason` | String | | |
 | `Badge/LastScanTime` | DateTime | | |
 | `Sample/CycleCount` | Int64 | | |
@@ -95,8 +94,8 @@ tag appear from nowhere on the first scan.
 
 Node-level, on NBIRTH: `bdSeq` (Int64) and `Node Control/Rebirth` (Boolean, writable).
 
-**Three of these changed on 2026-08-23**, all of them driven by `valve.py`, which is shared
-byte-for-byte with pattern 1:
+**Four of these changed**, all of them driven by `valve.py`, which is shared byte-for-byte with
+pattern 1:
 
 - **`Line/PressureBar` → `Actuator/AirSupplyBar`** and **`Line/TemperatureC` →
   `Device/EnclosureTempC`.** A diaphragm valve on a sample port has nothing moving through it
@@ -104,8 +103,12 @@ byte-for-byte with pattern 1:
   BR-201's own vessel instruments. What the assembly genuinely measures all the time is its own
   condition. Same datatypes, same units, same deadbands — only the thing being measured is now
   real. See [`01-native-mqtt.md § telemetry`](01-native-mqtt.md).
-- **`Sample/LastCycleResult` is new** — `normal` | `failed-to-seat` | `stroke-timeout` |
-  `aborted-interlock`, mirroring `cycle_result` on pattern 1's `event/sample-complete`.
+- **`Interlock/Ok` is gone** (2026-08-25). Pattern 1 cut the interlock — authorization is the
+  roster and only the roster — and `valve.py` is shared, so the metric has nothing behind it.
+  Nineteen metrics, not twenty.
+- **`Sample/LastCycleResult` is new** — `normal` | `failed-to-seat` | `stroke-timeout`,
+  mirroring `cycle_result` on pattern 1's `event/sample-complete`. `aborted-interlock` was
+  dropped 2026-08-25 with the interlock itself.
 
 The rename earns pattern 2 something it did not have: **`Actuator/AirSupplyBar` is the physical
 cause of `Sample/LastCycleResult`.** A pneumatic actuator starved of air is a valve that will
@@ -113,8 +116,8 @@ not seat, so the deadbanded analog and the fault string are now the same story r
 unrelated metrics — and on the wire you can watch the DDATA that reported the sagging supply
 arrive minutes before the DDATA that reported the failure.
 
-**Not built yet.** The registry in `app.py:54-73` still declares nineteen metrics with the old
-`Line/*` names, and `valve.py` has no fault path. See open item 4.
+**Built 2026-08-25.** The registry declares the nineteen above; `valve.py` carries the fault
+path. **Not re-measured against a gateway** — the sections below are the 2026-08-17 run.
 
 **Report by exception.** DDATA carries only metrics that moved past their deadband, and the
 deadband lives in the device rather than in the broker or the consumer — it is a property of the
@@ -177,9 +180,16 @@ version guard, needed by nobody at runtime.
 
 ## Infrastructure
 
-**MQTT user `sample-valve-02`**: publishes `spBv1.0/ICC26-Site1-UPSTREAM/#`, subscribes only its
-own NCMD and DCMD topics. Note how much tighter that is than pattern 1's account, and that
-nothing was given up to get it — the protocol already pins the topics, so the ACL can be exact.
+**MQTT user `sample-valve-02`**: `spBv1.0/#`, publish and subscribe, since 2026-08-25. It had
+been pinned to `spBv1.0/ICC26-Site1-UPSTREAM/#` publish and its own two NCMD/DCMD topics —
+tighter than pattern 1's account, and free, because the protocol pins the topics anyway.
+
+**The pin is what broke.** The Sparkplug identity is commissionable on 8086; a group changed to
+`smart_valves` put the NDEATH will outside the grant, and Chariot refuses the CONNECT rather
+than the publish — the will is registered before the session exists. The account was widened
+instead of the page constrained. The cost is recorded in
+[`compose/chariot/README.md`](../../compose/chariot/README.md): the ACL contrast with pattern 1
+is gone, and this account can now publish NCMD/DCMD to any edge node.
 
 Same two caveats as pattern 1: `MQTT_USERS` seeds Chariot on first run only, and
 `compose/postgres/initdb/` runs on an empty volume only.
@@ -214,8 +224,8 @@ MQTT Engine/Edge Nodes/ICC26-Site1-UPSTREAM/SAMPLE-VALVE-02/
 all four analogs — `%`, `bar`, `degC`, `s` — and those strings exist nowhere except the DBIRTH
 property sets, so they are proof Engine parsed the metric properties, not just the names.
 
-> **Measured against the nineteen-metric set.** This is what a 2026-08-17 gateway built from the
-> DBIRTH the code emits *today*. The twenty-metric set specified above renames the two `Line/*`
+> **Measured against the old nineteen-metric set.** This is what a 2026-08-17 gateway built from
+> the DBIRTH the code emitted *then*. The nineteen-metric set specified above renames the two `Line/*`
 > tags and adds `Sample/LastCycleResult`, which also takes the typed-null count from nine to
 > ten. Unit count is unchanged at four. **Re-measure when it lands** — and note that nothing
 > about the *mechanism* is expected to change, which is the point: adding a metric to a
@@ -289,8 +299,7 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 network. It also runs inside `docker build`.
 
 **1 — Birth.** On connect: NBIRTH on `…/NBIRTH/SAMPLE-VALVE-02` (seq 0, `bdSeq`), then DBIRTH on
-`…/DBIRTH/SAMPLE-VALVE-02/SV-202` with every device metric — nineteen as built, twenty once
-`Sample/LastCycleResult` lands.
+`…/DBIRTH/SAMPLE-VALVE-02/SV-202` with every device metric — nineteen, ten of them typed nulls.
 
 **2 — The checkpoint that actually matters.** MQTT Engine builds the tag tree from DBIRTH by
 itself — every metric, right datatypes, right units, nobody configured anything. That is both
@@ -333,8 +342,8 @@ and the same for `webui.py`. Both must be empty. This is the pattern's real regr
 |---|---|---|
 | 1 | `bdSeq` wraps at 256 (Tahu's convention); the spec only says "increment by one" | harmless, noted in the code |
 | 2 | Whether `STATE` / a primary-host application belongs in the demo at all | out of scope for v1 — no host application is claimed |
-| 3 | Pattern 2 does not appear on a firehose coloured by `meta.mechanism` | by design. Master plan §08 decides between a topic-prefix special case and saying it out loud on stage |
-| 4 | **The metric set above is ahead of the build.** `app.py:54-73` still declares nineteen with the old `Line/*` names, and `valve.py` has no stroke-fault path. Both changes originate in `valve.py`, which is **shared byte-for-byte with pattern 1** — so this is one edit landing in two containers, and `diff services/sim-valve-mqtt/valve.py services/sim-valve-spb/valve.py` must come back empty afterwards | open — paired with pattern 1's open item 2, land them together |
+| 3 | Pattern 2 does not appear on a firehose coloured by `meta.mechanism` | **closed 2026-08-25 — moot.** Spec 08 is cut; there is no firehose. The observation stays as a talk line, see the talk track § *The one place this pattern doesn't fit* |
+| 4 | **The metric set above is ahead of the build** | **closed 2026-08-25 — landed** alongside pattern 1's open item 2. `Interlock/Ok` out, `Sample/LastCycleResult` in, both `Line/*` renamed; `valve.py` carries the fault path and is byte-for-byte identical across both containers. The measured sections above are **still the 2026-08-17 run** and need re-measuring |
 
 ---
 
@@ -346,5 +355,6 @@ and the same for `webui.py`. Both must be empty. This is the pattern's real regr
 | 2026-08-17 | `services/sim-valve-spb/` built: hand-written Tahu-verified protobuf encoder, 19 metrics with deadbands and units, NBIRTH/DBIRTH/DDATA/DDEATH/NDEATH, `bdSeq` re-armed per CONNECT, Rebirth honoured, config page on 8086 with the three controls disabled and cited. Compose service, ACL account, seed rows, `.env.example` block. |
 | 2026-08-17 | **Ran against a real gateway for the first time.** Engine built all 19 tags with units from DBIRTH with zero configuration; unprompted Rebirth observed and answered in 6 ms; both death paths measured. Encoder proven on the wire against Chariot. Open items 1 and 2 (tag-tree auto-build, 3.0.0 vs 2.2 acceptance by Cirrus 5.0.4) both resolved here. |
 | 2026-08-19 | Pattern 7's lost tag source resolved elsewhere — it was re-scoped twice and no longer needs this pattern's metrics. Nothing in this file changed as a result. |
+| 2026-08-25 | **`Interlock/Ok` dropped** and `aborted-interlock` removed from `Sample/LastCycleResult`, following pattern 1's decision to cut the interlock; `valve.py` is shared, so this is one edit in two containers. Nineteen declared metrics. **Pattern 1 also cut its `state` topic entirely**, so `Valve/State`, `Valve/IsOpen` and `Valve/PositionPct` are now metrics pattern 2 publishes and pattern 1 has no equivalent for — see pattern 1's open item 7. |
 | 2026-08-23 | **Split.** Talk material and the pattern 1 vs 2 comparison table moved to [`../talk-tracks/02-sparkplug-b.md`](../talk-tracks/02-sparkplug-b.md); this file is the build spec. Deviations table and the resolved *Known consequence* section dropped. Recorded that this pattern's through-line contribution is narrative, not a field in pattern 7's document. |
 | 2026-08-23 | **Metric set follows pattern 1's payload redesign**, because `valve.py` is shared. `Line/PressureBar` → `Actuator/AirSupplyBar` and `Line/TemperatureC` → `Device/EnclosureTempC`: nothing flows through a shut sample valve, so the old pair measured a dead leg or restated BR-201's own instruments. `Sample/LastCycleResult` added, mirroring `cycle_result` — nineteen metrics become twenty and nine typed nulls become ten. Datatypes, units and deadbands all unchanged. The rename buys a causal pair the old metrics never had: the deadbanded air supply is the physical cause of the fault string, so one DDATA predicts another. Measured sections left at nineteen and marked for re-measurement; open item 4 tracks the build. |

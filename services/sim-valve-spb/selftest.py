@@ -43,7 +43,12 @@ GOLDEN_DDATA = bytes.fromhex(
 
 
 def sample_metrics():
-    """One metric per datatype this device actually publishes, plus the awkward cases."""
+    """One metric per datatype the encoder must handle.
+
+    Not a mirror of the registry in app.py. `Synthetic/Double` and the two `Neg/*` entries
+    exercise encodings the device never publishes -- the registry has no Double, and no
+    counter goes negative -- and are named so nobody mistakes them for real metrics.
+    """
     return [
         Metric("Valve/State", DT.String, "open", alias=1, timestamp_ms=TS),
         Metric("Valve/IsOpen", DT.Boolean, True, alias=2, timestamp_ms=TS),
@@ -52,7 +57,7 @@ def sample_metrics():
         Metric("Sample/CycleCount", DT.Int64, 42, alias=4, timestamp_ms=TS),
         Metric("Badge/LastScanTime", DT.DateTime, TS, alias=5, timestamp_ms=TS),
         Metric("Badge/LastDenyReason", DT.String, None, alias=6, timestamp_ms=TS),
-        Metric("Line/TemperatureC", DT.Double, 36.75, alias=7, timestamp_ms=TS),
+        Metric("Synthetic/Double", DT.Double, 36.75, alias=7, timestamp_ms=TS),
         Metric("Neg/Int32", DT.Int32, -7, alias=8, timestamp_ms=TS),
         Metric("Neg/Int64", DT.Int64, -9, alias=9, timestamp_ms=TS),
     ]
@@ -107,7 +112,7 @@ def check_roundtrip() -> None:
     assert metrics["Valve/IsOpen"]["value"] is True
     assert metrics["Sample/CycleCount"]["value"] == 42
     assert metrics["Badge/LastDenyReason"]["is_null"] is True
-    assert abs(metrics["Line/TemperatureC"]["value"] - 36.75) < 1e-12
+    assert abs(metrics["Synthetic/Double"]["value"] - 36.75) < 1e-12
     assert metrics["Neg/Int32"]["value"] == (-7 & 0xFFFFFFFF)
 
     rebirth = encode_payload([Metric("Node Control/Rebirth", DT.Boolean, True)])
@@ -143,7 +148,7 @@ def check_against_tahu() -> bool:
     # A null metric sets is_null and carries no value at all, rather than an empty string.
     assert m["Badge/LastDenyReason"].is_null is True
     assert m["Badge/LastDenyReason"].HasField("string_value") is False
-    assert abs(m["Line/TemperatureC"].double_value - 36.75) < 1e-12
+    assert abs(m["Synthetic/Double"].double_value - 36.75) < 1e-12
     assert m["Neg/Int32"].int_value == (-7 & 0xFFFFFFFF)
     assert m["Neg/Int64"].long_value == (-9 & 0xFFFFFFFFFFFFFFFF)
 

@@ -2,11 +2,11 @@
 """Pattern 1 -- a smart sample valve assembly speaking native MQTT 3.1.1.
 
 An RFID badge is presented at the sample port on BR-201; the assembly checks it against its
-own roster and its process interlock, and if both pass it strokes the valve open for a
-sampling window and closes it again. Every scan -- granted or denied -- is published. See
-docs/plans/01-native-mqtt.md for the contract and why it is shaped this way.
+own roster, and if that passes it strokes the valve open for a sampling window and closes it
+again. Every scan -- granted or denied -- is published. See docs/plans/01-native-mqtt.md for
+the contract and why it is shaped this way.
 
-Four things here are deliberate and easy to mistake for oversights:
+Five things here are deliberate and easy to mistake for oversights:
 
   * Nothing about this device is standardised. The topic, the QoS, the retained flag and the
     payload shape are all decisions somebody made in a commissioning screen, and the
@@ -24,9 +24,15 @@ Four things here are deliberate and easy to mistake for oversights:
     consumer stamp the death; here, nobody agreed on anything, so the timestamp in a death
     certificate on this backbone is simply wrong. That is the demo.
 
+  * Nothing says where the valve is. The `state` topic was cut on 2026-08-25 and valve
+    position is published nowhere at all -- a sample is two events fifteen seconds apart and
+    silence in between. `status` is liveness only: `online` on CONNACK, `offline` by will,
+    both retained, following HiveMQ MQTT Essentials part 9. Pattern 2 still declares
+    Valve/State in DBIRTH, and that asymmetry is open item 7 rather than an oversight.
+
   * A retained message outlives the configuration that produced it. Change the topic on the
-    config page and the old retained state sits at the old topic until something clears it.
-    Also the demo.
+    config page and the old retained documents sit at the old topics until something clears
+    them. Also the demo.
 
 Standard library plus paho-mqtt, nothing more.
 """
@@ -47,15 +53,26 @@ import valve
 import webui
 from valve import Sink, ValveAssembly, iso, parse_roster
 
-MECHANISM = "native-mqtt"
-
-# The three message types this assembly publishes, and the defaults a sensible commissioning
-# engineer would pick for each. The config page collapses them onto ONE topic, ONE QoS and
-# ONE retained flag, because that is what the vendor's page actually offers -- see the
-# comment on Config.publish_plan().
-EVENT = "event"
-STATE = "state"
+# The four message types this assembly publishes. The config page collapses them onto ONE
+# topic, ONE QoS and ONE retained flag, because that is what the vendor's page actually
+# offers -- see the comment on Config.publish_plan().
+#
+# `event/<subtype>` is a TWO-TOKEN message type, the same shape as `cmd/<verb>` in
+# docs/00-architecture.md, and `icc26/+/+/+/+/event/#` still catches both because `#`
+# matches zero levels. They are two topics because the two documents carry different field
+# sets: Engine's custom namespace mirrors whatever document arrives and writes only the keys
+# it contains, so one `event/values/` folder would hold the union of two schemas with half
+# the tags stale -- `deny_reason` still reading the last denial after a granted sample.
+EVENT_BADGE_SCAN = "event/badge-scan"
+EVENT_SAMPLE_COMPLETE = "event/sample-complete"
+STATUS = "status"
 TELEMETRY = "telemetry"
+
+# valve.py names what happened; this is where that name becomes a topic level.
+EVENT_TOPICS = {
+    "badge-scan": EVENT_BADGE_SCAN,
+    "sample-complete": EVENT_SAMPLE_COMPLETE,
+}
 
 
 # -- config ------------------------------------------------------------------------------
@@ -81,10 +98,12 @@ def _env_bool(name: str, default: bool) -> bool:
     return _env(name, "true" if default else "false").lower() in ("1", "true", "yes", "on")
 
 
+# Two badges: one authorized, one refused for its role. The third denial -- badge-unknown --
+# needs no roster entry, and the config page offers a button for a badge that is on no
+# roster at all.
 DEFAULT_ROSTER = (
     "B-1042:Jordan Reyes:qc-analyst:authorized,"
-    "B-2087:Sam Okafor:maintenance:not-authorized,"
-    "B-3311:Alex Chen:qc-analyst:training-expired"
+    "B-2087:Sam Okafor:maintenance:not-authorized"
 )
 
 
@@ -127,8 +146,13 @@ class Config:
         # traffic should be the badge you present yourself.
         self.scan_interval_s = _env_float("SCAN_INTERVAL_S", 90.0)
 
-        self.line_pressure_bar = _env_float("LINE_PRESSURE_BAR", 1.35)
-        self.line_temperature_c = _env_float("LINE_TEMPERATURE_C", 36.8)
+        # The assembly's own condition. AIR_SUPPLY_SAG_BAR ships between
+        # valve.AIR_SUPPLY_SEAT_BAR (4.5) and valve.AIR_SUPPLY_STROKE_BAR (2.5), so the
+        # config page's sag button produces a failed-to-seat -- the demo path. Set it below
+        # 2.5 and the same button produces a stroke timeout instead.
+        self.air_supply_bar = _env_float("AIR_SUPPLY_BAR", 5.5)
+        self.air_supply_sag_bar = _env_float("AIR_SUPPLY_SAG_BAR", 3.2)
+        self.enclosure_temperature_c = _env_float("ENCLOSURE_TEMPERATURE_C", 31.5)
 
         self.ui_port = _env_int("UI_PORT", 8080)
         self.config_path = _env("CONFIG_PATH", "/data/config.json")
@@ -172,58 +196,58 @@ class Config:
     def publish_plan(self) -> list:
         """What the three commissioned fields actually produce, for the page's preview.
 
-        One QoS and one retained flag across all three message types is exactly the flaw
-        worth showing: a badge scan is an audit record that must not be lost, and telemetry
-        is a stream nobody will miss one sample of, and this page cannot tell them apart.
+        One QoS and one retained flag across all four message types is exactly the flaw
+        worth showing: a badge scan is an audit record that must not be lost, `status` is
+        worthless unless it is retained, and telemetry is a stream nobody will miss one
+        sample of -- and this page cannot tell any of them apart. Honest settings would be
+        QoS 1 unretained for the two events, QoS 1 retained for status, QoS 0 unretained for
+        telemetry. The shipping default is 1 / retained for all four.
         """
         return [
-            {"message_type": EVENT, "topic": self.topic(EVENT), "qos": self.qos,
+            {"message_type": EVENT_BADGE_SCAN, "topic": self.topic(EVENT_BADGE_SCAN),
+             "qos": self.qos, "retain": self.retain,
+             "note": "one per badge presented, granted or denied -- losing one loses an "
+                     "audit record, retaining one leaves it for the next subscriber to "
+                     "mistake for live"},
+            {"message_type": EVENT_SAMPLE_COMPLETE,
+             "topic": self.topic(EVENT_SAMPLE_COMPLETE),
+             "qos": self.qos, "retain": self.retain,
+             "note": "one per sample that actually ran, ~15s after the scan that started "
+                     "it; carries cycle_result"},
+            {"message_type": STATUS, "topic": self.topic(STATUS), "qos": self.qos,
              "retain": self.retain,
-             "note": "one per badge scan and per completed sample -- losing one loses an "
-                     "audit record"},
-            {"message_type": STATE, "topic": self.topic(STATE), "qos": self.qos,
-             "retain": self.retain,
-             "note": "valve position; also carries the Last Will. Only useful to a late "
-                     "subscriber if it is retained"},
+             "note": "online on connect, offline by Last Will. Untick Retained and the "
+                     "pair is worthless -- a late subscriber is told nothing"},
             {"message_type": TELEMETRY, "topic": self.topic(TELEMETRY), "qos": self.qos,
              "retain": self.retain,
-             "note": "line pressure and temperature every %ss -- disposable"
-                     % self.telemetry_interval_s},
+             "note": "actuator air supply and enclosure temperature every %ss -- "
+                     "disposable" % self.telemetry_interval_s},
         ]
 
 
 # -- envelope ----------------------------------------------------------------------------
 
-_seq_lock = threading.Lock()
-_seq = 0
 
+def envelope(cfg: Config, values: dict, ts: float = None) -> dict:
+    """Everything this device puts on the wire: a timestamp and a bag of values.
 
-def _next_seq() -> int:
-    global _seq
-    with _seq_lock:
-        _seq += 1
-        return _seq
+    Deliberately NOT the shared envelope in docs/00-architecture.md. A device bought off a
+    shelf does not ship your site's metadata conventions -- it ships whatever its firmware
+    author decided, and that is the pattern this container exists to demonstrate. So there
+    is no `meta.mechanism` saying how the data arrived, no `source.id` naming the device,
+    and no `seq` to detect loss with. Everything a consumer knows about provenance, it
+    knows from the topic string somebody typed into a text box.
 
+    `ts` is when the thing happened, not when the payload was built. The two are the same
+    millisecond everywhere except the Last Will, where they are a whole session apart --
+    and with `meta.ingest_ts` gone there is nothing in the document that reveals the gap.
+    See the module docstring.
 
-def envelope(cfg: Config, event: str, values: dict, ts: float = None) -> dict:
-    """The standard envelope from docs/00-architecture.md.
-
-    `ts` is when the thing happened; `meta.ingest_ts` is when this payload was built. For a
-    badge scan those are the same millisecond, and for the Last Will they are hours apart --
-    see the module docstring.
+    Pattern 2 carries datatypes, engineering units, aliases and a spec-mandated sequence
+    number in every payload, and had to be told none of it.
     """
-    now = time.time()
     return {
-        "ts": iso(ts if ts is not None else now),
-        "seq": _next_seq(),
-        "source": {"id": cfg.device_id, "type": "sample-valve"},
-        "meta": {
-            "mechanism": MECHANISM,
-            "ingest_ts": iso(now),
-            "event": event,
-            "cell": cfg.cell,
-            "assembly_serial": cfg.assembly_serial,
-        },
+        "ts": iso(ts if ts is not None else time.time()),
         "values": values,
     }
 
@@ -248,6 +272,11 @@ class MqttSink(Sink):
         self.connected = False
         self.published = 0
         self.assembly = None  # set by main() once the valve exists
+        # The exact bytes handed to the broker in the CONNECT packet, kept so the graceful
+        # shutdown path can publish the same document rather than a fresh one. See
+        # publish_will_document().
+        self.will_topic = None
+        self.will_document = None
 
     # ---- connection
 
@@ -264,19 +293,26 @@ class MqttSink(Sink):
         client.on_connect = self._on_connect
         client.on_disconnect = self._on_disconnect
 
-        # The hand-rolled death certificate. Note what it costs: the topic is one this
-        # device chose, the payload shape is one this device invented, every consumer has to
-        # be told separately how to read it, and the timestamp inside it is the moment the
-        # session opened rather than the moment it broke. Pattern 2 gets all four of those
-        # for free from the spec.
-        will = envelope(cfg, STATE, {
+        # The hand-rolled death certificate, and half of the birth/will pair on `status`
+        # (HiveMQ MQTT Essentials part 9). Note what it costs: the topic is one this device
+        # chose, the payload shape is one this device invented, every consumer has to be told
+        # separately how to read it, and the timestamp inside it is the moment the session
+        # opened rather than the moment it broke. Pattern 2 gets all four of those for free
+        # from the spec.
+        #
+        # Built HERE, before connect_async, because a will is registered in the CONNECT
+        # packet -- so `ts` is connect time and `seq` is minted at CONNECT, sorting the death
+        # to the BEGINNING of the session it ends. Both are deliberate, both are measured in
+        # docs/plans/01-native-mqtt.md, and neither is fixable from inside a hand-rolled
+        # protocol. The device does try to say so: `note` explains it in English, in a field
+        # nothing parses.
+        will = envelope(cfg, {
             "state": valve.OFFLINE,
-            "is_open": None,
-            "position_pct": None,
             "note": "last will -- ts is when this session connected, not when it died",
         })
-        client.will_set(cfg.topic(STATE), json.dumps(will, separators=(",", ":")),
-                        qos=cfg.qos, retain=cfg.retain)
+        self.will_topic = cfg.topic(STATUS)
+        self.will_document = json.dumps(will, separators=(",", ":"))
+        client.will_set(self.will_topic, self.will_document, qos=cfg.qos, retain=cfg.retain)
         return client
 
     def start(self) -> None:
@@ -312,12 +348,16 @@ class MqttSink(Sink):
         self.log.info("connected to %s:%s as %s, publishing under %s",
                       self.cfg.broker_host, self.cfg.broker_port, self.cfg.username,
                       self.cfg.base_topic)
-        # Announce the current position immediately. With retain on, this is what a
-        # subscriber that connects tomorrow will be handed; with retain off, it is a message
-        # only whoever is already listening will ever see. Same code, and the config page
-        # decides which of those two things it is.
-        if self.assembly is not None:
-            self.valve_state(self.assembly.state_snapshot(), time.time())
+        # The birth half of the pair: the device's FIRST publish after CONNACK, on the same
+        # topic the will is registered against, in the same two-key shape. With retain on,
+        # this is what a subscriber that connects tomorrow is handed immediately -- it knows
+        # the valve is up without waiting for it to say anything. With retain off the pair is
+        # worthless: the will still fires, but only to whoever already happened to be
+        # subscribed. Same code, and a checkbox on the config page decides which it is.
+        self._publish(STATUS, envelope(self.cfg, {
+            "state": valve.ONLINE,
+            "note": "published by the device as its first message after CONNACK",
+        }))
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties=None) -> None:
         self.connected = False
@@ -337,14 +377,44 @@ class MqttSink(Sink):
         )
         self.published += 1
 
+    def publish_will_document(self) -> None:
+        """The graceful-shutdown death certificate: the will, republished by the device.
+
+        A clean DISCONNECT makes the broker DISCARD the will -- the HiveMQ article is
+        explicit about it -- so a `docker stop` that said nothing would leave every
+        subscriber holding a retained `online` forever. This publishes the same document,
+        byte for byte, that was handed to the broker at CONNECT: same frozen `ts`, same
+        `seq` from the beginning of the session, none of the will machinery involved.
+
+        The point is that the graceful path is broken by a SECOND route. `docker kill`
+        proves the will works; `docker stop` proves nothing here can stamp its own death.
+        """
+        client = self.client
+        if client is None or self.will_document is None:
+            return
+        client.publish(self.will_topic, self.will_document,
+                       qos=self.cfg.qos, retain=self.cfg.retain)
+        self.published += 1
+
     def valve_event(self, event: str, data: dict, ts: float) -> None:
-        self._publish(EVENT, envelope(self.cfg, event, data, ts))
+        self._publish(EVENT_TOPICS[event], envelope(self.cfg, data, ts))
 
     def valve_state(self, snapshot: dict, ts: float) -> None:
-        self._publish(STATE, envelope(self.cfg, STATE, snapshot, ts))
+        """Nothing. Deliberately (2026-08-25).
+
+        The device knows exactly where its valve is -- `unlocking`, `open`, `closing`,
+        `locked`, and the interpolated position feedback with it -- and this firmware
+        publishes none of it. The `state` topic was cut, so the four states exist only on the
+        device's own config page and outside the box a sample is two events fifteen seconds
+        apart with silence in between.
+
+        Pattern 2's sink implements this same call by updating Valve/State, Valve/IsOpen and
+        Valve/PositionPct, which it declared in DBIRTH. Identical device, identical
+        `valve.py`, and one of the two firmwares has somewhere to put the answer.
+        """
 
     def valve_telemetry(self, values: dict, ts: float) -> None:
-        self._publish(TELEMETRY, envelope(self.cfg, TELEMETRY, values, ts))
+        self._publish(TELEMETRY, envelope(self.cfg, values, ts))
 
 
 # -- the config page's view of the device ------------------------------------------------
@@ -382,15 +452,21 @@ class Provider(webui.ConfigProvider):
             },
             "publish_plan": cfg.publish_plan(),
             "will": {
-                "topic": cfg.topic(STATE),
+                "topic": cfg.topic(STATUS),
                 "qos": cfg.qos,
                 "retain": cfg.retain,
                 "payload_state": valve.OFFLINE,
+                "birth_state": valve.ONLINE,
             },
             "runtime": {
+                # The valve snapshot is on NO topic. It is here, on the device's own page,
+                # and nowhere else -- which is exactly what the wire looks like since the
+                # `state` topic was cut.
                 "valve": self.assembly.state_snapshot(),
                 "telemetry": self.assembly.telemetry_values(),
                 "last_scan": self.assembly.last_scan,
+                "last_cycle_result": self.assembly.last_cycle_result,
+                "air_sagged": self.assembly.air_sagged,
                 "published": self.sink.published,
             },
             "roster": [badge.as_dict() for badge in cfg.roster.values()]
@@ -418,7 +494,7 @@ class Provider(webui.ConfigProvider):
 
         retain = bool(payload.get("retain", self.cfg.retain))
 
-        previous = self.cfg.topic(STATE)
+        previous = self.cfg.base_topic
         self.cfg.base_topic = base_topic
         self.cfg.qos = qos
         self.cfg.retain = retain
@@ -429,16 +505,17 @@ class Provider(webui.ConfigProvider):
 
         message = "applied -- publishing to %s at QoS %s, retain %s" % (
             base_topic, qos, "on" if retain else "off")
-        if previous != self.cfg.topic(STATE) and retain:
-            message += ". The retained state at %s is still there; a retained message " \
+        if previous != base_topic and retain:
+            message += ". The retained documents under %s are still there, including a " \
+                       "status that will now never be corrected; a retained message " \
                        "outlives the config that made it." % previous
         return True, message
 
     def scan(self, badge_id: str) -> dict:
         return self.assembly.scan(badge_id)
 
-    def set_interlock(self, ok: bool) -> None:
-        self.assembly.set_interlock(ok)
+    def set_air_supply(self, sagged: bool) -> None:
+        self.assembly.set_air_supply(sagged)
 
 
 # -- main --------------------------------------------------------------------------------
@@ -467,10 +544,12 @@ def main() -> int:
     try:
         assembly.run()
     finally:
-        # A graceful stop publishes the closing state and disconnects cleanly, so the will
-        # is discarded by the broker and never fires. `docker stop` is therefore a quiet
-        # death and `docker kill` is a loud one -- two demos out of the same container.
-        sink.valve_state(assembly.state_snapshot(), time.time())
+        # A graceful stop disconnects cleanly, so the broker discards the will and it never
+        # fires -- and `status` would sit retained at `online` for the next subscriber to
+        # believe. So the device publishes the will document itself on the way out, frozen
+        # timestamp and all. `docker stop` is a quiet death and `docker kill` is a loud one,
+        # two demos out of one container, and both land the same wrong `ts`.
+        sink.publish_will_document()
         time.sleep(0.2)
         sink.stop()
         logging.info("shutdown complete")
