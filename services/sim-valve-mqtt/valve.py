@@ -27,6 +27,7 @@ starve the pneumatic actuator of air and the valve does not seat.
 from __future__ import annotations
 
 import logging
+import math
 import random
 import threading
 import time
@@ -86,6 +87,17 @@ CYCLE_STROKE_TIMEOUT = "stroke-timeout"
 # The shipped sag (AIR_SUPPLY_SAG_BAR, 3.2) sits deliberately between the two, so the config
 # page's one button produces a failed-to-seat -- the demo path. Sag it further from the
 # environment and the same button produces a stroke timeout instead.
+# A real compressed-air header breathes as the compressor cycles, and so does this one:
+# +/- 0.12 bar on a 40 s period. Small enough to be plausible, and large enough that the
+# tick-to-tick change clears pattern 2's 0.05 bar deadband on the steep parts of the cycle
+# and not at the turning points -- so DDATA arrives on most ticks rather than every one,
+# which is what report-by-exception looks like when you watch it. Device/EnclosureTempC has
+# a 0.2 degree deadband and nothing pushing it that far, so it stays quiet: the same
+# mechanism seen from the other side. Pattern 1 has no deadbands and publishes all four
+# values every 5 s whatever they do.
+AIR_SUPPLY_BREATH_BAR = 0.12
+AIR_SUPPLY_BREATH_PERIOD_S = 40.0
+
 AIR_SUPPLY_SEAT_BAR = 4.5
 AIR_SUPPLY_STROKE_BAR = 2.5
 
@@ -200,6 +212,10 @@ class ValveAssembly:
         # cause of every stroke fault below, which is the whole reason telemetry was
         # re-pointed here from a line pressure / line temperature pair.
         self.air_sagged = False
+        # The settled level the header is heading for, and the reading it actually shows.
+        # They differ by the breath below, which is why a sag still takes a few seconds to
+        # arrive while the reading itself moves on every tick.
+        self.air_supply_base = cfg.air_supply_bar
         self.air_supply_bar = cfg.air_supply_bar
         self.enclosure_temperature_c = cfg.enclosure_temperature_c
 
@@ -451,8 +467,10 @@ class ValveAssembly:
         0.2 degree deadband on and so pattern 1 has something whose loss nobody would mourn,
         which is what makes QoS 0 right for telemetry and wrong for an event.
 
-        The air supply is not disposable at all, and that is new. It dips while the actuator
-        is stroking, because it does; and when the config page sags it, it walks down to the
+        The air supply is not disposable at all, and that is new. It breathes on a 40 s cycle
+        the way a compressor-fed header does, which is the only reason pattern 2's DDATA is
+        ever anything but silent -- see AIR_SUPPLY_BREATH_BAR. It dips while the actuator is
+        stroking, because it does; and when the config page sags it, it walks down to the
         sagged figure over a few seconds and stays there until somebody restores it. From
         that moment the next sample is going to fail, and the only thing on the wire that
         said so in advance is this reading.
@@ -462,8 +480,11 @@ class ValveAssembly:
             supply = self.cfg.air_supply_sag_bar if self.air_sagged else self.cfg.air_supply_bar
             target_p = supply - (0.25 if stroking else 0.0)
             target_t = self.cfg.enclosure_temperature_c + (0.8 if self.state == OPEN else 0.0)
-            self.air_supply_bar += (target_p - self.air_supply_bar) * 0.25 \
-                + self.rng.gauss(0.0, 0.004)
+            breath = AIR_SUPPLY_BREATH_BAR * math.sin(
+                2.0 * math.pi * (time.time() - self.started) / AIR_SUPPLY_BREATH_PERIOD_S)
+            self.air_supply_base += ((target_p - self.air_supply_base) * 0.25
+                                     + self.rng.gauss(0.0, 0.004))
+            self.air_supply_bar = self.air_supply_base + breath
             self.enclosure_temperature_c += (target_t - self.enclosure_temperature_c) * 0.25 \
                 + self.rng.gauss(0.0, 0.03)
 

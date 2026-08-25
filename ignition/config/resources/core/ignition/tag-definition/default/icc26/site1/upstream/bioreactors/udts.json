@@ -5,30 +5,27 @@
     "typeId": "bioreactor",
     "tags": [
       {
-        "name": "asset_data",
+        "name": "process_data",
         "tagType": "Folder",
         "tags": [
           {
-            "name": "agitator_vibration",
+            "name": "sample_valve",
             "parameters": {
-              "channel_index": {
-                "dataType": "Integer",
-                "value": 0
-              },
-              "gw_serial": {
+              "cycle_result_path": {
                 "dataType": "String",
-                "value": "12345678"
+                "value": "[MQTT Engine]icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete/values/cycle_result"
               },
-              "resolution": {
-                "dataType": "Integer",
-                "value": 512
-              },
-              "uns_path": {
+              "sample_id_path": {
                 "dataType": "String",
-                "value": "site1/upstream/br-201/agitator-vib"
+                "value": "[MQTT Engine]icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete/values/sample_id"
+              },
+              "sample_time_path": {
+                "dataType": "String",
+                "value": "[MQTT Engine]icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete/values/sample_completion"
               }
             },
-            "tagType": "AtomicTag"
+            "tagType": "UdtInstance",
+            "typeId": "sample_valve"
           }
         ]
       }
@@ -40,30 +37,34 @@
     "typeId": "bioreactor",
     "tags": [
       {
-        "name": "asset_data",
+        "name": "process_data",
         "tagType": "Folder",
         "tags": [
           {
-            "name": "agitator_vibration",
+            "name": "sample_valve",
             "parameters": {
-              "channel_index": {
-                "dataType": "Integer",
-                "value": 0
-              },
-              "gw_serial": {
+              "cycle_result_path": {
                 "dataType": "String",
-                "value": "12345678"
+                "value": "[MQTT Engine]Edge Nodes/ICC26-Site1-UPSTREAM/SAMPLE-VALVE-02/SV-202/Sample/LastCycleResult"
               },
-              "resolution": {
-                "dataType": "Integer",
-                "value": 512
-              },
-              "uns_path": {
+              "sample_id_path": {
                 "dataType": "String",
-                "value": "site1/upstream/br-201/agitator-vib"
+                "value": "[MQTT Engine]Edge Nodes/ICC26-Site1-UPSTREAM/SAMPLE-VALVE-02/SV-202/Sample/LastSampleId"
+              },
+              "sample_time_path": {
+                "dataType": "String",
+                "value": "[MQTT Engine]Edge Nodes/ICC26-Site1-UPSTREAM/SAMPLE-VALVE-02/SV-202/Sample/LastSampleTime"
               }
             },
-            "tagType": "AtomicTag"
+            "tagType": "UdtInstance",
+            "typeId": "sample_valve",
+            "tags": [
+              {
+                "dataType": "DateTime",
+                "name": "last_sample_time_raw",
+                "tagType": "AtomicTag"
+              }
+            ]
           }
         ]
       }

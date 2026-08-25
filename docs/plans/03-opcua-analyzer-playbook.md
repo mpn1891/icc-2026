@@ -193,7 +193,8 @@ status code — and the contrast between the two is a talk point, not an embarra
    (skips `initialChange` and Bad quality).
 2. `system.eventstream.publishEvent("icc-2026", "03_opcua/novaflex-result", resultFolder, False)`.
 3. Event Stream transform `opcua_event.build_novaflex_result` reads the historical UDT siblings
-   (Bad → JSON `null`) and returns the envelope, `meta.mechanism = "opcua-event"`.
+   (Bad → JSON `null`) and returns `ts` plus `values` — no `seq`, `source` or `meta`. The
+   instrument's document, not the site's; provenance is the topic it arrived on.
 4. MQTT Transmission handler publishes to `icc26/site1/qc/analyzers/flex-01/result`.
 
 The simulator writes `SampleTime` **last** on the historical tree so the script cannot fire
@@ -214,7 +215,7 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
   mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/qc/analyzers/flex-01/result' -v
 ```
 
-One message per completed sample, never per-value, `mechanism` is `opcua-event`. A failed or
+One message per completed sample, never per-value, carrying `ts` and `values` only. A failed or
 aborted run must not publish. A QC run must not publish on this topic.
 
 ---
