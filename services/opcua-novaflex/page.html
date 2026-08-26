@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<!--
+  The BioProfile FLEX2's sample-login screen.
+
+  This is the instrument's own touchscreen, not a config page. The two valve
+  pages (8085/8086) are about where a device sends its data; this one is about
+  the single field that decides whether the whole chain correlates:
+
+      Sample ID.
+
+  The sample valve on BR-201 mints it. A person reads it off one screen and
+  types it into this one. Everything downstream -- the analyzer result, the LIMS
+  entry it appends to, the released document -- turns on those characters being
+  the same characters. Type them wrong and the demo shows you exactly what a
+  plant looks like when the transcription is the join.
+
+  No external assets of any kind -- the demo has to run with networking disabled.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BioProfile FLEX2 &mdash; Sample Login</title>
+<style>
+  :root {
+    --bg: #0f1418;
+    --panel: #182027;
+    --panel-2: #1f2a33;
+    --line: #2b3a45;
+    --ink: #e8f0f4;
+    --muted: #8ba3b2;
+    --accent: #24c2c8;
+    --accent-2: #157c80;
+    --ok: #37c98b;
+    --warn: #e8b44a;
+    --bad: #e8615a;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 0 3rem;
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    background: linear-gradient(180deg, #1c2831, #131b21);
+    border-bottom: 1px solid var(--line);
+    padding: 1rem 1.5rem;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  .vendor {
+    display: inline-block; font: 600 11px/1 var(--mono); letter-spacing: .12em;
+    text-transform: uppercase; padding: .4rem .6rem; border-radius: 3px;
+    background: #10464a; color: #7fe3e8; border: 1px solid #1c6a6f;
+  }
+  h1 { font-size: 1.25rem; margin: .6rem 0 .2rem; font-weight: 600; }
+  .sub { color: var(--muted); font-size: .85rem; }
+  .sub code { font-family: var(--mono); color: #b9c7d8; }
+  .led { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%;
+         background: var(--muted); margin-right: .35rem; vertical-align: baseline; }
+  .led.run { background: var(--warn); }
+  .led.idle { background: var(--ok); }
+
+  main { padding: 1.5rem; }
+  section {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    margin-bottom: 1.25rem;
+  }
+  section > h2 {
+    font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    margin: 0; padding: .8rem 1.1rem; border-bottom: 1px solid var(--line); font-weight: 600;
+  }
+  .body { padding: 1.1rem; }
+
+  label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .3rem; }
+  input[type=text], select {
+    width: 100%; padding: .55rem .6rem; background: #0b1116; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px; font-family: var(--mono);
+    font-size: .88rem;
+  }
+  input[type=text]:focus, select:focus {
+    outline: 2px solid var(--accent); outline-offset: -1px;
+  }
+
+  /* The transcription field. Deliberately the biggest thing on the screen --
+     it is the one that decides whether anything downstream correlates. */
+  .primary { margin-bottom: 1.1rem; }
+  .primary label { font-size: .82rem; color: var(--ink); font-weight: 600; }
+  .primary input {
+    font-size: 1.5rem; padding: .7rem .75rem; letter-spacing: .06em;
+    border-color: var(--accent-2);
+  }
+  .hint { font-size: .78rem; color: var(--muted); margin-top: .4rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .9rem; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+
+  .actions { display: flex; gap: .7rem; margin-top: 1.2rem; flex-wrap: wrap; }
+  button {
+    padding: .6rem 1.2rem; border-radius: 4px; border: 1px solid var(--accent-2);
+    background: #10585c; color: #dffcfd; font-size: .9rem; cursor: pointer;
+  }
+  button:hover { background: #147276; }
+  button.ghost { background: transparent; border-color: var(--line); color: var(--muted); }
+  button.ghost:hover { background: var(--panel-2); color: var(--ink); }
+  button[disabled] { opacity: .45; cursor: not-allowed; }
+
+  .msg { margin: 1rem 0 0; padding: .6rem .8rem; border-radius: 4px; font-size: .86rem; }
+  .msg.ok  { background: #10331f; border: 1px solid #1e6b3f; color: #b7f0cf; }
+  .msg.err { background: #3a1a18; border: 1px solid #7a3733; color: #f5c3bf; }
+
+  dl.readout { margin: 0; display: grid; grid-template-columns: 11rem 1fr; gap: .45rem 1rem; }
+  dl.readout dt { color: var(--muted); font-size: .82rem; }
+  dl.readout dd { margin: 0; font-family: var(--mono); font-size: .85rem; }
+
+  .note {
+    font-size: .82rem; color: var(--muted); border-top: 1px solid var(--line);
+    margin: 1.1rem -1.1rem -1.1rem; padding: .9rem 1.1rem; background: var(--panel-2);
+    border-radius: 0 0 6px 6px;
+  }
+  .note b { color: #cfe0ea; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <span class="vendor">Nova Biomedical</span>
+    <h1>BioProfile FLEX2 &mdash; Sample Login</h1>
+    <p class="sub">
+      Analyzer <code id="analyzer">&hellip;</code> ·
+      <span class="led" id="led"></span><span id="state">&hellip;</span> ·
+      <span id="runmode">&hellip;</span>
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <h2>Log a sample</h2>
+    <div class="body">
+      <div class="primary">
+        <label for="sample_id">Sample ID</label>
+        <input id="sample_id" type="text" autocomplete="off" spellcheck="false"
+               placeholder="S-20260826-0001">
+        <p class="hint">
+          Scan the barcode or type the identifier printed by the sample valve on BR-201.
+          The analyzer echoes whatever is entered here back on its result &mdash; it has no
+          way to check it.
+        </p>
+      </div>
+
+      <div class="grid">
+        <div>
+          <label for="batch_id">Batch ID</label>
+          <input id="batch_id" type="text" autocomplete="off" placeholder="B-2026-0142">
+        </div>
+        <div>
+          <label for="vessel_id">Vessel ID</label>
+          <input id="vessel_id" type="text" autocomplete="off" placeholder="BRX-2000-A">
+        </div>
+        <div>
+          <label for="cell_type">Cell type</label>
+          <input id="cell_type" type="text" autocomplete="off" placeholder="CHO-K1">
+        </div>
+        <div>
+          <label for="sample_type">Sample type</label>
+          <select id="sample_type"></select>
+        </div>
+        <div>
+          <label for="operator">Operator</label>
+          <input id="operator" type="text" autocomplete="off" placeholder="Auto">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="run" type="button">Run analysis</button>
+        <button id="qc" class="ghost" type="button">Run QC (Level 1)</button>
+      </div>
+
+      <div id="msg"></div>
+
+      <p class="note">
+        <b>Run writes tags, not a method.</b> The sample metadata above is written into
+        <code>OPCSystemCommands/ESMScheduleAnalysis/SampleInformation/*</code>, then the
+        <code>ESMScheduleAnalysis</code> bit is set. That is the whole vendor contract:
+        104 writable bits, zero OPC UA methods, and nothing atomic about the sequence.
+        An Ignition tag write does exactly the same thing &mdash; and, unlike this screen,
+        gets no answer back if the instrument declines.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Last completed analysis</h2>
+    <div class="body">
+      <dl class="readout">
+        <dt>Reported sample ID</dt><dd id="last_id">&mdash;</dd>
+        <dt>Sample time</dt><dd id="last_time">&mdash;</dd>
+        <dt>Analyses this session</dt><dd id="sample_no">&mdash;</dd>
+        <dt>Currently loaded ID</dt><dd id="loaded_id">&mdash;</dd>
+      </dl>
+      <p class="note">
+        <b>Reported sample ID is whatever was typed above.</b> The LIMS stores it verbatim
+        and attaches the result to the sample entry carrying that id. If no entry carries
+        it, the result parks as unmatched rather than attaching to something plausible.
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const FIELDS = ["sample_id", "batch_id", "vessel_id", "cell_type", "operator"];
+  let typesFilled = false;
+
+  function say(ok, text) {
+    $("msg").innerHTML = text
+      ? '<p class="msg ' + (ok ? "ok" : "err") + '">' + text + "</p>"
+      : "";
+  }
+
+  function paint(s) {
+    if (!s) return;
+    $("analyzer").textContent = s.analyzer_id || "?";
+    $("state").textContent = s.state || "?";
+    $("led").className = "led " + (s.running ? "run" : "idle");
+    $("runmode").textContent = s.free_running
+      ? "free-running every " + s.interval_s + " s"
+      : "runs on request only";
+    $("run").disabled = !!s.running;
+    $("qc").disabled = !!s.running;
+
+    if (!typesFilled && Array.isArray(s.sample_types)) {
+      $("sample_type").innerHTML = s.sample_types
+        .map((t) => '<option value="' + t + '">' + t + "</option>")
+        .join("");
+      if (s.sample_type) $("sample_type").value = s.sample_type;
+      typesFilled = true;
+    }
+
+    const last = s.last_result || {};
+    $("last_id").textContent = last.sample_id || "—";
+    $("last_time").textContent = last.sample_time || "—";
+    $("sample_no").textContent = s.sample_no;
+    $("loaded_id").textContent = (s.loaded && s.loaded.sample_id) || "—";
+
+    // Prefill the metadata that carries over between samples, but never the
+    // sample id: it is different every time and pre-filling it is how a stale
+    // one gets sent.
+    if (document.activeElement && document.activeElement.tagName === "INPUT") return;
+    if (s.loaded) {
+      ["batch_id", "vessel_id", "cell_type"].forEach((k) => {
+        if (!$(k).value && s.loaded[k]) $(k).value = s.loaded[k];
+      });
+    }
+    if (!$("operator").value && s.operator) $("operator").value = s.operator;
+  }
+
+  async function refresh() {
+    try {
+      paint(await (await fetch("/api/state")).json());
+    } catch (e) {
+      /* the instrument is restarting; the next tick will pick it up */
+    }
+  }
+
+  async function post(path, body) {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const doc = await res.json();
+    say(doc.ok, doc.message || "");
+    paint(doc.state);
+    return doc;
+  }
+
+  $("run").addEventListener("click", async () => {
+    const body = {};
+    FIELDS.forEach((k) => (body[k] = $(k).value.trim()));
+    body.sample_type = $("sample_type").value;
+    const doc = await post("/api/run", body);
+    // Clear the id on success only. The next sample has a different one, and a
+    // field left populated is how the same id gets submitted twice.
+    if (doc.ok) $("sample_id").value = "";
+  });
+
+  $("qc").addEventListener("click", () => post("/api/qc", { level: "1" }));
+
+  $("sample_id").addEventListener("keydown", (e) => {
+    // Barcode wedges type the id and send Enter. Treat that as pressing Run,
+    // which is what makes a scan a single gesture.
+    if (e.key === "Enter") $("run").click();
+  });
+
+  refresh();
+  setInterval(refresh, 2000);
+</script>
+</body>
+</html>

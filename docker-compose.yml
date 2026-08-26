@@ -273,11 +273,19 @@ services:
       OSMO_INSTALLED: ${NOVAFLEX_OSMO_INSTALLED:-false}
       # Autosampler bank B likewise: ten RSM status tags at Bad_NoData.
       AUTOSAMPLER_BANK_B: ${NOVAFLEX_AUTOSAMPLER_BANK_B:-false}
-      SAMPLE_INTERVAL_S: ${NOVAFLEX_SAMPLE_INTERVAL_S:-120}
-      FIRST_SAMPLE_DELAY_S: ${NOVAFLEX_FIRST_SAMPLE_DELAY_S:-15}
+      # Both 0: the analyzer starts nothing on its own. Since 2026-08-26 the
+      # sample id reaches this instrument by a person typing it on the
+      # sample-login page below, and a free-running analyzer invents ids nobody
+      # typed — every result it produced would park unmatched in the LIMS. Set
+      # them non-zero to get the old self-driving behaviour back.
+      SAMPLE_INTERVAL_S: ${NOVAFLEX_SAMPLE_INTERVAL_S:-0}
+      FIRST_SAMPLE_DELAY_S: ${NOVAFLEX_FIRST_SAMPLE_DELAY_S:-0}
+      HTTP_PORT: 8087
       # Every Nth free-running cycle runs an onboard QC instead of a sample. QC
       # writes QCResults and increments QcCompleteCounter — never the sample
       # counter. That is the manual's own section 9 warning, live.
+      # QC rides on free-running cycles, so with the interval at 0 this never
+      # fires by itself. The sample-login page has a Run QC button instead.
       QC_EVERY_N: ${NOVAFLEX_QC_EVERY_N:-6}
       SENSOR_ERROR_RATE: ${NOVAFLEX_SENSOR_ERROR_RATE:-0.0}
       # The arrow is what the manual prints inside the NodeId identifier itself
@@ -294,6 +302,10 @@ services:
       # the host side would collide otherwise. Ignition reaches it by service
       # name on the compose network and never sees this number.
       - "${OPCUA_NOVAFLEX_PORT:-4841}:4840"
+      # The instrument's own sample-login touchscreen, in the same spirit as the
+      # two valve pages on 8085/8086. This is where the valve's sample id gets
+      # transcribed into the analyzer.
+      - "${NOVAFLEX_HTTP_PORT:-8087}:8087"
     healthcheck:
       test: ["CMD", "python", "-c",
              "import socket; socket.create_connection(('127.0.0.1', 4840), 3).close()"]

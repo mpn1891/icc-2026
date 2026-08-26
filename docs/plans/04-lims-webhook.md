@@ -10,8 +10,181 @@
 > take effect on an empty volume; on this checkout they were applied live (`migrate-04-lims.sql`
 > + Chariot `PUT /mqttusers/lims-bridge`) without a nuke. `python tasks.py nuke` then `seed`
 > remains the clean-room path. Odoo is no longer in the stack (2026-08-23).
+>
+> **Revised 2026-08-26: the LIMS now opens the sample entry from pattern 1's
+> `event/sample-complete` and appends the analyzer result to it.** Read
+> [*Revised 2026-08-26*](#revised-2026-08-26--the-entry-is-opened-at-collection-not-at-result)
+> first — it supersedes several sections further down, which are left in place
+> because the reasoning in them is still why this pattern is shaped the way it is.
+
+## Revised 2026-08-26 — the entry is opened at collection, not at result
+
+**This section supersedes [*Objective*](#objective), [*The chain*](#the-chain),
+[*Granularity*](#granularity), [*Schema change*](#schema-change--do-it-in-one-nuke) and
+[*Envelope*](#envelope) below. Everything else in this file still stands** — the outbox
+argument, the cycle hazard, the manual-approval decision and the failure demo are unchanged and
+are still the engineering content.
+
+### What changed
+
+The LIMS had no concept of a sample. A sample was the `GROUP BY sample_id` of whatever analyte
+rows the analyzer happened to produce, so **the record did not exist until the instrument
+spoke**. That is backwards for a LIMS and backwards for the talk: the sample begins when
+material leaves the reactor, which is the rule
+[`../00-architecture.md` § *The sample id, and pattern 1 mints it*](../00-architecture.md)
+already settled.
+
+Now there are two subscriptions and the order they arrive in *is* the pattern:
+
+| | Topic | What it does |
+|---|---|---|
+| 1 | `icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete` (pattern 1) | **Opens the entry.** One `lims.sample` row carrying the badge holder, `sample_start`, `open_duration_s` and `cycle_result` |
+| 2 | `icc26/site1/qc/analyzers/+/result` (pattern 3) | **Appends the analytes** to that entry, minutes later |
+
+The analyst reviews one record holding both halves. Approve publishes both halves.
+
+### The transcription, which is the point
+
+The two ids only match because **a person makes them match.** The valve mints
+`S-YYYYMMDD-NNNN` on the badge grant; the analyzer's own sample-login screen
+(`services/opcua-novaflex/webui.py`, port 8087) is where somebody reads that id off BR-201's
+page and types or scans it in. The FLEX2 echoes it back on its result because that is what the
+vendor's writable `SampleInformation/SampleID` node is for.
+
+An Ignition tag write into `bioanalyzer/command/sample_id` would do the same job and could not
+be typed wrong. **That is exactly why it is not what we built.** Pattern 1's GxP hook is *the
+record originates at the point of action; no transcription, no intermediary* — and this is the
+intermediary, on stage, with a keyboard. One transposed character and the LIMS shows the whole
+cost of it on one screen: an entry sitting open with no analysis, and an analysis parked with
+no entry.
+
+Consequence: **the analyzer no longer free-runs** (`SAMPLE_INTERVAL_S=0`). It cannot. A
+self-driving instrument invents ids nobody transcribed, and every result it produced would park
+unmatched. QC moved to a button on the same page for the same reason — it used to ride on
+free-running cycles.
+
+### What this costs pattern 7, and what it buys
+
+Pattern 4 now performs the valve↔Nova half of the join pattern 7 exists to demonstrate. Decided
+deliberately, and it is a trade rather than a loss: the released review message carries
+`values.collection.sample_start`, which is **the instant both of pattern 7's derived flags are
+evaluated at**. Two of the four sources its unspecified event store had to persist are no longer
+its problem. Pattern 7 still joins batch phase (05) and the nearest MET ONE (06), which is where
+both flags actually come from.
+
+### Schema
+
+`lims.sample` is the entry; `lims.sample_result` is the analyte rows appended to it. Full DDL in
+[`../../compose/postgres/initdb/02-schema.sql`](../../compose/postgres/initdb/02-schema.sql);
+live-apply for an existing volume in
+[`../../compose/postgres/migrate-05-sample-entry.sql`](../../compose/postgres/migrate-05-sample-entry.sql).
+**Run that migration as `postgres`, not `icc26`** — initdb created these tables as the
+superuser, and `ALTER TABLE ... RENAME COLUMN` is owner-only.
+
+Two things in it are load-bearing:
+
+- **`sample_result` has two id columns.** `reported_sample_id` is what the instrument said,
+  verbatim, and is never rewritten — the dedupe constraint moved onto it
+  (`UNIQUE (reported_sample_id, analyte)`). `sample_id` is the entry it was attached to, and is
+  **null when nothing carries that id**. No FK, because an unmatched result still has to insert.
+  You do not correct a record by overwriting what the instrument reported; you record the
+  correction beside it, with `attached_by` and `attached_at`.
+- **`ON CONFLICT (sample_id) DO NOTHING` on the entry insert is not tidiness.**
+  `sample-complete` is published **retained** and this client connects `clean_session=True`, so
+  the broker replays the last one on every reconnect. Without the conflict clause,
+  `docker restart icc26-lims` resurrects the most recent sample — already approved, already
+  released — back into the review queue. Retained plus clean session is a redelivery source
+  people forget they signed up for, and it sits right next to the QoS-1 one this pattern already
+  argues about.
+
+### Entry lifecycle
+
+```
+awaiting-analysis ──(analytes attach)──▶ received ──(e-sign)──▶ verified | rejected
+        │
+        └─ cycle_result ≠ normal opens straight into `received`:
+           no material reached the analyzer, nothing is coming, and it still
+           needs a signature
+```
+
+`awaiting-analysis` is the one state a signature cannot be applied to — there is nothing yet to
+have reviewed. Both the screen and `Store._not_reviewable` refuse it, and the refusal says
+*"has no analysis yet — nothing to sign off"* rather than reading a status string back at
+somebody.
+
+`batch_id` arrives with the analysis, not with the valve: the valve opens on a badge, not on a
+work order, and its event carries no batch at all.
+
+### The review screen
+
+Three panels on `:8000` — **Open samples**, **Unmatched results**, **Release transmissions**.
+The unmatched panel is the transcription error made legible: each parked analysis with a picker
+of the open entries, and an Attach button that records who decided.
+
+### Envelope
+
+> **Extended by [*Revised 2026-08-26*](#revised-2026-08-26--the-entry-is-opened-at-collection-not-at-result).** `values.collection` was added; everything below is otherwise current.
+
+
+Unchanged except for one added object. `values` now carries:
+
+```json
+"collection": {
+  "badge_id": "B-1042",
+  "badge_holder": "R. Okafor",
+  "sample_start": "2026-08-26T14:02:58.412Z",
+  "sample_completion": "2026-08-26T14:03:11.922Z",
+  "open_duration_s": 13.51,
+  "cycle_result": "normal"
+}
+```
+
+`ts` is still `collected_at` — the event being described is the measurement, and the gap to
+`meta.ingest_ts` is still the point. On a sample that was never analysed there is no acquisition
+instant, so the valve's close time stands in: that genuinely is when the record was made.
+
+**No Ignition change was needed for any of this.** `lims_webhook.handle()` republishes the
+envelope wholesale and only fills `meta` / `seq` / `source` when absent — there is no field
+whitelist to widen.
+
+### ACL
+
+`lims-bridge` gains one subscribe topic, named to the one device rather than wildcarded.
+`publishTopics` stays `[]`, which is still the enforcement described in
+[*The cycle hazard*](#the-cycle-hazard).
+
+```json
+"subscribeTopics": [
+  "icc26/site1/qc/analyzers/+/result",
+  "icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete"
+]
+```
+
+On a live stack: Chariot `PUT /mqttusers/lims-bridge` — `mqtt-users.json` seeds on first run
+only.
+
+### Verification
+
+1. Badge `B-1042` on `:8085`. ~15 s later the entry appears on `:8000` as **Awaiting analysis**,
+   badge holder and open duration populated, no Approve button.
+2. Type that id into `:8087`, press Run. The *same* entry flips to ready with three analytes and
+   a batch id. **No second entry appears.**
+3. Approve. One message on `icc26/site1/qc/lims/sample-result` carrying `values.collection`
+   beside the analytes.
+4. **Do it wrong.** Repeat step 2 with a transposed character: the entry stays awaiting, the
+   result lands under Unmatched results. Attach it, then confirm in Postgres that
+   `reported_sample_id` still holds the wrong id.
+5. **Failed cycle.** Sag the air supply on `:8085`, badge again. The entry arrives
+   `failed-to-seat`, reviewable immediately with no analytes, and Reject works.
+6. **Retained replay.** `docker restart icc26-lims` — nothing is created, nothing resurrects.
+7. The existing outbox-survival test still passes unchanged.
+
+---
 
 ## Objective
+
+> **Superseded in part by [*Revised 2026-08-26*](#revised-2026-08-26--the-entry-is-opened-at-collection-not-at-result).** The entry is opened by pattern 1's valve event; the analyzer result is appended to it.
+
 
 A sample result produced by the pattern-3 analyzer is received by the LIMS off the event backbone,
 held unreviewed, released by a human, and only then pushed into Ignition over HTTP and published
@@ -59,6 +232,9 @@ pattern having to share a topic with the other.
 
 ## The chain
 
+> **Superseded by [*Revised 2026-08-26*](#revised-2026-08-26--the-entry-is-opened-at-collection-not-at-result).** The diagram below is the analyzer leg only, and is still accurate for that leg. The valve leg that now opens the entry is missing from it.
+
+
 ```
 opcua-novaflex ──OPC UA──▶ Ignition ──Event Stream──▶ Transmission
                                                           │
@@ -88,6 +264,9 @@ one-line addition to pattern 3** — see [Ignition resources](#ignition-resource
 ## Decisions, and the reasoning
 
 ### Granularity
+
+> **Superseded by [*Revised 2026-08-26*](#revised-2026-08-26--the-entry-is-opened-at-collection-not-at-result).** Still one message per sample; the analyte mapping below is unchanged. What changed is that the sample exists before any of it arrives.
+
 
 **One message per sample, carrying all analytes.** `lims.sample_result` is one row per analyte, so
 a sample is several rows, and the earlier draft of this spec published one message per *row* to
@@ -149,6 +328,9 @@ knowing about — if this table ever looks like overkill, the argument that put 
 the argument keeping it there.
 
 ## Schema change — do it in one nuke
+
+> **Superseded by [*Revised 2026-08-26*](#revised-2026-08-26--the-entry-is-opened-at-collection-not-at-result).** `lims.sample` now exists and `sample_result` carries two id columns. The DDL below is the 2026-08-20 shape.
+
 
 Two files change, and both only take effect on an empty volume (`../00-architecture.md` §
 *Postgres*). Batch them into a single `tasks.py nuke` + `seed`, which costs one commissioning

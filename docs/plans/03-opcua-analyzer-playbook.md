@@ -181,6 +181,37 @@ that never resets it still gets exactly one run per write.
 Keep the method too. The method is better engineering — atomic, typed, returns an id and a real
 status code — and the contrast between the two is a talk point, not an embarrassment.
 
+### 8b — The sample login screen, and why the instrument stopped free-running
+
+**Added 2026-08-26.** `services/opcua-novaflex/webui.py` + `page.html` serve the instrument's
+own sample-login touchscreen on **:8087**, in the same spirit as the two valve pages on
+8085/8086 — but about one field rather than about topics:
+
+> **Sample ID.** The sample valve on BR-201 mints it. A person reads it off that page and types
+> or scans it into this one. Everything downstream turns on those characters matching.
+
+Two rules the page keeps, and both are the pattern's content:
+
+- **It writes tags, not shortcuts.** Run writes
+  `OPCSystemCommands/ESMScheduleAnalysis/SampleInformation/*` and then sets the
+  `ESMScheduleAnalysis` bit — the same nodes, in the same order, that Ignition's `bioanalyzer`
+  UDT drives from `command/sample_id` and `command/esm_schedule_analysis`. It does not reach
+  into `_run_sample()`. A page that shortcuts the vendor contract stops demonstrating it.
+- **It marshals onto the event loop.** `http.server` runs on its own thread; asyncua does not
+  tolerate node access from it. Every call goes through `run_coroutine_threadsafe`.
+
+One asymmetry worth showing: this page can say *"an analysis is already running"* and refuse. An
+OPC UA client writing the same bit **cannot** — a tag write has no return value and the vendor
+documents no rejection path, so all a client gets is that nothing happened. The page knows
+because it is inside the instrument. That is §6.1 of the Countess model doc, arriving from the
+other side.
+
+**`SAMPLE_INTERVAL_S` and `FIRST_SAMPLE_DELAY_S` now default to 0 — the instrument starts
+nothing on its own.** It cannot be allowed to: a free-running analyzer invents sample ids nobody
+transcribed, and every result it produces parks unmatched in the LIMS. `run()` treats a
+non-positive interval as `timeout=None` rather than `timeout=0`, which would expire immediately
+and spin the loop hot. QC rode on free-running cycles, so it moved to a button on the same page.
+
 ### 9 — Publish to MQTT
 
 **Novaflex — built.** No new OPC UA nodes. Trigger is the vendor `SampleTime` already on

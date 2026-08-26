@@ -63,6 +63,8 @@ from datetime import datetime, timedelta, timezone
 
 from asyncua import Server, ua
 
+import webui
+
 NAMESPACE_URI = "http://icc26.demo/UA/NovaflexII/"
 LOG = logging.getLogger("novaflex")
 
@@ -140,8 +142,18 @@ class Config:
         ).split(",") if s.strip()]
         self.sample_type = _env("ACTIVE_SAMPLE_TYPE", self.sample_types[0])
 
-        self.first_sample_delay_s = _env_float("FIRST_SAMPLE_DELAY_S", 15.0)
-        self.sample_interval_s = _env_float("SAMPLE_INTERVAL_S", 120.0)
+        # Both 0 mean "never start an analysis on your own": wait indefinitely for
+        # a trigger. That is the shipped setting since 2026-08-26, because the
+        # sample id now arrives by transcription -- a free-running analyzer
+        # invents ids nobody typed, and every result it produces lands unmatched
+        # in the LIMS. Set them non-zero to get the old self-driving behaviour.
+        self.first_sample_delay_s = _env_float("FIRST_SAMPLE_DELAY_S", 0.0)
+        self.sample_interval_s = _env_float("SAMPLE_INTERVAL_S", 0.0)
+
+        # The instrument's own sample-login touchscreen. See webui.py: this is
+        # where a person types the valve's sample id in, which is the only thing
+        # joining pattern 1 to pattern 3.
+        self.http_port = _env_int("HTTP_PORT", 8087)
 
         # Every Nth free-running cycle runs an onboard QC instead of a sample. QC writes
         # QCResults and increments QcCompleteCounter -- it does NOT touch SampleResults or
@@ -1626,7 +1638,11 @@ class Novaflex:
         delay = self.cfg.first_sample_delay_s
         while not self.stopping.is_set():
             try:
-                await asyncio.wait_for(self.trigger.wait(), timeout=delay)
+                # timeout=None, not timeout=0: a zero timeout expires immediately
+                # and spins this loop hot. None is what "only run when somebody
+                # asks" has to mean -- wait for the trigger, indefinitely.
+                await asyncio.wait_for(self.trigger.wait(),
+                                       timeout=delay if delay > 0 else None)
             except asyncio.TimeoutError:
                 pass
             self.trigger.clear()
@@ -1680,8 +1696,14 @@ async def main_async() -> int:
         except NotImplementedError:  # Windows, outside the container
             signal.signal(sig, lambda *_: flex.stopping.set())
 
+    console = webui.Console(flex, loop)
+    page_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
+
     async with server:
         await flex.watch_commands()
+        # After watch_commands(): the page's Run button writes the command bits,
+        # and those do nothing until the server is subscribed to its own nodes.
+        webui.serve(cfg.http_port, page_path, console)
         LOG.info("serving %s (namespace %s, ns=%s, separator %r)",
                  endpoint, NAMESPACE_URI, flex.idx, cfg.separator)
         LOG.info("modules: gas %s, chem %s, cdv %s, osmo %s -- %s sample fields, %s QC fields",

@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
-"""Pattern 4 -- a LIMS that holds analyzer results until a human releases them.
+"""Pattern 4 -- a LIMS that opens a sample record at collection and releases it on a signature.
 
-A sample result produced by the pattern-3 analyzer arrives on
-`icc26/site1/qc/analyzers/+/result`. This service inserts it as status='received',
-serves an approval screen on :8000, and only on Approve does it POST the sample
-to Ignition. Reject publishes nothing, ever.
+Two subscriptions, and the order they arrive in is the pattern:
 
-Four things here are load-bearing, and easy to flatten into "a webhook demo":
+  1. `icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete` (pattern 1)
+     opens the entry. The sample begins when material leaves the reactor, so that
+     is when the record exists -- carrying who badged it, when the valve opened,
+     how long it was open, and how the cycle ended.
+  2. `icc26/site1/qc/analyzers/+/result` (pattern 3) appends the analytes to that
+     entry, minutes later.
+
+The analyst reviews one record holding both halves, and only on Approve does this
+service POST it to Ignition.
+
+Six things here are load-bearing, and easy to flatten into "a webhook demo":
 
   * The callback exists because the answer is not ready when you ask. A person
     has to sign it off. If the LIMS could answer synchronously, the correct
@@ -23,9 +30,25 @@ Four things here are load-bearing, and easy to flatten into "a webhook demo":
     grant to `icc26/#` and you have an infinite loop. The ACL is the
     enforcement, the same file that stops the valve leaving upstream.
 
-  * QoS 1 is at-least-once. `UNIQUE (sample_id, analyte)` plus ON CONFLICT DO
-    NOTHING is the whole ingest dedupe. The uniqueness is a demo simplification
-    -- a real LIMS repeats tests -- and it is why that constraint exists.
+  * QoS 1 is at-least-once. `UNIQUE (reported_sample_id, analyte)` plus ON
+    CONFLICT DO NOTHING is the whole result dedupe. The uniqueness is a demo
+    simplification -- a real LIMS repeats tests -- and it is why that constraint
+    exists.
+
+  * `sample-complete` is RETAINED and this client connects `clean_session=True`,
+    so the broker replays the last one on every single reconnect. The entry
+    insert is ON CONFLICT DO NOTHING for that reason: without it, restarting this
+    container resurrects the last sample -- already approved, already released --
+    back into the review queue. Retained plus clean session is a redelivery
+    source people forget they signed up for.
+
+  * The two ids are not the same id. A person reads the valve's sample id off
+    one screen and types it into the analyzer on another, so what the instrument
+    reports back can be wrong. `reported_sample_id` keeps what the instrument
+    said, forever, and `sample_id` records which entry it was attached to. You
+    do not correct a record by overwriting what the instrument reported; you
+    record the correction. Results matching no entry park as unmatched, visible,
+    and are reattached by an analyst -- never absorbed silently.
 
 House style from services/opcua-novaflex/app.py: `_env` helpers, a Config class,
 docstrings that say why. FastAPI in the main thread, paho's network loop on its
@@ -108,6 +131,14 @@ class Config:
         # Wildcard is the subscribe grant in mqtt-users.json. QoS 1, so a
         # redelivery must not create a second row -- see ingest().
         self.result_topic = _env("RESULT_TOPIC", "icc26/site1/qc/analyzers/+/result")
+        # Pattern 1, and the only topic outside qc/ this service is granted.
+        # Named to one device on purpose: `+/event/sample-complete` would also
+        # match a second valve, and BR-202's valve is Sparkplug and not on this
+        # namespace at all. One subscription per device is what pattern 1 costs.
+        self.valve_event_topic = _env(
+            "VALVE_EVENT_TOPIC",
+            "icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete",
+        )
 
         self.pghost = _env("PGHOST", "postgres")
         self.pgport = _env_int("PGPORT", 5432)
@@ -195,16 +226,91 @@ class Store:
             LOG.exception("postgres unreachable")
             return False
 
-    def ingest(self, envelope: dict) -> int:
-        """Insert one row per present analyte. Redelivery is a no-op.
+    # ---- ingest: two topics, two entry points
 
-        ON CONFLICT DO NOTHING against uq_sample_analyte is the whole dedupe,
-        and it is the reason that constraint exists. A null analyte value
-        contributes no row -- not a zero.
+    def create_sample(self, topic: str, document: dict) -> dict:
+        """Open the entry from pattern 1's `event/sample-complete`.
+
+        ON CONFLICT DO NOTHING is not defensive tidiness. `sample-complete` is
+        published retained and this client connects with a clean session, so the
+        broker hands us the last one again on every reconnect -- restart the
+        container and the most recent sample arrives a second time. Without the
+        conflict clause that redelivery resurrects an already-approved sample
+        into the review queue.
+
+        A cycle that did not end `normal` will never be analysed, so its entry is
+        opened straight into 'received': there is nothing to wait for, and an
+        analyst still has to sign it off.
         """
-        values = envelope.get("values") or {}
+        values = document.get("values") or {}
         sample_id = values.get("sample_id")
         if not sample_id:
+            LOG.warning("valve event skipped: no sample_id on %s", topic)
+            return {"ok": False, "error": "no sample_id"}
+
+        cycle_result = values.get("cycle_result") or None
+        status = "awaiting-analysis" if cycle_result in (None, "normal") else "received"
+
+        def _ts(key):
+            raw = values.get(key)
+            if raw is None:
+                return None
+            try:
+                return _parse_ts(raw)
+            except (TypeError, ValueError):
+                LOG.warning("valve event %s: unparseable %s %r", sample_id, key, raw)
+                return None
+
+        with self.connect() as conn:
+            with conn.transaction():
+                created = conn.execute(
+                    """
+                    INSERT INTO lims.sample
+                        (sample_id, badge_id, badge_holder, sample_start, sample_completion,
+                         open_duration_s, cycle_result, cycle_count, source_topic, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (sample_id) DO NOTHING
+                    RETURNING sample_id
+                    """,
+                    (
+                        sample_id,
+                        values.get("badge_id"),
+                        values.get("badge_holder"),
+                        _ts("sample_start"),
+                        _ts("sample_completion"),
+                        values.get("open_duration_s"),
+                        cycle_result,
+                        values.get("cycle_count"),
+                        topic,
+                        status,
+                    ),
+                ).fetchone()
+                # A result can beat its entry here -- nothing in MQTT orders two
+                # topics against each other, and this service can be down for the
+                # valve event and up for the analyzer. Adopt anything parked.
+                adopted = self._adopt(conn, sample_id, sample_id, None)
+
+        if created is None:
+            LOG.info("valve event no-op %s (retained redelivery)", sample_id)
+            return {"ok": True, "sample_id": sample_id, "created": False}
+        LOG.info("opened %s from %s [%s]", sample_id, topic, cycle_result or "normal")
+        return {"ok": True, "sample_id": sample_id, "created": True, "adopted": adopted}
+
+    def ingest(self, envelope: dict) -> int:
+        """Append one row per present analyte. Redelivery is a no-op.
+
+        ON CONFLICT DO NOTHING against uq_reported_sample_analyte is the whole
+        dedupe, and it is the reason that constraint exists. A null analyte value
+        contributes no row -- not a zero.
+
+        The id the instrument reports is stored verbatim and never rewritten. If
+        no entry carries that id -- because a person mistyped it into the
+        analyzer -- the rows still insert, with `sample_id` null. They are parked,
+        not lost, and not silently attached to something plausible.
+        """
+        values = envelope.get("values") or {}
+        reported = values.get("sample_id")
+        if not reported:
             LOG.warning("ingest skipped: no sample_id")
             return 0
         batch_id = values.get("batch_id") or None
@@ -217,6 +323,12 @@ class Store:
         inserted = 0
         with self.connect() as conn:
             with conn.transaction():
+                matched = conn.execute(
+                    "SELECT sample_id FROM lims.sample WHERE sample_id = %s",
+                    (reported,),
+                ).fetchone()
+                sample_id = matched[0] if matched else None
+                attached_at = _now() if sample_id else None
                 for analyte, path, uom in ANALYTES:
                     raw = _dig(values, path)
                     if raw is None:
@@ -225,47 +337,172 @@ class Store:
                         number = float(raw)
                     except (TypeError, ValueError):
                         LOG.warning("ingest skipped %s/%s: %r is not a number",
-                                    sample_id, analyte, raw)
+                                    reported, analyte, raw)
                         continue
                     result = conn.execute(
                         """
                         INSERT INTO lims.sample_result
-                            (sample_id, batch_id, analyte, value, uom, collected_at, status)
-                        VALUES (%s, %s, %s, %s, %s, %s, 'received')
-                        ON CONFLICT (sample_id, analyte) DO NOTHING
+                            (reported_sample_id, sample_id, batch_id, analyte, value, uom,
+                             collected_at, attached_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (reported_sample_id, analyte) DO NOTHING
                         """,
-                        (sample_id, batch_id, analyte, number, uom, collected_at),
+                        (reported, sample_id, batch_id, analyte, number, uom,
+                         collected_at, attached_at),
                     )
                     inserted += result.rowcount
-        if inserted:
-            LOG.info("ingested %s: %s new row(s)", sample_id, inserted)
+                if inserted and sample_id:
+                    self._promote(conn, sample_id)
+
+        if not inserted:
+            LOG.info("ingest no-op %s (redelivery or no present analytes)", reported)
+        elif sample_id:
+            LOG.info("appended %s new row(s) to %s", inserted, sample_id)
         else:
-            LOG.info("ingest no-op %s (redelivery or no present analytes)", sample_id)
+            LOG.warning("%s matches no open sample -- %s row(s) parked as unmatched",
+                        reported, inserted)
         return inserted
 
+    def _adopt(self, conn, reported_sample_id: str, sample_id: str, analyst: str | None) -> int:
+        """Attach parked results to an entry. `analyst` is null when it matched on arrival."""
+        attached = conn.execute(
+            """
+            UPDATE lims.sample_result
+            SET sample_id = %s, attached_at = now(), attached_by = %s
+            WHERE reported_sample_id = %s AND sample_id IS NULL
+            """,
+            (sample_id, analyst, reported_sample_id),
+        ).rowcount
+        if attached:
+            self._promote(conn, sample_id)
+        return attached
+
+    def _promote(self, conn, sample_id: str) -> None:
+        """An entry with results on it is reviewable, and learns its batch from them.
+
+        The valve does not know the batch -- it opens on a badge, not on a work
+        order -- so `batch_id` arrives with the analysis or not at all.
+        """
+        conn.execute(
+            """
+            UPDATE lims.sample s
+            SET status = CASE WHEN s.status = 'awaiting-analysis' THEN 'received'
+                              ELSE s.status END,
+                batch_id = coalesce(s.batch_id, (
+                    SELECT max(r.batch_id) FROM lims.sample_result r
+                    WHERE r.sample_id = s.sample_id
+                ))
+            WHERE s.sample_id = %s
+            """,
+            (sample_id,),
+        )
+
+    # ---- the review queue
+
     def pending_samples(self) -> list[dict]:
+        """Every entry not yet reviewed, whether or not results have arrived."""
         with self.connect() as conn:
             rows = conn.execute(
                 """
-                SELECT sample_id, batch_id, collected_at,
-                       json_agg(json_build_object(
-                           'analyte', analyte, 'value', value, 'uom', uom
-                       ) ORDER BY analyte) AS results
-                FROM lims.sample_result
-                WHERE status = 'received'
-                GROUP BY sample_id, batch_id, collected_at
-                ORDER BY collected_at
+                SELECT s.sample_id, s.batch_id, s.status, s.badge_id, s.badge_holder,
+                       s.sample_start, s.sample_completion, s.open_duration_s,
+                       s.cycle_result, s.created_at,
+                       coalesce(min(r.collected_at), s.sample_completion) AS collected_at,
+                       coalesce(
+                           json_agg(json_build_object(
+                               'analyte', r.analyte, 'value', r.value, 'uom', r.uom
+                           ) ORDER BY r.analyte) FILTER (WHERE r.analyte IS NOT NULL),
+                           '[]'::json
+                       ) AS results
+                FROM lims.sample s
+                LEFT JOIN lims.sample_result r ON r.sample_id = s.sample_id
+                WHERE s.status IN ('awaiting-analysis', 'received')
+                GROUP BY s.sample_id
+                ORDER BY s.sample_completion NULLS LAST, s.created_at
                 """
             ).fetchall()
         return [
             {
                 "sample_id": row[0],
                 "batch_id": row[1],
-                "collected_at": row[2],
-                "results": row[3] if isinstance(row[3], list) else json.loads(row[3] or "[]"),
+                "status": row[2],
+                "badge_id": row[3],
+                "badge_holder": row[4],
+                "sample_start": row[5],
+                "sample_completion": row[6],
+                "open_duration_s": row[7],
+                "cycle_result": row[8],
+                "created_at": row[9],
+                "collected_at": row[10],
+                "results": row[11] if isinstance(row[11], list) else json.loads(row[11] or "[]"),
+                # 'awaiting-analysis' is the one state a signature cannot be
+                # applied to: there is nothing yet to have reviewed.
+                "reviewable": row[2] == "received",
             }
             for row in rows
         ]
+
+    def unmatched_results(self) -> list[dict]:
+        """Results the instrument reported against an id no entry carries.
+
+        On stage this is a mistyped sample id, which is the point of showing it:
+        the valve's entry sits open with no results while the analysis sits here
+        with no entry, and both facts are on one screen.
+        """
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT reported_sample_id, max(batch_id), min(collected_at), min(created_at),
+                       json_agg(json_build_object(
+                           'analyte', analyte, 'value', value, 'uom', uom
+                       ) ORDER BY analyte) AS results
+                FROM lims.sample_result
+                WHERE sample_id IS NULL
+                GROUP BY reported_sample_id
+                ORDER BY min(created_at)
+                """
+            ).fetchall()
+        return [
+            {
+                "reported_sample_id": row[0],
+                "batch_id": row[1],
+                "collected_at": row[2],
+                "created_at": row[3],
+                "results": row[4] if isinstance(row[4], list) else json.loads(row[4] or "[]"),
+            }
+            for row in rows
+        ]
+
+    def attach(self, reported_sample_id: str, sample_id: str, analyst: str) -> dict:
+        """Attach a parked result to an entry, on an analyst's say-so.
+
+        What the instrument reported is left exactly as it was. The correction is
+        a new fact (`sample_id`, `attached_by`, `attached_at`) recorded beside it,
+        which is the only version of this a regulated system can defend.
+        """
+        analyst = (analyst or "").strip() or self.cfg.default_analyst
+        with self.connect() as conn:
+            with conn.transaction():
+                entry = conn.execute(
+                    "SELECT status FROM lims.sample WHERE sample_id = %s",
+                    (sample_id,),
+                ).fetchone()
+                if entry is None:
+                    return {"ok": False, "error": "unknown sample %s" % sample_id,
+                            "status_code": 404}
+                if entry[0] not in ("awaiting-analysis", "received"):
+                    return {"ok": False,
+                            "error": "%s is already %s" % (sample_id, entry[0]),
+                            "status_code": 409}
+                attached = self._adopt(conn, reported_sample_id, sample_id, analyst)
+                if not attached:
+                    return {"ok": False,
+                            "error": "nothing unmatched under %s" % reported_sample_id,
+                            "status_code": 404}
+        LOG.info("%s attached %s row(s) reported as %s to %s",
+                 analyst, attached, reported_sample_id, sample_id)
+        return {"ok": True, "sample_id": sample_id,
+                "reported_sample_id": reported_sample_id, "attached": attached}
 
     def outbox_rows(self, limit: int = 40) -> list[dict]:
         with self.connect() as conn:
@@ -290,8 +527,15 @@ class Store:
             for row in rows
         ]
 
+    # ---- review
+
+    # Selected on both review paths, and the column order _build_envelope reads.
+    _ENTRY_COLUMNS = """sample_id, batch_id, badge_id, badge_holder, sample_start,
+                        sample_completion, open_duration_s, cycle_result,
+                        analyst, verified_at"""
+
     def approve(self, sample_id: str, analyst: str) -> dict:
-        """Flip the rows AND write the outbox row, in one transaction.
+        """Flip the entry AND write the outbox row, in one transaction.
 
         If the process dies between them, a sample is released with nobody
         obliged to deliver it -- which is the exact failure this pattern exists
@@ -300,31 +544,18 @@ class Store:
         analyst = (analyst or "").strip() or self.cfg.default_analyst
         with self.connect() as conn:
             with conn.transaction():
-                rows = conn.execute(
+                row = conn.execute(
                     """
-                    UPDATE lims.sample_result
-                    SET status = 'verified',
-                        verified_at = now(),
-                        analyst = %s
-                    WHERE sample_id = %s AND status = 'received'
-                    RETURNING sample_id, batch_id, analyte, value, uom,
-                              collected_at, analyst, verified_at
-                    """,
+                    UPDATE lims.sample
+                    SET status = 'verified', verified_at = now(), analyst = %%s
+                    WHERE sample_id = %%s AND status = 'received'
+                    RETURNING %s
+                    """ % self._ENTRY_COLUMNS,
                     (analyst, sample_id),
-                ).fetchall()
-                if not rows:
-                    existing = conn.execute(
-                        "SELECT status FROM lims.sample_result WHERE sample_id = %s LIMIT 1",
-                        (sample_id,),
-                    ).fetchone()
-                    if existing is None:
-                        return {"ok": False, "error": "unknown sample", "status_code": 404}
-                    return {
-                        "ok": False,
-                        "error": "sample is %s, not received" % existing[0],
-                        "status_code": 409,
-                    }
-                payload = _build_envelope(rows)
+                ).fetchone()
+                if row is None:
+                    return self._not_reviewable(conn, sample_id)
+                payload = _build_envelope(row, self._result_rows(conn, sample_id))
                 inserted = conn.execute(
                     """
                     INSERT INTO lims.webhook_delivery (sample_id, payload)
@@ -352,30 +583,55 @@ class Store:
         analyst = (analyst or "").strip() or self.cfg.default_analyst
         with self.connect() as conn:
             with conn.transaction():
-                result = conn.execute(
+                row = conn.execute(
                     """
-                    UPDATE lims.sample_result
-                    SET status = 'rejected',
-                        verified_at = now(),
-                        analyst = %s
-                    WHERE sample_id = %s AND status = 'received'
-                    """,
+                    UPDATE lims.sample
+                    SET status = 'rejected', verified_at = now(), analyst = %%s
+                    WHERE sample_id = %%s AND status = 'received'
+                    RETURNING %s
+                    """ % self._ENTRY_COLUMNS,
                     (analyst, sample_id),
-                )
-                if result.rowcount == 0:
-                    existing = conn.execute(
-                        "SELECT status FROM lims.sample_result WHERE sample_id = %s LIMIT 1",
-                        (sample_id,),
-                    ).fetchone()
-                    if existing is None:
-                        return {"ok": False, "error": "unknown sample", "status_code": 404}
-                    return {
-                        "ok": False,
-                        "error": "sample is %s, not received" % existing[0],
-                        "status_code": 409,
-                    }
+                ).fetchone()
+                if row is None:
+                    return self._not_reviewable(conn, sample_id)
         LOG.info("rejected %s by %s -- nothing published", sample_id, analyst)
         return {"ok": True, "sample_id": sample_id, "published": False}
+
+    def _result_rows(self, conn, sample_id: str) -> list:
+        return conn.execute(
+            """
+            SELECT analyte, value, uom, collected_at
+            FROM lims.sample_result
+            WHERE sample_id = %s
+            ORDER BY analyte
+            """,
+            (sample_id,),
+        ).fetchall()
+
+    def _not_reviewable(self, conn, sample_id: str) -> dict:
+        """Why the UPDATE matched nothing.
+
+        'awaiting-analysis' gets its own words: "sample is awaiting-analysis, not
+        received" is a status string read back at somebody, and what an analyst
+        needs to know is that the results have not arrived yet.
+        """
+        existing = conn.execute(
+            "SELECT status FROM lims.sample WHERE sample_id = %s",
+            (sample_id,),
+        ).fetchone()
+        if existing is None:
+            return {"ok": False, "error": "unknown sample", "status_code": 404}
+        if existing[0] == "awaiting-analysis":
+            return {
+                "ok": False,
+                "error": "%s has no analysis yet -- nothing to sign off" % sample_id,
+                "status_code": 409,
+            }
+        return {
+            "ok": False,
+            "error": "sample is %s, not received" % existing[0],
+            "status_code": 409,
+        }
 
     def claim_due(self) -> dict | None:
         """Lock one due outbox row and bump its attempt counter.
@@ -450,9 +706,31 @@ class Store:
                         delivery_id, attempts, delay, error)
 
     def synthesise(self) -> dict:
-        """Invent one sample without an analyzer. Fallback, not the happy path."""
+        """Invent one complete sample without a valve or an analyzer.
+
+        Fallback, not the happy path -- it exists so a rehearsal can produce a
+        reviewable entry with nothing else running. It has to fake *both* halves
+        now: open the entry as the valve would, then append results as the
+        analyzer would, or it would only ever produce unmatched rows.
+        """
         stamp = _now()
         sample_id = "S-%s-%s" % (stamp.strftime("%Y%m%d"), stamp.strftime("%H%M%S"))
+        self.create_sample(
+            "lims-fallback",
+            {
+                "ts": _iso(stamp),
+                "values": {
+                    "sample_id": sample_id,
+                    "badge_id": "B-0000",
+                    "badge_holder": "fallback generator",
+                    "sample_start": _iso(stamp),
+                    "sample_completion": _iso(stamp),
+                    "open_duration_s": 13.5,
+                    "cycle_result": "normal",
+                    "cycle_count": 0,
+                },
+            },
+        )
         envelope = {
             "ts": _iso(stamp),
             "seq": 0,
@@ -473,25 +751,27 @@ class Store:
         return {"ok": True, "sample_id": sample_id, "batch_id": self.cfg.default_batch_id}
 
 
-def _build_envelope(rows: list) -> dict:
-    """One message per sample, carrying every analyte that was verified.
+def _build_envelope(entry: tuple, results: list) -> dict:
+    """One message per sample, carrying both halves of the record.
 
-    `ts` is collected_at, not the approval instant -- the event being described
-    is the measurement. The approval instant is meta.ingest_ts, and the gap
-    between the two is visible on stage, which is the point of the pattern.
+    `ts` is the acquisition instant, not the approval instant -- the event being
+    described is the measurement. The approval instant is meta.ingest_ts, and the
+    gap between the two is visible on stage, which is the point of the pattern.
+    On a sample that was never analysed there is no acquisition instant, so the
+    valve's close time stands in: that genuinely is when the record was made.
+
+    `values.collection` is pattern 1's contribution, carried through review and
+    republished under mechanism=webhook. It is what makes this message
+    self-contained -- who drew the sample, when the valve opened, and how the
+    cycle ended, beside the numbers a person just signed for.
+
     `seq` is filled in with the outbox id after INSERT.
     """
-    first = rows[0]
-    collected_at = first[5]
-    analyst = first[6]
-    sample_id = first[0]
-    batch_id = first[1]
-    results = [
-        {"analyte": row[2], "value": float(row[3]), "uom": row[4]}
-        for row in rows
-    ]
+    (sample_id, batch_id, badge_id, badge_holder, sample_start,
+     sample_completion, open_duration_s, cycle_result, analyst, _verified_at) = entry
+    collected_at = min((row[3] for row in results), default=None) or sample_completion
     return {
-        "ts": _iso(collected_at),
+        "ts": _iso(collected_at) if collected_at else _iso(),
         "seq": 0,
         "source": {"id": SOURCE_ID, "type": SOURCE_TYPE},
         "meta": {
@@ -502,9 +782,20 @@ def _build_envelope(rows: list) -> dict:
         "values": {
             "sample_id": sample_id,
             "batch_id": batch_id,
-            "collected_at": _iso(collected_at),
+            "collected_at": _iso(collected_at) if collected_at else None,
             "analyst": analyst,
-            "results": results,
+            "collection": {
+                "badge_id": badge_id,
+                "badge_holder": badge_holder,
+                "sample_start": _iso(sample_start) if sample_start else None,
+                "sample_completion": _iso(sample_completion) if sample_completion else None,
+                "open_duration_s": float(open_duration_s) if open_duration_s is not None else None,
+                "cycle_result": cycle_result,
+            },
+            "results": [
+                {"analyte": row[0], "value": float(row[1]), "uom": row[2]}
+                for row in results
+            ],
         },
     }
 
@@ -550,8 +841,13 @@ class MqttIngest:
             LOG.error("mqtt connect refused: %s", reason_code)
             return
         self.connected = True
+        # Subscribed here, not once at connect, because a reconnect after a
+        # broker restart brings back a session that remembers nothing -- clean
+        # session, by choice. The retained sample-complete arrives again with it.
+        client.subscribe(self.cfg.valve_event_topic, qos=1)
         client.subscribe(self.cfg.result_topic, qos=1)
-        LOG.info("mqtt connected; subscribed QoS 1 to %s", self.cfg.result_topic)
+        LOG.info("mqtt connected; subscribed QoS 1 to %s and %s",
+                 self.cfg.valve_event_topic, self.cfg.result_topic)
 
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties) -> None:
         self.connected = False
@@ -559,15 +855,22 @@ class MqttIngest:
 
     def _on_message(self, client, userdata, message) -> None:
         try:
-            envelope = json.loads(message.payload.decode("utf-8"))
+            document = json.loads(message.payload.decode("utf-8"))
         except (UnicodeDecodeError, ValueError) as exc:
             LOG.warning("dropping unparseable payload on %s: %s", message.topic, exc)
             return
-        if not isinstance(envelope, dict):
+        if not isinstance(document, dict):
             LOG.warning("dropping non-object payload on %s", message.topic)
             return
+        # Routed on the topic, not on the payload's shape. Pattern 1 is a bought
+        # device: no `meta`, no `source`, nothing inside the document says what
+        # it is. The topic string is the only thing that distinguishes the two,
+        # which is pattern 1's whole argument arriving as a code constraint.
         try:
-            self.store.ingest(envelope)
+            if mqtt.topic_matches_sub(self.cfg.valve_event_topic, message.topic):
+                self.store.create_sample(message.topic, document)
+            else:
+                self.store.ingest(document)
         except Exception:
             LOG.exception("ingest failed for %s", message.topic)
 
@@ -801,15 +1104,17 @@ def create_app(cfg: Config, store: Store, ingest: MqttIngest, drainer: Drainer,
         analyst = request.query_params.get("analyst") or cfg.default_analyst
         try:
             pending = store.pending_samples()
+            unmatched = store.unmatched_results()
             outbox = store.outbox_rows()
         except Exception:
             LOG.exception("page query failed")
-            pending, outbox = [], []
+            pending, unmatched, outbox = [], [], []
             if not flash:
                 flash = "Postgres is unreachable."
                 flash_ok = False
         page = _read_page()
         page = page.replace("@@TOPIC@@", _esc(cfg.result_topic))
+        page = page.replace("@@VALVE_TOPIC@@", _esc(cfg.valve_event_topic))
         page = page.replace("@@ANALYST@@", _esc(analyst))
         page = page.replace("@@ANALYST_INITIALS@@", _esc(_initials(analyst)))
         page = page.replace("@@MQTT_LED@@", "on" if ingest.connected else "")
@@ -819,7 +1124,10 @@ def create_app(cfg: Config, store: Store, ingest: MqttIngest, drainer: Drainer,
             "@@DRAINER_LABEL@@",
             "Running" if drainer.enabled.is_set() else "Paused",
         )
+        awaiting = [item for item in pending if not item["reviewable"]]
         page = page.replace("@@PENDING_COUNT@@", str(len(pending)))
+        page = page.replace("@@AWAITING_COUNT@@", str(len(awaiting)))
+        page = page.replace("@@UNMATCHED_COUNT@@", str(len(unmatched)))
         page = page.replace("@@OUTBOX_COUNT@@", str(len(outbox)))
         if flash:
             kind = "ok" if flash_ok else "err"
@@ -830,6 +1138,7 @@ def create_app(cfg: Config, store: Store, ingest: MqttIngest, drainer: Drainer,
         else:
             page = page.replace("@@FLASH@@", "")
         page = page.replace("@@PENDING@@", _pending_html(pending, analyst))
+        page = page.replace("@@UNMATCHED@@", _unmatched_html(unmatched, pending, analyst))
         page = page.replace("@@OUTBOX@@", _outbox_html(outbox))
         return HTMLResponse(page)
 
@@ -868,6 +1177,29 @@ def create_app(cfg: Config, store: Store, ingest: MqttIngest, drainer: Drainer,
             LOG.exception("reject failed")
             result = {"ok": False, "error": str(exc), "status_code": 500}
         return reply(request, result, "rejected %s" % sample_id)
+
+    @app.post("/attach")
+    async def attach(request: Request):
+        """Attach a parked result to an entry. The analyst owns this decision.
+
+        Nothing here guesses. The reported id and the entry both come from the
+        form -- a person chose them -- and both are written down.
+        """
+        form = await _form_body(request)
+        analyst = _parse_analyst(request, form, cfg)
+        reported = (form.get("reported_sample_id") or [""])[0].strip()
+        sample_id = (form.get("sample_id") or [""])[0].strip()
+        if not reported or not sample_id:
+            result = {"ok": False,
+                      "error": "reported_sample_id and sample_id are both required",
+                      "status_code": 400}
+        else:
+            try:
+                result = store.attach(reported, sample_id, analyst)
+            except Exception as exc:
+                LOG.exception("attach failed")
+                result = {"ok": False, "error": str(exc), "status_code": 500}
+        return reply(request, result, "attached %s to %s" % (reported, sample_id))
 
     @app.post("/webhook/disable")
     def disable(request: Request):
@@ -950,23 +1282,81 @@ def _spec_for(analyte: str, value) -> dict:
     }
 
 
+CYCLE_LABELS = {
+    "normal": "Cycle normal",
+    "failed-to-seat": "Failed to seat",
+    "stroke-timeout": "Stroke timeout",
+}
+
+
+def _collection_html(sample: dict) -> str:
+    """Pattern 1's half of the record, under the sample id.
+
+    This is the part that did not exist before the valve opened the entry: who
+    drew it, when, for how long, and how the cycle ended. On a failed cycle it is
+    the *whole* record -- there are no numbers to put beside it.
+    """
+    lines = []
+    holder = sample.get("badge_holder")
+    if holder:
+        lines.append('<div class="smeta">Drawn by %s%s</div>' % (
+            _esc(holder),
+            " · %s" % _esc(sample["badge_id"]) if sample.get("badge_id") else "",
+        ))
+    if sample.get("sample_start"):
+        duration = sample.get("open_duration_s")
+        lines.append('<div class="smeta">Valve open %s%s</div>' % (
+            _esc(_fmt_display_ts(sample["sample_start"])),
+            " · %ss" % _fmt_result(duration) if duration is not None else "",
+        ))
+    cycle = sample.get("cycle_result")
+    if cycle:
+        lines.append('<div class="smeta %s">%s</div>' % (
+            "oos" if cycle != "normal" else "",
+            _esc(CYCLE_LABELS.get(cycle, cycle)),
+        ))
+    return "".join(lines)
+
+
+def _no_results_html(sample: dict) -> str:
+    """The six result columns replaced by one sentence.
+
+    Two different situations reach here and they must not read the same. One is
+    waiting for an analysis that is coming; the other is a sample whose cycle
+    failed, which will never be analysed and is reviewable now. Filling the
+    columns with dashes in either case reads like data that was measured.
+    """
+    if sample.get("reviewable"):
+        return (
+            '<td class="await-cell" colspan="6">'
+            "No analysis — the cycle did not complete normally, so no material "
+            "reached the analyser. The record still requires a disposition.</td>"
+        )
+    return (
+        '<td class="await-cell" colspan="6">'
+        "Sample drawn and logged. Awaiting analyser result — the sample id has to "
+        "be entered on the FLEX2 before it runs.</td>"
+    )
+
+
 def _pending_html(pending: list[dict], analyst: str) -> str:
     if not pending:
         return (
-            '<p class="empty">No samples are waiting for review. '
-            "New FLEX2 results appear here when the analyzer posts a complete sample.</p>"
+            '<p class="empty">No samples are open. '
+            "An entry appears here the moment the sample valve reports a completed "
+            "cycle, and the FLEX2 results are appended to it when the analysis "
+            "finishes.</p>"
         )
     body = []
     for sample in pending:
         results = sample["results"] or []
-        if not results:
-            results = [{"analyte": "", "value": None, "uom": ""}]
-        span = len(results)
+        reviewable = bool(sample.get("reviewable"))
+        span = max(len(results), 1)
         oos = 0
         first = True
-        for item in results:
-            spec = _spec_for(item.get("analyte"), item.get("value"))
-            if item.get("analyte") and not spec["in_spec"]:
+        for item in results or [None]:
+            spec = _spec_for((item or {}).get("analyte"), (item or {}).get("value"))
+            if item and item.get("analyte") and not spec["in_spec"]:
                 oos += 1
             row_class = "sample-start" if first else ("fail" if not spec["in_spec"] else "")
             cells = ""
@@ -975,52 +1365,45 @@ def _pending_html(pending: list[dict], analyst: str) -> str:
                     '<td class="sample-cell" rowspan="%s">'
                     '<div class="sid">%s</div>'
                     '<div class="smeta">%s</div>'
-                    '<div class="smeta">%s · FLEX2</div>'
-                    "@@FLAG@@"
+                    '<div class="smeta">%s · %s</div>'
+                    "%s@@FLAG@@"
                     "</td>" % (
                         span,
                         _esc(sample["sample_id"]),
-                        _esc(sample["batch_id"]),
+                        _esc(sample["batch_id"] or "batch not assigned"),
                         _esc(_fmt_display_ts(sample["collected_at"])),
+                        "FLEX2" if results else "no analyser",
+                        _collection_html(sample),
                     )
                 )
-            cells += (
-                "<td>%s</td><td>%s</td>"
-                '<td class="num">%s</td><td>%s</td><td>%s</td>'
-                '<td><span class="disp %s">%s</span></td>' % (
-                    _esc(spec["code"]),
-                    _esc(spec["name"]),
-                    _esc(_fmt_result(item.get("value"))),
-                    _esc(item.get("uom") or spec["uom"]),
-                    _esc(spec["spec"]),
-                    "in" if spec["in_spec"] else "out",
-                    "In spec" if spec["in_spec"] else "OOS",
-                )
-            )
-            if first:
+            if item is None:
+                cells += _no_results_html(sample)
+            else:
                 cells += (
-                    '<td class="action-cell" rowspan="%s"><div class="actions">'
-                    '<form method="post" action="/samples/%s/approve">'
-                    '<input type="hidden" name="analyst" value="%s">'
-                    '<button class="ok" type="submit">e-Sign &amp; release</button></form>'
-                    '<form method="post" action="/samples/%s/reject">'
-                    '<input type="hidden" name="analyst" value="%s">'
-                    '<button class="danger" type="submit">Return to lab</button></form>'
-                    "</div></td>" % (
-                        span,
-                        _esc(sample["sample_id"]),
-                        _esc(analyst),
-                        _esc(sample["sample_id"]),
-                        _esc(analyst),
+                    "<td>%s</td><td>%s</td>"
+                    '<td class="num">%s</td><td>%s</td><td>%s</td>'
+                    '<td><span class="disp %s">%s</span></td>' % (
+                        _esc(spec["code"]),
+                        _esc(spec["name"]),
+                        _esc(_fmt_result(item.get("value"))),
+                        _esc(item.get("uom") or spec["uom"]),
+                        _esc(spec["spec"]),
+                        "in" if spec["in_spec"] else "out",
+                        "In spec" if spec["in_spec"] else "OOS",
                     )
                 )
+            if first:
+                cells += _actions_html(sample, analyst, reviewable, span)
             body.append('<tr class="%s">%s</tr>' % (row_class, cells))
             first = False
-        flag = (
-            '<div class="smeta oos">%s of %s tests OOS</div>' % (oos, len(results))
-            if oos
-            else '<div class="smeta">In specification</div>'
-        )
+        if not reviewable:
+            flag = '<div class="smeta await">Awaiting analysis</div>'
+        elif oos:
+            flag = '<div class="smeta oos">%s of %s tests OOS</div>' % (oos, len(results))
+        elif results:
+            flag = '<div class="smeta">In specification</div>'
+        else:
+            flag = '<div class="smeta oos">No result to specify</div>'
         # The first row was emitted before oos was fully known. Patch the marker.
         if body:
             body[-span] = body[-span].replace("@@FLAG@@", flag, 1)
@@ -1031,6 +1414,98 @@ def _pending_html(pending: list[dict], analyst: str) -> str:
         "</tr></thead><tbody>%s</tbody></table>"
         '<p class="meaning">21 CFR 11 signature meaning: I have reviewed these results '
         "and they are suitable for use.</p>" % "".join(body)
+    )
+
+
+def _actions_html(sample: dict, analyst: str, reviewable: bool, span: int) -> str:
+    """Approve and Reject, or the reason neither is offered.
+
+    An entry still awaiting its analysis is not something a signature can be
+    applied to -- there is nothing yet to have reviewed. The server refuses it
+    too (`Store._not_reviewable`); this only stops the button existing.
+    """
+    if not reviewable:
+        return (
+            '<td class="action-cell" rowspan="%s">'
+            '<span class="chip pending">Not yet reviewable</span></td>' % span
+        )
+    return (
+        '<td class="action-cell" rowspan="%s"><div class="actions">'
+        '<form method="post" action="/samples/%s/approve">'
+        '<input type="hidden" name="analyst" value="%s">'
+        '<button class="ok" type="submit">e-Sign &amp; release</button></form>'
+        '<form method="post" action="/samples/%s/reject">'
+        '<input type="hidden" name="analyst" value="%s">'
+        '<button class="danger" type="submit">Return to lab</button></form>'
+        "</div></td>" % (
+            span,
+            _esc(sample["sample_id"]),
+            _esc(analyst),
+            _esc(sample["sample_id"]),
+            _esc(analyst),
+        )
+    )
+
+
+def _unmatched_html(unmatched: list[dict], pending: list[dict], analyst: str) -> str:
+    """Results the FLEX2 reported against an id no entry carries.
+
+    On stage this is a mistyped sample id. The valve's entry is sitting in the
+    queue above with no results; this analysis is sitting here with no entry, and
+    both facts are visible at once. Attaching is an analyst decision, recorded as
+    one -- what the instrument reported is never rewritten.
+    """
+    if not unmatched:
+        return '<p class="empty">Every result received has matched an open sample.</p>'
+    open_ids = [item["sample_id"] for item in pending if not item.get("reviewable")]
+    rows = []
+    for item in unmatched:
+        summary = ", ".join(
+            ("%s %s %s" % (
+                _spec_for(r.get("analyte"), r.get("value"))["name"],
+                _fmt_result(r.get("value")),
+                r.get("uom") or "",
+            )).strip()
+            for r in (item["results"] or [])
+        )
+        if open_ids:
+            options = "".join(
+                '<option value="%s">%s</option>' % (_esc(sid), _esc(sid))
+                for sid in open_ids
+            )
+            action = (
+                '<form method="post" action="/attach">'
+                '<input type="hidden" name="analyst" value="%s">'
+                '<input type="hidden" name="reported_sample_id" value="%s">'
+                '<select name="sample_id">%s</select>'
+                '<button class="ok" type="submit">Attach</button></form>' % (
+                    _esc(analyst),
+                    _esc(item["reported_sample_id"]),
+                    options,
+                )
+            )
+        else:
+            action = '<span class="chip pending">No open sample to attach to</span>'
+        rows.append(
+            "<tr>"
+            '<td class="sample-cell"><div class="sid">%s</div></td>'
+            "<td>%s</td><td>%s</td><td>%s</td>"
+            '<td class="action-cell">%s</td>'
+            "</tr>" % (
+                _esc(item["reported_sample_id"]),
+                _esc(item["batch_id"] or "—"),
+                _esc(_fmt_display_ts(item["collected_at"])),
+                _esc(summary or "—"),
+                action,
+            )
+        )
+    return (
+        "<table><thead><tr>"
+        "<th>Reported as</th><th>Batch</th><th>Acquired</th><th>Results</th><th></th>"
+        "</tr></thead><tbody>%s</tbody></table>"
+        '<p class="meaning">The id the instrument reported is kept exactly as received. '
+        "Attaching records which sample the analysis belongs to and who decided that — "
+        "it does not overwrite what the FLEX2 said.</p>" % "".join(rows)
     )
 
 

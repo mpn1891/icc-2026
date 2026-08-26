@@ -271,25 +271,29 @@ so it is last of the seven, and it is still **the designated cut** if the schedu
 1. **04 pass/fail.** Small, and pattern 7 listens for that message. Confirmed unbuilt:
    `services/lims/app.py` `reject()` writes no outbox row, and the payload builder has no
    `disposition` key at all.
-2. **The sample id correlation.** The valve mints `S-YYYYMMDD-NNNN`, the Nova mints `S-NNNNN`,
-   and nothing joins them — so pattern 7's valve-open → analysis leg does not correlate today.
-   Ignition writes the valve's id into the Nova's writable `SampleInformation/SampleID`, **and
-   the valve stamps that id into `meta.correlation_id`**, which it does not do today (open item 1
-   in [`01-native-mqtt.md`](01-native-mqtt.md)). Touches 01 and 03, not 07 — but **07 cannot be
-   specified until it lands**, because both derived flags are evaluated at the sample-open
-   instant. See
-   [`../00-architecture.md` § *The sample id, and pattern 1 mints it*](../00-architecture.md).
+2. **The sample id correlation.** ~~Ignition writes the valve's id into the Nova.~~ **Done
+   2026-08-26, and not this way.** The analyzer got its own sample-login screen on :8087 and **a
+   person types the valve's id in.** No Ignition tag write, no `meta.correlation_id` on pattern 1
+   — the id still travels as `values.sample_id`. The transcription is fallible on purpose and is
+   now pattern 1's sharpest risk beat. The LIMS opens its sample entry from
+   `event/sample-complete` and appends the analyzer result to it, so the released review message
+   carries the sample-open instant and **07's event store is no longer blocked on patterns 1 and
+   3** — only on 5 and 6. See
+   [`../00-architecture.md` § *The sample id, and pattern 1 mints it*](../00-architecture.md)
+   and [`04-lims-webhook.md` § *Revised 2026-08-26*](04-lims-webhook.md).
 3. **05 and 06 in parallel.** 05 is the timer + the `ICC26` JDBC datasource + Debezium; create
    the datasource first and read the `pg_db` look-alike trap in
    [`../00-architecture.md` § *Postgres*](../00-architecture.md) before you do. The `bioreactor`
    UDT also needs its phase tag. 06 is the MET ONE simulator + poll script + Event Stream; it
    waits on vendor API notes, so stub the routes if they have not arrived — the excursion flag
    and its limit config are ours, not the vendor's, and need not wait on somebody else's PDF.
-4. **Decide pattern 7's event store.** New on 2026-08-25 and unspecified. Patterns 1, 3, 5 and 6
-   have to be persisted somewhere 07 can query, because both of its flags are evaluated against
-   the *past*. Two candidates: Ignition tag history on the bound tags, or an `events` table in
-   `icc26` written by the same Event Streams that publish. This blocks writing 07's spec, not
-   just building it.
+4. **Decide pattern 7's event store.** New on 2026-08-25, **narrowed 2026-08-26 to patterns 5
+   and 6 only.** Both of 07's flags are evaluated against the *past*, so their inputs have to be
+   persisted somewhere 07 can query. Patterns 1 and 3 no longer need that: the LIMS stores the
+   valve event as a `lims.sample` row and republishes the sample-open instant on the review
+   message 07 already listens for. Two candidates for the remaining two: Ignition tag history on
+   the bound tags, or an `events` table in `icc26` written by the same Event Streams that
+   publish. Still blocks writing 07's spec, not just building it.
 5. **07** — the composite aggregate, last of the seven.
 
 Each item ends with: `tasks.py health` green, the pattern's verification passing, `git status`
