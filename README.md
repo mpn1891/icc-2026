@@ -15,7 +15,7 @@ PostgreSQL 17, all under `docker compose`, all version controlled.
 | 2 | Sparkplug B edge node | **The same valve assembly**, other firmware — birth/death, RBE, self-describing metrics | built |
 | 3 | OPC UA → MQTT | Nova Flex analyzer (`novaflex-01`); Ignition publishes on sample-complete. Sample id typed in on the instrument's own screen (:8087) | built |
 | 4 | Webhook / Push API | LIMS opens the sample entry from the valve event, appends the analyzer result, POSTs the reviewed record to Ignition; remaining: pass/fail on both outcomes | built, pass/fail open |
-| 5 | CDC / log tailing | Ignition batch timer → `bes.batch_event` → Debezium → MQTT | planned |
+| 5 | CDC / log tailing | Click a boolean in Tag Explorer → `bes.batch_event` → Debezium → MQTT. The writer holds no broker credentials | built |
 | 6 | Poll / diff | MET ONE HTTP API in `qc/analyzers`, Ignition poll → Event Stream | planned |
 | 7 | Scripted aggregation | LIMS-review listener joins valve, Nova, batch phase, nearest MET ONE | planned |
 
@@ -26,8 +26,8 @@ difference between those two pages is as much of the talk as the traffic. On one
 a text box, the QoS is a dropdown and Retained is a checkbox. On the other, the same three
 controls are disabled, each labelled with the clause of the specification that fixed it.
 
-**Current state:** infrastructure, patterns 1–3, and pattern 4 (minus pass/fail) are built.
-Patterns 5–7 were re-sourced on 2026-08-23. On 2026-08-25 the presentation/firehose/runbook spec
+**Current state:** infrastructure and patterns 1–5 are built and broker-verified (pattern 4 minus
+its pass/fail disposition). Patterns 6 and 7 were re-sourced on 2026-08-23. On 2026-08-25 the presentation/firehose/runbook spec
 was cut (the demo surface is the broker itself plus the three product screens the services
 already serve), the Countess came out of the demo, and pattern 7 gained a requirement for an
 event store. What is true today and what is next:

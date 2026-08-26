@@ -125,25 +125,62 @@ CREATE TABLE lims.webhook_delivery (
 CREATE INDEX ix_webhook_delivery_due ON lims.webhook_delivery (state, next_try_at);
 
 -- ── bes: batch lifecycle events ──────────────────────────────────────────────
--- Pattern 5's CDC source (2026-08-23). An Ignition timer writes phase changes
--- for BR-201 (CIP/SIP/INOC/GROWTH/HARVEST); Debezium tails this table.
--- 04-cdc.sql currently also names lims.sample_result — drop that table from
--- the publication when pattern 5 is built, so a LIMS review is not a CDC event.
+-- Pattern 5's CDC source. The writer is an Ignition tag event script
+-- (`bes_batch`) fired by clicking `manual_advance` on the bioreactor UDT:
+-- somebody types a batch_id, clicks the boolean, and the reactor steps
+-- IDLE → CIP → SIP → INOC → GROWTH → HARVEST → IDLE. Debezium tails this table
+-- as user `cdc`. **The writer publishes nothing.** That is the whole pattern:
+-- if bes_batch ever grows a Transmission publish call, pattern 5 is gone.
+--
+-- Auto-cycling on a dwell was the 2026-08-23 design and was dropped 2026-08-26.
+-- A manual advance is deterministic on stage — you park the reactor in GROWTH
+-- before badging the valve, which is exactly what pattern 7's rehearsal needs.
 --
 -- Named `bes`, not `mes` (renamed 2026-08-23, before anything was built on it):
--- the writer stands in for a batch execution system specifically -- CIP → SIP →
--- INOC → GROWTH → HARVEST is an ISA-88 phase model -- and pattern 5's verify
--- step puts this table on screen right after the talk track says "BES".
+-- the writer stands in for a batch execution system specifically, and pattern
+-- 5's verify step puts this table on screen right after the talk track says
+-- "BES".
+--
+-- `operation`, not `phase` (renamed 2026-08-26, same rule, same reason). In
+-- ISA-88 a *phase* is the smallest element that does process action -- "Add
+-- Water", "Agitate". CIP / SIP / INOC / GROWTH / HARVEST are *operations*, one
+-- level up. The tag you click, this column, the event_type values and the wire
+-- field all say `operation`, so nothing on screen contradicts the sentence
+-- just spoken.
 CREATE TABLE bes.batch_event (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     batch_id      text NOT NULL,
-    event_type    text NOT NULL,             -- 'phase_start' | 'phase_end' | 'deviation' | …
-    phase         text,
+    -- The topic form of the vessel id ('br-201'), taken from the tag path --
+    -- NOT plant.equipment's 'BR-201'. `batch_data` lives on the bioreactor
+    -- *type*, so br-202 has a live manual_advance button too; without this
+    -- column a stray click over there would publish onto br-201's topic. The
+    -- cdc-sink builds the topic from this value.
+    equipment_id  text NOT NULL,
+    event_type    text NOT NULL,             -- 'operation_start' | 'operation_end' | 'batch_end' | 'deviation'
+    operation     text,                      -- NULL on batch_end: nothing is running
+    -- payload.qualified_window is set HERE, at insert time, so the flag is in
+    -- the WAL Debezium tails rather than computed in the sink. A flag added
+    -- after the tail is a flag the CDC demo did not actually observe. See
+    -- docs/00-architecture.md § Derived flags travel with the fact.
+    --
+    -- It means "sampling is qualified in the interval that BEGINS at
+    -- occurred_at", which is why an operation_end row carries false even when
+    -- the operation it closes was GROWTH: nothing is running after it.
     payload       jsonb NOT NULL DEFAULT '{}'::jsonb,
     occurred_at   timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ix_batch_event_batch ON bes.batch_event (batch_id, occurred_at);
+-- One click writes two rows (operation_end + operation_start) in one
+-- transaction sharing one occurred_at, so pattern 7's "what was running at
+-- time T" lookup has to tie-break on id:
+--
+--   SELECT operation, payload->>'qualified_window'
+--     FROM bes.batch_event
+--    WHERE equipment_id = ? AND occurred_at <= ?
+--    ORDER BY occurred_at DESC, id DESC
+--    LIMIT 1;
+CREATE INDEX ix_batch_event_batch  ON bes.batch_event (batch_id, occurred_at);
+CREATE INDEX ix_batch_event_lookup ON bes.batch_event (equipment_id, occurred_at DESC, id DESC);
 
 -- ── Grants ───────────────────────────────────────────────────────────────────
 GRANT USAGE ON SCHEMA lims, bes, plant TO icc26;

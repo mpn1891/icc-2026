@@ -1,5 +1,6 @@
 {
   "scope": "A",
+  "description": "",
   "version": 1,
   "restricted": false,
   "overridable": true,
@@ -9,9 +10,10 @@
   "attributes": {
     "lastModification": {
       "actor": "admin",
-      "timestamp": "2026-08-26T21:31:30Z"
+      "timestamp": "2026-08-26T21:31:05Z"
     },
-    "lastModificationSignature": "3c6475a53a6e188921b83d14188df0f3e80cf2bed5eeb8dcdcebc0e1dd6b5d02",
+    "uuid": "6e3afe10-8e07-4446-af89-77af3213be94",
+    "lastModificationSignature": "a1617e17385c0cfb7ffef105638b505208f390ec09d4a0928aa449e4bae946cb",
     "enabled": true
   }
 }

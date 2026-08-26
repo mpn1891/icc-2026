@@ -115,16 +115,19 @@ the physical event it describes.
 
 ## Pattern 5 — Change Data Capture
 
-**Demo asset:** An Ignition timer auto-cycling `BR-201` through
+**Demo asset:** A batch engine stepping `BR-201` through
 `CIP → SIP → INOC → GROWTH → HARVEST`, standing in for a Batch Execution System — CDC's
-honest use case is a system the demo does not control, and this timer plays that role: the
-writer does not know MQTT exists, and the `cdc` database role has read-only access.
+honest use case is a system the demo does not control, and this engine plays that role: the
+writer does not know MQTT exists, and the `cdc` database role is not the application's.
+**It advances on a click, not on a dwell** (2026-08-26) — a boolean tag in Tag Explorer, so the
+reactor can be parked in `GROWTH` before the valve is badged rather than waited on.
 
-- Tail `bes.batch_event`; a phase change emits without the sequencer's cooperation
-- Each row carries `qualified_window` — `true` only during `GROWTH`, the only phase the
-  protocol qualifies for sampling
+- Tail `bes.batch_event`; an operation change emits without the engine's cooperation
+- Each row carries `qualified_window` — `true` only on the `operation_start` of `GROWTH`, the
+  only operation the protocol qualifies for sampling
+- These are ISA-88 **operations**, not phases. A phase is the smallest process action
 
-**Signal contributed:** Current batch phase and whether it falls inside the qualified
+**Signal contributed:** Current batch operation and whether it falls inside the qualified
 sampling window
 
 **GxP hook:** Reading a validated system's internals without its owner in the loop. State it

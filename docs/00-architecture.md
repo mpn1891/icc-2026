@@ -46,7 +46,7 @@ Everything else publishes through Ignition. Pattern 7 is not a new inbound trans
 | `sim-valve-mqtt` | 8085 (config page) | pattern 1 |
 | `sim-valve-spb` | 8086 (config page) | pattern 2 |
 | `lims` | 8000 (review screen) | pattern 4 — built; pass/fail remaining |
-| `debezium` | 8083 | pattern 5 — planned |
+| `debezium` | 8083 | pattern 5 — built 2026-08-26 |
 | `sim-metone` | TBD (HTTP API) | pattern 6 — planned |
 
 `lims` is built: see [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md) and
@@ -248,6 +248,15 @@ longer demonstrates it, and pattern 2's account is now looser than pattern 1's. 
 Equipment ids in `plant.equipment` (see `compose/postgres/initdb/03-seed.sql`) are the same
 strings that appear in topics. Keep it that way.
 
+> **Known wart, found 2026-08-26 building pattern 5: the bioreactors already break that rule.**
+> `plant.equipment` holds `BR-201` / `BR-202`; the topics, the tag paths and now
+> `bes.batch_event.equipment_id` hold `br-201` / `br-202`. The valves and the analyzer are
+> consistent (`sample-valve-01`, `novaflex-01`) — only the vessels are split. Pattern 5 stores the
+> **topic form**, because the `cdc-sink` builds its topic from that column and a case-folding step
+> in the middle is a bug waiting to happen. Fixing it properly means one pass across the seed, the
+> topic strings and pattern 7's joins; four weeks out, it is recorded rather than done. Whoever
+> writes pattern 7 hits this first — join on a lowercased key or fix it then.
+
 ### Patterns 4, 5 and 6 used to share one topic. Reversed 2026-08-19
 
 The original design had all three carrying the same logical data — one LIMS sample result —
@@ -359,22 +368,45 @@ re-derived by the consumer.**
 
 | Field | On | Set by | Meaning |
 |---|---|---|---|
-| `values.qualified_window` | pattern 5 `batch/event` | the Ignition timer, at insert time, into `bes.batch_event.payload` | the protocol qualifies sampling for `GROWTH` only |
+| `values.qualified_window` | pattern 5 `batch/event` | `bes_batch`, at insert time, into `bes.batch_event.payload` | sampling is qualified in the interval **beginning** at `occurred_at` — the protocol qualifies `GROWTH` only |
 | `values.status` | pattern 6 `…/result` | the MET ONE simulator, or the poll script at ingest | `normal` or `excursion` against a configured cleanroom limit |
 | `values.outside_qualified_window`, `values.environmental_excursion` | pattern 7 aggregate | the aggregation script, from the two above | the composite event's two claims |
 
-**Why the flag and not the raw value.** Pattern 5 is the only component that knows which phase
-the batch protocol qualifies for sampling; pattern 6 is the only one that knows the cleanroom
-grade. If pattern 7 tested `phase = 'GROWTH'` or compared counts to a limit itself, the
-aggregation script would hold a second copy of the batch protocol and of the cleanroom spec, and
-the two copies would drift. Pattern 7 derives only from flags it was handed.
+**Why the flag and not the raw value.** Pattern 5 is the only component that knows which
+operation the batch protocol qualifies for sampling; pattern 6 is the only one that knows the
+cleanroom grade. If pattern 7 tested `operation = 'GROWTH'` or compared counts to a limit itself,
+the aggregation script would hold a second copy of the batch protocol and of the cleanroom spec,
+and the two copies would drift. Pattern 7 derives only from flags it was handed. The single copy
+of pattern 5's rule is the `QUALIFIED` tuple in `bes_batch`.
 
 `qualified_window` goes into `bes.batch_event.payload` (jsonb, already present — **no schema
 change**) rather than being computed in the `cdc-sink` WebDev endpoint, so that it is in the WAL
 Debezium tails. A flag added after the tail is a flag the CDC demo did not actually observe.
 
-All three are `values` fields. None appears in a topic or in `meta`: the namespace must not leak
-the mechanism, and it must not leak the verdict either.
+**It describes the interval that *begins* at `occurred_at`.** One advance writes an
+`operation_end` and an `operation_start` in one transaction, so the flag is `false` on every
+`operation_end` — *including the one closing `GROWTH`*, because nothing is running between an end
+and the next start. Pattern 7 also has to tie-break on `id`, since both rows share a timestamp:
+`ORDER BY occurred_at DESC, id DESC`. Both facts are in `02-schema.sql`'s comment and in
+[`plans/05-cdc-batch-event.md`](plans/05-cdc-batch-event.md); getting either wrong makes 07 right
+almost always and wrong exactly at the boundary the demo is about.
+
+All three are `values` fields. None appears in a topic: the namespace must not leak the
+mechanism, and it must not leak the verdict either. Pattern 5's `meta` does carry `op` and `lsn`
+(added 2026-08-26) — the log position is the one thing on the wire no other mechanism can
+produce, and `mosquitto_sub` is now the whole demo surface.
+
+### `operation`, not `phase`
+
+Settled 2026-08-26 with pattern 5's build, before anything had been written to the table.
+
+In ISA-88 a **phase** is the smallest element that does process action — "Add Water", "Agitate".
+`CIP` / `SIP` / `INOC` / `GROWTH` / `HARVEST` are **operations**, one level up. The tag, the
+`bes.batch_event` column, the `event_type` values (`operation_start` | `operation_end` |
+`batch_end`) and the wire field all say `operation`.
+
+Same rule that renamed `mes.` → `bes.`: **the schema follows the words spoken on stage.** Pattern
+5's verify step puts the table on screen moments after the talk track has used the word.
 
 ### The sample id, and pattern 1 mints it
 
@@ -857,6 +889,16 @@ to set on day one, expensive to discover late.
 `compose/postgres/initdb/` runs **only** on an empty volume. Editing those files against an
 existing volume changes nothing; you need `tasks.py nuke` first.
 
+> **That sentence has already cost a rename, and the failure mode is worth naming.** `mes.` became
+> `bes.` in `initdb/02-schema.sql` on 2026-08-23 and was recorded as done in three documents. No
+> migration was written, so every volume seeded before that date still held a `mes` schema —
+> discovered on 2026-08-26, on the machine pattern 5 was being built on, three days after the
+> rename had been treated as settled fact. **An initdb edit is not a change to any running
+> database, including yours.** Write the matching `migrate-NN-*.sql` in the same commit, or the
+> repo and the volume drift silently and every doc keeps asserting the new name. Step 0 of
+> [`../compose/postgres/migrate-06-batch-operation.sql`](../compose/postgres/migrate-06-batch-operation.sql)
+> is that catch-up.
+
 Three roles, deliberately separate:
 
 | Role | Purpose |
@@ -870,21 +912,37 @@ out-of-band observer the application knows nothing about.
 
 ### The JDBC datasource, and the look-alike that will waste your afternoon
 
-Pattern 5's timer writes `bes.batch_event` through an Ignition datasource named **`ICC26`** →
-`jdbc:postgresql://postgres:5432/icc26`, user `icc26`. **It does not exist yet** — create it
-UI-first, then commit what `git status` reveals under `ignition/database-connection/`.
+Pattern 5's `bes_batch` writes `bes.batch_event` through an Ignition datasource named **`ICC26`**
+→ `jdbc:postgresql://postgres:5432/icc26`, user `icc26`. Created UI-first, then committed from
+what `git status` reveals under `ignition/database-connection/`.
 
 **There is already a `database-connection/pg_db` in the repo, and it is not that.** It points at
 the **`postgres` database as user `ignition`** — wrong database, wrong user. It will pass a
 glance in the datasource dropdown and then write nowhere useful, and nothing about the failure
-says "you picked the wrong connection". Create `ICC26` properly, and decide whether `pg_db` is
-deleted rather than left where somebody can select it by mistake.
+says "you picked the wrong connection". `pg_db` is still there and still selectable; deleting it
+is an open item on [`plans/05-cdc-batch-event.md`](plans/05-cdc-batch-event.md).
 
-`lims.sample_result` and `bes.batch_event` are set to `REPLICA IDENTITY FULL` so Debezium
-receives complete row pre-images on UPDATE and DELETE. It costs WAL volume — fine for two
-demo tables, not something to enable blindly across a real database. Pattern 5 tails
-**`bes.batch_event` only**; drop `lims.sample_result` from the publication when that spec
-is written. `lims.webhook_delivery` is pattern 4's outbox and is not in the publication.
+**`bes.batch_event` is the only table in the `icc26_cdc` publication**, as of 2026-08-26.
+`lims.sample_result` used to be in it too, from the abandoned design where patterns 4, 5 and 6
+all carried one LIMS row — tailing it would deliver one analyst review twice, under two different
+mechanisms. It came out with pattern 5's build, its `REPLICA IDENTITY` went back to `DEFAULT`, and
+`tasks.py health` now asserts the publication's membership so it cannot drift back.
+`lims.webhook_delivery` is pattern 4's outbox and was never in it.
+
+`bes.batch_event` keeps `REPLICA IDENTITY FULL`. It is append-only, so `before` is always null in
+normal operation and this buys nothing at runtime — it is kept for pattern 5's negative check:
+hand-`UPDATE` a row and the sink has to show `op='u'` and publish nothing.
+
+### The Gateway Scripting Project
+
+**Tag event scripts run in gateway scope**, so a project script module they call resolves only if
+Config → Gateway Settings → **Gateway Scripting Project** names that project. It is `icc-2026`.
+
+Set with pattern 5, which is the first thing to need it: `bes_batch` is called from a
+`valueChanged` script on `bioreactor/batch_data/manual_advance`. It had never come up before
+because pattern 3's tag script calls only `system.eventstream.publishEvent`, a system function,
+and the `opcua_event` module it feeds is reached from an Event Stream transform — already
+project-scoped. Patterns 6 and 7 will both want this set.
 
 ---
 
