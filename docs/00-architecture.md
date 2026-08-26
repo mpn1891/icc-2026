@@ -42,10 +42,10 @@ Everything else publishes through Ignition. Pattern 7 is not a new inbound trans
 | `postgres` | 5432 | step 1 |
 | `ignition` | 8088, 8043 | step 1 |
 | `chariot` | 1883, 8883, 8090, 8081, 8444 | step 1 |
-| `opcua-novaflex` | 4841 | step 4 |
+| `opcua-novaflex` | 4841, 8087 (sample login) | step 4 |
 | `sim-valve-mqtt` | 8085 (config page) | pattern 1 |
 | `sim-valve-spb` | 8086 (config page) | pattern 2 |
-| `lims` | 8000 (approval screen) | pattern 4 — built; pass/fail remaining |
+| `lims` | 8000 (review screen) | pattern 4 — built; pass/fail remaining |
 | `debezium` | 8083 | pattern 5 — planned |
 | `sim-metone` | TBD (HTTP API) | pattern 6 — planned |
 
@@ -313,7 +313,7 @@ this demo, no `meta.mechanism`-coloured firehose (neither the vendored-mqtt.js p
 Engine-subscribed fallback), and no `docs/demo-runbook.md`. The scope was one greenfield UI
 build plus a rehearsal document, four weeks out, competing with two unbuilt patterns. **The
 demo surface is now the broker itself** — `mosquitto_sub` on `icc26/#` — plus the two device
-config pages on 8085/8086 and the LIMS approval screen on 8000, all of which already exist and
+config pages on 8085/8086, the analyzer's sample-login screen on 8087, and the LIMS review screen on 8000, all of which already exist and
 are each somebody's real product screen rather than a dashboard about the demo.
 
 What this costs, named rather than hidden: there is no single screen showing seven mechanisms
@@ -383,10 +383,22 @@ the sample begins when material leaves the reactor.** Everything downstream carr
 The Nova sim already reads `SampleInformation/SampleID` from writable OPC UA nodes, so Ignition
 writes the valve's id into the analyzer before the run instead of the analyzer inventing one.
 
-**This is not done.** `services/sim-valve-mqtt/valve.py` produces `S-YYYYMMDD-NNNN` locally
-while the Nova produces `S-NNNNN`, in two containers that never talk, so the valve-open →
-analysis-complete leg of the join does not correlate today. It is a gap, not a design, and it is
-pattern 1's open item 1.
+**Done 2026-08-26, and the mechanism is a person.** The valve mints `S-YYYYMMDD-NNNN`. The
+analyzer's own sample-login screen (`services/opcua-novaflex/webui.py`, port 8087) is where
+somebody reads that id off BR-201's page and types or scans it in, and the FLEX2 echoes it back
+on `HistoricalSampleResults/StartTags/SampleInformation/SampleID` because that is what the
+vendor's `SampleInformation` nodes are for. Nothing automated bridges the two containers.
+
+**That transcription step is the design, not a shortcut around one.** It is what a plant
+actually does, and it is where pattern 1's GxP hook — *the record originates at the point of
+action; no transcription, no intermediary* — meets its intermediary. Type it wrong and the
+result correlates with nothing: the LIMS holds an open entry with no analysis and a parked
+analysis with no entry, side by side on one screen. An Ignition tag write into
+`bioanalyzer/command/sample_id` would do the same job without the fallibility, which is
+precisely why it is not what we built.
+
+The analyzer no longer free-runs (`SAMPLE_INTERVAL_S=0`). It cannot: a self-driving instrument
+invents sample ids nobody transcribed, and every result it produced would park unmatched.
 
 **Which field carries it is per-pattern, and that is deliberate as of 2026-08-23.** Patterns 3
 and 4 stamp `meta.correlation_id` and keep it — it is built, verified and carried through a
@@ -403,6 +415,14 @@ This matters more than it looks. Both of pattern 7's derived flags are evaluated
 sample-open instant** — which phase was running when the valve opened, which particle-count
 analysis was nearest. Without a shared id there is no sample-open instant to evaluate them
 against, and the composite event cannot be built at all.
+
+**Since 2026-08-26 pattern 7 is handed that instant rather than having to reconstruct it.** The
+LIMS opens its sample entry from pattern 1's `event/sample-complete` and appends the analyzer
+result to it, so the released review message carries `values.collection.sample_start` beside the
+analytes. Two of the four sources pattern 7's unspecified event store was going to have to
+persist are therefore no longer its problem — the cost being that pattern 4 now performs the
+valve↔Nova half of the join that pattern 7 was going to demonstrate. That was decided
+deliberately; see [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md).
 
 ### Payload envelope
 

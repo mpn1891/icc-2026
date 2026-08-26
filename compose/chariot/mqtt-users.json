@@ -48,7 +48,10 @@
     "username": "lims-bridge",
     "password": "lims-bridge",
     "acl": {
-      "subscribeTopics": ["icc26/site1/qc/analyzers/+/result"],
+      "subscribeTopics": [
+        "icc26/site1/qc/analyzers/+/result",
+        "icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete"
+      ],
       "publishTopics": []
     }
   },

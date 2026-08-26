@@ -15,13 +15,14 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py ./
+COPY app.py webui.py page.html ./
 
 # Non-root. The server listens on 4840 and writes nothing.
 RUN useradd --create-home --uid 10003 novaflex && chown -R novaflex:novaflex /app
 USER novaflex
 
-EXPOSE 4840
+# 4840 OPC UA, 8087 the instrument's sample-login touchscreen.
+EXPOSE 4840 8087
 
 # SIGTERM sets the stop event, which drops out of the serve loop and closes the endpoint
 # cleanly, so a connected Ignition client sees a proper disconnect rather than a timeout.

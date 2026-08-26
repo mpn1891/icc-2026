@@ -12,6 +12,7 @@ contradicts itself.
 ```
 opc.tcp://opcua-novaflex:4840/novaflex/     from inside the compose network (Ignition)
 opc.tcp://localhost:4841/novaflex/          from the host (UaExpert, probe scripts)
+http://localhost:8087/                      the instrument's sample-login touchscreen
 ```
 
 4841 on the host because `opcua-countess` already holds 4840; both analyzers run at once.
@@ -30,6 +31,38 @@ production integration should use it.
 
 The Countess is the model we wish vendors shipped. The FLEX2 is what they ship. Pattern 3 is
 more convincing with both on stage than with either alone.
+
+## The sample-login screen, and the transcription it exists to perform
+
+**Added 2026-08-26.** `webui.py` + `page.html` serve the instrument's own touchscreen on
+**:8087**, in the same spirit as the two valve pages on 8085/8086 — but about one field rather
+than about topics:
+
+> **Sample ID.** The sample valve on BR-201 mints it. A person reads it off that page and types
+> or scans it into this one. Everything downstream — the analyzer result, the LIMS entry it
+> appends to, the released document — turns on those characters matching.
+
+An Ignition tag write into `bioanalyzer/command/sample_id` would do the same job and could not
+be typed wrong. **That is why it is not what we built.** Pattern 1's GxP claim is *the record
+originates at the point of action; no transcription, no intermediary*, and this screen is the
+intermediary. Type it wrong on stage and the LIMS shows the cost on one screen: an entry sitting
+open with no analysis, and an analysis parked with no entry.
+
+Run **writes tags and sets a bit** — `ESMScheduleAnalysis/SampleInformation/*`, then
+`ESMScheduleAnalysis` — the same nodes in the same order that Ignition's `bioanalyzer` UDT
+drives. It does not reach into `_run_sample()`. A page that shortcuts the vendor contract stops
+demonstrating it.
+
+One asymmetry worth showing: this page can say *"an analysis is already running"* and refuse. An
+OPC UA client writing the same bit cannot — a tag write has no return value and the vendor
+documents no rejection path, so all a client gets is that nothing happened. The page knows
+because it is inside the instrument.
+
+**The instrument no longer free-runs.** `SAMPLE_INTERVAL_S` and `FIRST_SAMPLE_DELAY_S` default
+to 0, and `run()` treats a non-positive interval as "wait for a trigger, indefinitely" — a zero
+timeout would expire immediately and spin the loop hot. A self-driving analyzer invents sample
+ids nobody transcribed, and every result it produced would park unmatched in the LIMS. QC rode
+on free-running cycles, so it moved to a button on the same page.
 
 ## The contract
 
@@ -99,9 +132,10 @@ that is undocumented; set `COMMAND_AUTO_CLEAR=false` to find out the hard way.
 | `AUTOSAMPLER_BANK_B` | `false` | Ten RSM status tags at `Bad_NoData` |
 | `RETAIN_COLLECTOR_INSTALLED` | `false` | Gates the three retain fields |
 | `SAMPLE_TYPES` | `Default,CHO Fed-Batch,HEK Perfusion,Spent Media` | |
-| `FIRST_SAMPLE_DELAY_S` | `15` | So a fresh container has data before you finish browsing to it |
-| `SAMPLE_INTERVAL_S` | `120` | Free-running cycle |
-| `QC_EVERY_N` | `6` | Every Nth free-running cycle runs QC instead. `0` disables |
+| `HTTP_PORT` | `8087` | The sample-login touchscreen |
+| `FIRST_SAMPLE_DELAY_S` | **`0`** | `0` = never start one by itself. Non-zero for the old behaviour |
+| `SAMPLE_INTERVAL_S` | **`0`** | `0` = runs only when asked. See *The sample-login screen* above |
+| `QC_EVERY_N` | `6` | Every Nth **free-running** cycle runs QC instead. Never fires at interval `0` — use the page's Run QC button. `0` disables |
 | `SENSOR_ERROR_RATE` | `0.0` | Per-analyte. Sample still completes and still counts |
 | `FAILURE_RATE` | `0.0` | Whole-analysis dispense timeout. Counter does **not** move |
 | `COMMAND_AUTO_CLEAR` | `true` | Whether command bits are one-shot |
