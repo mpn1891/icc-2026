@@ -8,116 +8,217 @@
   here the topic is a text box, the QoS is a dropdown and Retained is a checkbox you can
   tick. There, none of the three can be touched.
 
-  No external assets of any kind -- the demo has to run with networking disabled.
+  Skin: Alfa Laval Unique Sampling Valve Type 10 double-seat with ThinkTop V50 —
+  stacked wordmark, brand blue, 360° light guide (green de-energised, white energised,
+  red not-OK). No external assets of any kind -- the demo has to run with networking disabled.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sample Valve Assembly &mdash; MQTT Configuration</title>
+<title>Alfa Laval Unique Sampling Valve · MQTT</title>
 <style>
   :root {
-    --bg: #12161c;
-    --panel: #1a2028;
-    --panel-2: #202834;
-    --line: #2d3846;
-    --ink: #e6edf5;
-    --muted: #8d9bad;
-    --accent: #3fa7ff;
-    --ok: #37c98b;
-    --warn: #e8b44a;
-    --bad: #e8615a;
+    --al-blue: #1c3a85;
+    --al-blue-2: #152c68;
+    --al-cyan: #0091d0;
+    --sim: #d45d00;
+    --steel: #dce3ea;
+    --panel: #f3f6f9;
+    --card: #ffffff;
+    --line: #c5d0db;
+    --ink: #1a2433;
+    --muted: #5c6b7a;
+    --ok: #2aa84a;
+    --led-white: #f3f6fa;
+    --bad: #e1261c;
     --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 0 0 3rem;
-    background: var(--bg); color: var(--ink);
-    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 0; padding: 0 0 2.5rem;
+    background: var(--steel);
+    color: var(--ink);
+    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
   }
-  header {
-    background: linear-gradient(180deg, #1d2530, #161c24);
-    border-bottom: 1px solid var(--line);
-    padding: 1rem 1.5rem;
+  .brand-bar {
+    background: #fff;
+    color: var(--al-blue);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .55rem 1.5rem;
+    border-bottom: 3px solid var(--al-cyan);
   }
-  .wrap { max-width: 900px; margin: 0 auto; }
+  .al-mark {
+    display: flex;
+    flex-direction: column;
+    font-weight: 800;
+    letter-spacing: .18em;
+    line-height: .9;
+    text-transform: uppercase;
+    font-size: .72rem;
+  }
+  .al-mark span { display: block; }
+  .typeplate {
+    font-size: .68rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #5a6f88;
+    text-align: center;
+    flex: 1;
+  }
+  .typeplate strong {
+    display: block;
+    color: var(--al-blue);
+    font-size: .88rem;
+    letter-spacing: .1em;
+    font-weight: 700;
+  }
+  .thinktop { display: flex; align-items: center; gap: .65rem; min-width: 10rem; justify-content: flex-end; }
+  .thinktop-dome {
+    width: 2.45rem; height: 2.45rem; border-radius: 50%;
+    background: radial-gradient(circle at 38% 32%, #fff 0 38%, #c5ccd4 78%);
+    box-shadow: 0 0 0 3px #2a3544, 0 0 0 7px var(--ok), 0 0 14px var(--ok);
+  }
+  .thinktop-dome.open {
+    box-shadow: 0 0 0 3px #2a3544, 0 0 0 7px var(--led-white), 0 0 16px #fff;
+  }
+  .thinktop-dome.stroke {
+    box-shadow: 0 0 0 3px #2a3544, 0 0 0 7px var(--led-white), 0 0 16px #fff;
+    animation: thinktop-pulse .7s ease-in-out infinite;
+  }
+  .thinktop-dome.fault {
+    box-shadow: 0 0 0 3px #2a3544, 0 0 0 7px var(--bad), 0 0 16px var(--bad);
+    animation: thinktop-pulse .55s ease-in-out infinite;
+  }
+  @keyframes thinktop-pulse { 50% { opacity: .4; } }
+  .thinktop-caption { font-size: .62rem; letter-spacing: .1em; text-transform: uppercase; color: #5a6f88; }
+  .thinktop-caption span { display: block; color: var(--al-blue); font-size: .82rem; letter-spacing: .04em; font-family: var(--mono); }
+
+  header.unit { background: var(--al-blue); color: #d7e4f4; border-bottom: 3px solid var(--al-cyan); }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header.unit .wrap { padding: .85rem 1.5rem 1rem; }
   .badge-variant {
-    display: inline-block; font: 600 11px/1 var(--mono); letter-spacing: .12em;
-    text-transform: uppercase; padding: .4rem .6rem; border-radius: 3px;
-    background: #23405c; color: #9ed0ff; border: 1px solid #2f5a80;
+    display: inline-block; font: 700 10px/1 var(--mono); letter-spacing: .14em;
+    text-transform: uppercase; padding: .35rem .55rem;
+    background: var(--al-cyan); color: #fff;
   }
-  h1 { font-size: 1.25rem; margin: .6rem 0 .2rem; font-weight: 600; }
-  .sub { color: var(--muted); font-size: .85rem; }
-  .sub code { font-family: var(--mono); color: #b9c7d8; }
-  .led { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%;
+  h1 { font-size: 1.28rem; margin: .45rem 0 .15rem; font-weight: 700; color: #fff; letter-spacing: .01em; }
+  .sub { color: #9eb0c6; font-size: .82rem; margin: 0; }
+  .sub code { font-family: var(--mono); color: #c9d7e8; }
+  .led { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%;
          background: var(--bad); margin-right: .35rem; vertical-align: baseline; }
   .led.on { background: var(--ok); }
 
-  main { padding: 1.5rem; }
+  main { padding: 1.25rem 1.5rem; }
   section {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-    margin-bottom: 1.25rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 0 rgba(6,20,40,.06);
   }
   section > h2 {
-    font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
-    margin: 0; padding: .8rem 1.1rem; border-bottom: 1px solid var(--line); font-weight: 600;
+    font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: #fff;
+    margin: 0; padding: .65rem 1rem; background: var(--al-blue); font-weight: 700;
   }
-  .body { padding: 1.1rem; }
+  .body { padding: 1rem 1.1rem 1.15rem; }
   .grid { display: grid; grid-template-columns: 1fr 8rem 8rem; gap: .9rem; align-items: end; }
-  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
-  label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .3rem; }
+  @media (max-width: 640px) {
+    .grid { grid-template-columns: 1fr; }
+    .brand-bar { flex-wrap: wrap; }
+    .typeplate { text-align: left; flex-basis: 100%; order: 3; }
+  }
+  label { display: block; font-size: .72rem; color: var(--muted); margin-bottom: .28rem;
+          text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
   input[type=text], select {
-    width: 100%; padding: .55rem .6rem; background: #0e1319; color: var(--ink);
-    border: 1px solid var(--line); border-radius: 4px; font-family: var(--mono);
+    width: 100%; padding: .55rem .6rem; background: var(--panel); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 2px; font-family: var(--mono);
     font-size: .88rem;
   }
-  input[type=text]:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  input[type=text]:focus, select:focus { outline: 2px solid var(--al-cyan); outline-offset: -1px; }
   .check { display: flex; align-items: center; gap: .5rem; height: 2.3rem; }
-  .check input { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); }
+  .check input { width: 1.1rem; height: 1.1rem; accent-color: var(--al-cyan); }
   button {
-    margin-top: 1rem; padding: .55rem 1.1rem; border-radius: 4px; border: 1px solid #2f6ea8;
-    background: #1d5488; color: #eaf4ff; font-size: .88rem; cursor: pointer;
+    margin-top: 1rem; padding: .58rem 1.15rem; border-radius: 2px; border: 0;
+    background: var(--al-cyan); color: #fff; font-size: .88rem; font-weight: 700;
+    letter-spacing: .04em; cursor: pointer;
   }
-  button:hover { background: #23639e; }
-  button.ghost { background: var(--panel-2); border-color: var(--line); color: var(--ink); }
-  button.ghost:hover { background: #2a3442; }
-  .msg { margin-top: .9rem; font-size: .85rem; padding: .6rem .75rem; border-radius: 4px;
+  button:hover { filter: brightness(1.08); }
+  button.ghost { background: var(--panel); border: 1px solid var(--line); color: var(--ink); }
+  button.ghost:hover { border-color: var(--al-cyan); color: var(--al-cyan); }
+  .msg { margin-top: .9rem; font-size: .85rem; padding: .6rem .75rem; border-radius: 2px;
          display: none; }
-  .msg.ok { display: block; background: #14352a; color: #8fe3ba; border: 1px solid #235c46; }
-  .msg.err { display: block; background: #3a1d1c; color: #f0a09b; border: 1px solid #6b3230; }
+  .msg.ok { display: block; background: #e5f6ea; color: #145c2e; border: 1px solid #b7e0c4; }
+  .msg.err { display: block; background: #fde8e8; color: #8a1f1f; border: 1px solid #f0b4b4; }
 
   table { width: 100%; border-collapse: collapse; font-size: .84rem; }
-  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line);
+  th, td { text-align: left; padding: .5rem .55rem; border-bottom: 1px solid var(--line);
            vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: .72rem; text-transform: uppercase;
-       letter-spacing: .07em; }
+  th { color: var(--muted); font-weight: 700; font-size: .68rem; text-transform: uppercase;
+       letter-spacing: .08em; }
   tr:last-child td { border-bottom: none; }
-  td.topic { font-family: var(--mono); color: #9ed0ff; word-break: break-all; }
+  td.topic { font-family: var(--mono); color: var(--al-cyan); word-break: break-all; }
   td.note { color: var(--muted); }
-  .pill { font-family: var(--mono); font-size: .78rem; padding: .1rem .4rem; border-radius: 3px;
-          background: var(--panel-2); border: 1px solid var(--line); }
+  .pill { font-family: var(--mono); font-size: .76rem; padding: .12rem .4rem;
+          background: var(--panel); border: 1px solid var(--line); }
 
   .kv { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem;
         font-size: .86rem; }
   .kv dt { color: var(--muted); }
   .kv dd { margin: 0; font-family: var(--mono); }
 
-  .sim { border-color: #4a3a20; }
-  .sim > h2 { color: var(--warn); border-color: #4a3a20; }
+  .sim { border-color: var(--sim); }
+  .sim > h2 { background: var(--sim); }
   .sim-note { color: var(--muted); font-size: .8rem; margin: 0 0 .9rem; }
   .badges { display: flex; flex-wrap: wrap; gap: .5rem; }
   .badges button { margin-top: 0; text-align: left; }
-  .badges .who { display: block; font-size: .74rem; color: var(--muted); }
-  .state-line { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line);
-                font-family: var(--mono); font-size: .86rem; }
-  .state-line .v { color: var(--accent); }
-  footer { color: var(--muted); font-size: .78rem; text-align: center; margin-top: 1.5rem; }
+  .badges .who { display: block; font-size: .74rem; color: var(--muted); font-weight: 500; }
+
+  .readout {
+    display: grid;
+    grid-template-columns: 3.2rem 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-top: .95rem;
+    border-top: 1px solid var(--line);
+    align-items: center;
+  }
+  .stem { display: flex; flex-direction: column; align-items: center; gap: .35rem; }
+  .stem-track {
+    width: 1.15rem; height: 5.2rem;
+    background: #e2e8ef;
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    overflow: hidden;
+    display: flex;
+    align-items: flex-end;
+  }
+  .stem-fill { width: 100%; background: var(--al-cyan); min-height: 4px; }
+  .stem-read { font-family: var(--mono); font-size: .72rem; color: var(--muted); }
+  .state-line { font-family: var(--mono); font-size: .84rem; }
+  .state-line .v { color: var(--al-cyan); font-weight: 700; }
+  footer { color: var(--muted); font-size: .75rem; text-align: center; margin-top: 1.2rem; }
 </style>
 </head>
 <body>
 
-<header><div class="wrap">
-  <span class="badge-variant">Pattern 1 &middot; plain MQTT</span>
+<div class="brand-bar">
+  <div class="al-mark"><span>Alfa</span><span>Laval</span></div>
+  <div class="typeplate">
+    <strong>Unique Sampling Valve · Type 10</strong>
+    double seat · pneumatic · ThinkTop® V50
+  </div>
+  <div class="thinktop">
+    <div id="tvis-dome" class="thinktop-dome closed"></div>
+    <div class="thinktop-caption">ThinkTop V50<span id="tvis-label">locked</span></div>
+  </div>
+</div>
+
+<header class="unit"><div class="wrap">
+  <span class="badge-variant">Pattern 1 · plain MQTT</span>
   <h1>Smart Sample Valve Assembly</h1>
   <p class="sub">
     <span id="conn-led" class="led"></span><span id="conn-text">connecting</span>
@@ -199,31 +300,38 @@
   </section>
 
   <section class="sim">
-    <h2>Simulator controls &mdash; not part of the device</h2>
+    <h2>Simulator controls — not part of the device</h2>
     <div class="body">
       <p class="sim-note">A real assembly has an RFID reader here, and a plant air header
         behind the actuator. These buttons stand in for both.</p>
       <div class="badges" id="badges"></div>
       <button type="button" class="ghost" id="air-supply" style="margin-top:1rem"></button>
-      <div class="state-line">
-        valve <span class="v" id="v-state">&hellip;</span>
-        &middot; position <span class="v" id="v-pos">&hellip;</span>%
-        &middot; cycles <span class="v" id="v-cycles">&hellip;</span>
-        &middot; last cycle <span class="v" id="v-cycle-result">&hellip;</span>
-        &middot; air <span class="v" id="v-air">&hellip;</span> bar
-        &middot; enclosure <span class="v" id="v-temp">&hellip;</span> &deg;C
-        &middot; published <span class="v" id="v-pub">&hellip;</span>
+      <div class="readout">
+        <div class="stem">
+          <div class="stem-track"><div id="stem-fill" class="stem-fill" style="height:4px"></div></div>
+          <div class="stem-read"><span id="v-pos">&hellip;</span>%</div>
+        </div>
+        <div>
+          <div class="state-line">
+            valve <span class="v" id="v-state">&hellip;</span>
+            &middot; cycles <span class="v" id="v-cycles">&hellip;</span>
+            &middot; last cycle <span class="v" id="v-cycle-result">&hellip;</span>
+            &middot; air <span class="v" id="v-air">&hellip;</span> bar
+            &middot; enclosure <span class="v" id="v-temp">&hellip;</span> &deg;C
+            &middot; published <span class="v" id="v-pub">&hellip;</span>
+          </div>
+          <div class="state-line" id="last-scan" style="margin-top:.45rem"></div>
+          <p class="sim-note" style="margin:.7rem 0 0">
+            Green on the ThinkTop is the de-energised (closed) seat; white is the main valve energised.
+            The stem beside this line is on <em>no topic</em> — a subscriber watching the
+            broker sees the badge scan, then fifteen seconds of nothing, then the completed sample.
+          </p>
+        </div>
       </div>
-      <div class="state-line" id="last-scan" style="border-top:none;padding-top:.2rem"></div>
-      <p class="sim-note" style="margin:.9rem 0 0">
-        The valve state on this line is on <em>no topic</em>. It is here and nowhere else
-        &mdash; a subscriber watching the broker sees the badge scan, then fifteen seconds of
-        nothing, then the completed sample.
-      </p>
     </div>
   </section>
 
-  <footer>icc-2026 &middot; docs/plans/01-native-mqtt.md</footer>
+  <footer>icc-2026 &middot; docs/plans/01-native-mqtt.md &middot; Alfa Laval Unique Sampling Valve / ThinkTop V50</footer>
 </main>
 
 <script>
@@ -235,6 +343,26 @@ var airSagged = false;
 function esc(s) {
   return String(s === null || s === undefined ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function paintTvis(v, lastCycle) {
+  var dome = $("tvis-dome");
+  var label = $("tvis-label");
+  var cls = "thinktop-dome";
+  var text = v.state;
+  if (v.state === "unlocking" || v.state === "closing") {
+    cls += " stroke";
+  } else if (v.state === "open") {
+    cls += " open";
+  } else if (airSagged || lastCycle === "failed-to-seat" || lastCycle === "stroke-timeout") {
+    cls += " fault";
+  } else {
+    cls += " closed";
+  }
+  dome.className = cls;
+  label.textContent = text;
+  var fill = $("stem-fill");
+  if (fill) { fill.style.height = Math.max(4, Number(v.position_pct) || 0) + "%"; }
 }
 
 function renderStatic(s) {
@@ -288,6 +416,8 @@ function renderRuntime(s) {
   $("air-supply").textContent = airSagged
     ? "Air supply sagging — click to restore it (next sample seats normally)"
     : "Air supply nominal — click to sag it (next sample fails to seat)";
+
+  paintTvis(v, s.runtime.last_cycle_result);
 
   var ls = s.runtime.last_scan;
   $("last-scan").innerHTML = ls
