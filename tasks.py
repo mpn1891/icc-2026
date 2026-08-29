@@ -1246,12 +1246,29 @@ def task_health():
         bad("postgres  not reachable")
         healthy = False
 
+    # 'bes', not 'mes' -- the schema was renamed on 2026-08-23 and this check was
+    # not. It kept passing because lims + plant alone clear the threshold, which
+    # is exactly how a health check stops being one.
     rc, tables = psql("SELECT count(*) FROM information_schema.tables "
-                      "WHERE table_schema IN ('lims','mes','plant');")
+                      "WHERE table_schema IN ('lims','bes','plant');")
     if rc == 0 and tables.isdigit() and int(tables) >= 4:
         ok("postgres  demo schemas present (%s tables)" % tables)
     else:
         bad("postgres  demo schemas missing - initdb may not have run")
+        healthy = False
+
+    # Pattern 5's publication must name bes.batch_event and nothing else. A
+    # FOR ALL TABLES publication (which Debezium will create for you if you let
+    # it) puts every LIMS write onto the backbone as mechanism=cdc.
+    rc, pubtables = psql("SELECT string_agg(schemaname || '.' || tablename, ',' "
+                         "ORDER BY schemaname, tablename) FROM pg_publication_tables "
+                         "WHERE pubname = 'icc26_cdc';")
+    if rc == 0 and pubtables == "bes.batch_event":
+        ok("postgres  icc26_cdc publication tails bes.batch_event only")
+    elif rc == 0 and pubtables:
+        warn("postgres  icc26_cdc tails %s - expected bes.batch_event only" % pubtables)
+    elif rc == 0:
+        bad("postgres  icc26_cdc publication missing - pattern 5 will not work")
         healthy = False
 
     state = gateway_state(ign_port)
@@ -1295,6 +1312,28 @@ def task_health():
         bad("chariot   MQTT listener DOWN - no active license or trial")
         chariot_license_hint()
         healthy = False
+
+    # Pattern 5. Debezium answering is not the same as Debezium *tailing*, so
+    # check the replication slot too - a container that cannot reach the WAL
+    # starts cleanly, serves health, and publishes nothing.
+    dbz_port = env_value(env, "DEBEZIUM_PORT", "8083")
+    status, _ = http("http://localhost:%s/q/health" % dbz_port, timeout=8)
+    if status and 200 <= status < 300:
+        ok("debezium  RUNNING on :%s" % dbz_port)
+    elif status:
+        warn("debezium  answering on :%s but not healthy (HTTP %s)" % (dbz_port, status))
+    else:
+        warn("debezium  not responding on :%s - pattern 5's topic will be silent"
+             % dbz_port)
+
+    rc, slot = psql("SELECT active FROM pg_replication_slots "
+                    "WHERE slot_name = 'icc26_debezium';")
+    if rc == 0 and slot == "t":
+        ok("debezium  replication slot icc26_debezium active")
+    elif rc == 0 and slot == "f":
+        warn("debezium  slot icc26_debezium exists but is INACTIVE - nothing is tailing")
+    elif rc == 0:
+        warn("debezium  no replication slot yet - it is created on first connect")
 
     print("")
     if healthy:

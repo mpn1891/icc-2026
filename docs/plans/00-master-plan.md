@@ -164,35 +164,50 @@ a sample already drawn — arrives out of sequence with the physical event it de
 the payload against the tag-change data pattern 3 emits; the semantic gap is visible in one
 screenshot.
 
-**05 — CDC on our own batch table, standing in for a BES** — decided 2026-08-23, refined here to
-carry the qualified-window flag pattern 7 needs.
+**05 — CDC on our own batch table, standing in for a BES** — **built 2026-08-26 and written up in
+[`05-cdc-batch-event.md`](05-cdc-batch-event.md), which supersedes this entry entirely.** Read
+that file, not this summary; two things below were changed during the build and are recorded here
+only so an older reference does not look authoritative.
 
-A **very simple batch engine inside Ignition**: a gateway timer, started and stopped from
-enable/disable tags, auto-cycles `BR-201` through `CIP → SIP → INOC → GROWTH → HARVEST`. The
-timer writes the bioreactor UDT (add an operation/phase tag to the existing `bioreactor` type)
-and inserts `bes.batch_event` in the same step. The sequencer publishes **nothing** onto MQTT.
+**The batch engine is a manual advance, not an auto-cycling timer.** No dwell, no enable/disable
+tags. Three memory tags in a `batch_data` folder on the `bioreactor` type — `batch_id`,
+`manual_advance`, `operation` — and a `valueChanged` script on the boolean. Somebody types a
+batch id in Tag Explorer and clicks; the reactor steps
+`IDLE → CIP → SIP → INOC → GROWTH → HARVEST → IDLE`. Deterministic on stage, which is what
+parking the reactor in `GROWTH` before badging the valve requires. The writer publishes
+**nothing** onto MQTT — unchanged, and the whole point.
 
-**Qualified sampling window (new):** the batch protocol qualifies sampling for **`GROWTH`
-only** — a real bioprocess constraint: pulling material during `CIP`/`SIP` doesnt make sense, and `INOC`/`HARVEST` are outside the characterized production phase. `bes.batch_event` already carries `phase`; add `payload.qualified_window := (phase = 'GROWTH')` at insert time so
-the flag travels with the row Debezium tails, rather than being recomputed downstream.
+**`operation`, not `phase`.** CIP/SIP/INOC/GROWTH/HARVEST are ISA-88 *operations*; a phase is the
+smallest process action. Renamed across the tag, the column, the `event_type` values and the wire
+field. Same rule that renamed `mes.` → `bes.`.
 
-Debezium tails **our** Postgres — `quay.io/debezium/server:3.x`, pgoutput, user `cdc`,
-publication on `bes.batch_event` only (drop `lims.sample_result` from `04-cdc.sql`).
-HTTP sink → WebDev (`cdc-sink`) → envelope `mechanism=cdc`, `values.phase`,
-`values.qualified_window` → `icc26/site1/upstream/br-201/batch/event`. Named volume for offsets.
+One click writes **two rows** — `operation_end` + `operation_start`, one transaction, one shared
+`occurred_at` — so `qualified_window` is `false` on every `operation_end` and pattern 7 must
+tie-break on `id`. Both traps are in [`05-cdc-batch-event.md`](05-cdc-batch-event.md) and in
+`02-schema.sql`'s comment.
+
+**Qualified sampling window:** the protocol qualifies sampling for **`GROWTH` only** — pulling
+material during `CIP`/`SIP` makes no sense, and `INOC`/`HARVEST` are outside the characterized
+production phase. `payload.qualified_window` is set at insert time so the flag travels with the
+row Debezium tails rather than being recomputed downstream.
+
+Debezium tails **our** Postgres — `quay.io/debezium/server`, pgoutput, user `cdc`, publication on
+`bes.batch_event` only. HTTP sink → WebDev (`cdc-sink`) → envelope `mechanism=cdc`,
+`values.operation`, `values.qualified_window` → `icc26/site1/upstream/{equipment_id}/batch/event`.
+Named volume for offsets.
 
 **GxP hook:** reading a validated system's internals without its owner in the loop. State it
-plainly and hand it to the risk speaker — the honest framing is that this timer stands in for a
+plainly and hand it to the risk speaker — the honest framing is that this engine stands in for a
 Batch Execution System we would not patch to emit events: the writer does not know MQTT exists,
 the `cdc` role is not `icc26`, and disabling Debezium leaves the reactor cycling with a silent
 topic. That is the failure demo, not a fake ERP UI.
 
-The JDBC datasource `ICC26` is now on the critical path (the timer writes the table). It is
-not in the repo yet; **UI first, then commit.**
+The JDBC datasource `ICC26` and the **Gateway Scripting Project** setting are both on the
+critical path and both **UI first, then commit**.
 
-Verify: flip the enable tag → phase tags advance on a dwell → a row appears in
-`bes.batch_event` with `qualified_window` set correctly → a message on `batch/event` within
-~1 s. Stop Debezium, leave the timer running, show the gap.
+Verify: set `batch_id`, click `manual_advance` → rows in `bes.batch_event` with
+`qualified_window` correct → messages on `batch/event` within ~1 s. Stop Debezium, keep clicking,
+show the gap — then restart it and watch the missed changes arrive.
 
 **06 — Poll of a MET ONE environmental analyzer** — decided 2026-08-23, refined here to carry
 the excursion flag pattern 7 needs.
@@ -232,7 +247,7 @@ pass or fail). On that message it builds one composite document, `mechanism=aggr
 |---|---|---|
 | Sample actuation | pattern 1 event (`sample-valve-01`) | when material left the reactor |
 | VCD reading + assay result | pattern 3 Nova result + pattern 4 review | when the sample was run, and its disposition |
-| Batch phase and qualified window | pattern 5 `batch/event` at sample time | `phase` and `qualified_window` when the valve opened |
+| Batch operation and qualified window | pattern 5 `batch/event` at sample time | `operation` and `qualified_window` when the valve opened — `ORDER BY occurred_at DESC, id DESC`, see [`05-cdc-batch-event.md`](05-cdc-batch-event.md) |
 | Environmental excursion status | pattern 6 MET ONE, nearest reading to the Nova timestamp | `status` at (or nearest) the sample instant |
 
 The script derives two flags from those sections — `values.outside_qualified_window` (pattern
@@ -281,10 +296,12 @@ so it is last of the seven, and it is still **the designated cut** if the schedu
    3** — only on 5 and 6. See
    [`../00-architecture.md` § *The sample id, and pattern 1 mints it*](../00-architecture.md)
    and [`04-lims-webhook.md` § *Revised 2026-08-26*](04-lims-webhook.md).
-3. **05 and 06 in parallel.** 05 is the timer + the `ICC26` JDBC datasource + Debezium; create
-   the datasource first and read the `pg_db` look-alike trap in
-   [`../00-architecture.md` § *Postgres*](../00-architecture.md) before you do. The `bioreactor`
-   UDT also needs its phase tag. 06 is the MET ONE simulator + poll script + Event Stream; it
+3. **05 and 06 in parallel.** **05 is built (2026-08-26) but not yet run** — every checkpoint in
+   [`05-cdc-batch-event.md`](05-cdc-batch-event.md) is still `pending`, and two of them are
+   UI-first gateway settings nobody can do from a file: the `ICC26` JDBC datasource (read the
+   `pg_db` look-alike trap in [`../00-architecture.md` § *Postgres*](../00-architecture.md)
+   first) and the **Gateway Scripting Project**, without which the tag event script cannot
+   resolve `bes_batch`. 06 is the MET ONE simulator + poll script + Event Stream; it
    waits on vendor API notes, so stub the routes if they have not arrived — the excursion flag
    and its limit config are ours, not the vendor's, and need not wait on somebody else's PDF.
 4. **Decide pattern 7's event store.** New on 2026-08-25, **narrowed 2026-08-26 to patterns 5

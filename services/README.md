@@ -94,4 +94,6 @@ service is the right size. See [`../docs/plans/04-lims-webhook.md`](../docs/plan
 
 The Postgres schema (`compose/postgres/initdb/02-schema.sql`) has `status` / `verified_at`
 on `lims.sample_result` and the `lims.webhook_delivery` outbox. `bes.batch_event` in the same
-file is pattern 5's CDC source again (2026-08-23).
+file is pattern 5's CDC source, and **the only table in the `icc26_cdc` publication** since
+2026-08-26 — `lims.sample_result` came out so an analyst review cannot arrive twice under two
+mechanisms.

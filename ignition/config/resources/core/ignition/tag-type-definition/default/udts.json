@@ -908,80 +908,44 @@
     ]
   },
   {
-    "name": "sample_valve",
-    "parameters": {
-      "cycle_result_path": {
-        "dataType": "String",
-        "value": null
-      },
-      "sample_id_path": {
-        "dataType": "String",
-        "value": null
-      },
-      "sample_time_path": {
-        "dataType": "String",
-        "value": null
-      }
-    },
-    "tagType": "UdtType",
-    "typeId": null,
-    "tags": [
-      {
-        "dataType": "String",
-        "documentation": "The identifier minted by the sample valve and carried unchanged into downstream analysis.",
-        "name": "last_sample_id",
-        "sourceTagPath": {
-          "bindType": "parameter",
-          "binding": "{sample_id_path}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "reference"
-      },
-      {
-        "dataType": "String",
-        "documentation": "The transport-native completion time: String for plain MQTT, DateTime for Sparkplug B.",
-        "name": "last_sample_time_raw",
-        "sourceTagPath": {
-          "bindType": "parameter",
-          "binding": "{sample_time_path}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "reference"
-      },
-      {
-        "dataType": "DateTime",
-        "documentation": "Completion time normalized to DateTime. Plain MQTT sends ISO-8601 text; Sparkplug B sends a typed DateTime.",
-        "expression": "if(\n\tisNull({[.]last_sample_time_raw}),\n\tnull,\n\tif(\n\t\ttypeOf({[.]last_sample_time_raw}) \u003d \"String\",\n\t\ttoDate(\n\t\t\tsubstring({[.]last_sample_time_raw}, 0, 4) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 5, 7) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 8, 10) + \".\" +\n\t\t\tsubstring({[.]last_sample_time_raw}, 11, 13) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 14, 16) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 17, 19) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 20, 23) + \"+0000\"\n\t\t),\n\t\ttoDate({[.]last_sample_time_raw})\n\t)\n)",
-        "name": "last_sample_time",
-        "tagType": "AtomicTag",
-        "valueSource": "expr"
-      },
-      {
-        "dataType": "String",
-        "documentation": "The valve cycle outcome: normal, failed-to-seat, or stroke-timeout.",
-        "name": "last_cycle_result",
-        "sourceTagPath": {
-          "bindType": "parameter",
-          "binding": "{cycle_result_path}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "reference"
-      },
-      {
-        "dataType": "Int8",
-        "documentation": "Seconds since the last completed sample. The analysis trigger rejects stale retained events.",
-        "expression": "if(\n\tisNull({[.]last_sample_time}),\n\tnull,\n\tsecondsBetween({[.]last_sample_time}, now())\n)",
-        "name": "last_sample_age_s",
-        "tagType": "AtomicTag",
-        "valueSource": "expr"
-      }
-    ]
-  },
-  {
     "name": "bioreactor",
     "tagType": "UdtType",
     "typeId": null,
     "tags": [
+      {
+        "name": "batch_data",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "dataType": "String",
+            "documentation": "The batch this reactor is running, typed in by hand before the first advance. bes_batch refuses to advance without one -- an unnamed batch writes an unusable record. Pattern 1's valve event carries no batch_id at all; the LIMS gets its copy from the analyzer result, not from here.",
+            "name": "batch_id",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Boolean",
+            "documentation": "THE trigger for pattern 5. Click it true in Tag Explorer and the reactor steps to its next ISA-88 operation: two rows into bes.batch_event in one transaction, and nothing onto MQTT. Debezium tails the table out of band and the message appears without this gateway asking for it -- which is the entire pattern. bes_batch resets this to false when it is done.",
+            "eventScripts": [
+              {
+                "eventid": "valueChanged",
+                "script": "\t# Pattern 5: one manual operation advance, on the rising edge only.\n\t# bes_batch resets this flag when it is finished, and that falling edge\n\t# re-enters here and returns at the third guard.\n\tif initialChange:\n\t\treturn\n\tif currentValue is None or currentValue.value is None:\n\t\treturn\n\tif not currentValue.value:\n\t\treturn\n\tbes_batch.advance(tagPath.rsplit(\"/\", 1)[0])\n"
+              }
+            ],
+            "name": "manual_advance",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "String",
+            "documentation": "The ISA-88 operation currently running: IDLE | CIP | SIP | INOC | GROWTH | HARVEST. Written by bes_batch AFTER the database commit, so the tag never leads the record. An *operation*, not a phase -- a phase is the smallest process action (\"Add Water\", \"Agitate\"); CIP/SIP/INOC/GROWTH/HARVEST are one level up. The batch protocol qualifies sampling for GROWTH only, and that rule lives in bes_batch, not here.",
+            "name": "operation",
+            "tagType": "AtomicTag",
+            "value": "IDLE",
+            "valueSource": "memory"
+          }
+        ]
+      },
       {
         "name": "process_data",
         "tagType": "Folder",
@@ -1733,5 +1697,75 @@
     "name": "git_test",
     "tagType": "UdtType",
     "typeId": null
+  },
+  {
+    "name": "sample_valve",
+    "parameters": {
+      "cycle_result_path": {
+        "dataType": "String",
+        "value": null
+      },
+      "sample_id_path": {
+        "dataType": "String",
+        "value": null
+      },
+      "sample_time_path": {
+        "dataType": "String",
+        "value": null
+      }
+    },
+    "tagType": "UdtType",
+    "typeId": null,
+    "tags": [
+      {
+        "dataType": "String",
+        "documentation": "The valve cycle outcome: normal, failed-to-seat, or stroke-timeout.",
+        "name": "last_cycle_result",
+        "sourceTagPath": {
+          "bindType": "parameter",
+          "binding": "{cycle_result_path}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "reference"
+      },
+      {
+        "dataType": "Int8",
+        "documentation": "Seconds since the last completed sample. The analysis trigger rejects stale retained events.",
+        "expression": "if(\n\tisNull({[.]last_sample_time}),\n\tnull,\n\tsecondsBetween({[.]last_sample_time}, now())\n)",
+        "name": "last_sample_age_s",
+        "tagType": "AtomicTag",
+        "valueSource": "expr"
+      },
+      {
+        "dataType": "String",
+        "documentation": "The identifier minted by the sample valve and carried unchanged into downstream analysis.",
+        "name": "last_sample_id",
+        "sourceTagPath": {
+          "bindType": "parameter",
+          "binding": "{sample_id_path}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "reference"
+      },
+      {
+        "dataType": "DateTime",
+        "documentation": "Completion time normalized to DateTime. Plain MQTT sends ISO-8601 text; Sparkplug B sends a typed DateTime.",
+        "expression": "if(\n\tisNull({[.]last_sample_time_raw}),\n\tnull,\n\tif(\n\t\ttypeOf({[.]last_sample_time_raw}) \u003d \"String\",\n\t\ttoDate(\n\t\t\tsubstring({[.]last_sample_time_raw}, 0, 4) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 5, 7) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 8, 10) + \".\" +\n\t\t\tsubstring({[.]last_sample_time_raw}, 11, 13) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 14, 16) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 17, 19) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 20, 23) + \"+0000\"\n\t\t),\n\t\ttoDate({[.]last_sample_time_raw})\n\t)\n)",
+        "name": "last_sample_time",
+        "tagType": "AtomicTag",
+        "valueSource": "expr"
+      },
+      {
+        "dataType": "String",
+        "documentation": "The transport-native completion time: String for plain MQTT, DateTime for Sparkplug B.",
+        "name": "last_sample_time_raw",
+        "sourceTagPath": {
+          "bindType": "parameter",
+          "binding": "{sample_time_path}"
+        },
+        "tagType": "AtomicTag",
+        "valueSource": "reference"
+      }
+    ]
   }
 ]

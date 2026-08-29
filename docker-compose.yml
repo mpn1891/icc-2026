@@ -488,8 +488,81 @@ services:
     networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Remaining pattern services land here in steps 5–8:
-  #   debezium         (pattern 5)  quay.io/debezium/server
+  # Debezium Server — pattern 5. Tails bes.batch_event from the Postgres WAL as
+  # user `cdc` and POSTs each change event to Ignition's cdc-sink WebDev
+  # endpoint, which publishes it as mechanism=cdc through Transmission.
+  #
+  # It is deliberately the only service here with no relationship to the writer.
+  # `bes_batch` writes rows through the ICC26 JDBC datasource as user `icc26` and
+  # holds no broker credentials; this container holds no application credentials.
+  # Stop it and the reactor keeps cycling with a silent topic — that is pattern
+  # 5's failure demo, and it only works because the two halves are genuinely
+  # unaware of each other.
+  #
+  # No depends_on: ignition. Debezium retries the sink, and the replication slot
+  # holds the WAL position while the gateway is down.
+  # ───────────────────────────────────────────────────────────────────────────
+  debezium:
+    image: quay.io/debezium/server:${DEBEZIUM_VERSION:-3.0.0.Final}
+    container_name: icc26-debezium
+    restart: unless-stopped
+    # HTTPS on :8043, with the gateway certificate imported into a JKS at start.
+    # Plain HTTP :8088 does not work and the failure is worth knowing: Ignition
+    # 302s it to :8043, and Debezium's java.net.http.HttpClient defaults to
+    # followRedirects(NEVER), so every event exhausts its retries on the redirect
+    # and the connector dies with "Exceeded maximum number of attempts to publish
+    # event" — a message naming neither the redirect nor the status code.
+    #
+    # Imported at container start rather than baked into an image on purpose:
+    # `tasks.py seed` re-mints the gateway certificate, and a runtime import
+    # always picks up the current one instead of needing a rebuild.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        /usr/lib/jvm/java-21/bin/keytool -importcert -noprompt \
+          -alias icc26-ignition -file /certs/icc26-ignition.crt \
+          -keystore /tmp/ign.jks -storepass changeit >/dev/null \
+          && echo "debezium: imported icc26-ignition.crt into /tmp/ign.jks" \
+          || { echo "debezium: FAILED to import gateway cert"; exit 1; }
+        exec /debezium/run.sh
+    environment:
+      # Interpolated into compose/debezium/application.properties at startup.
+      CDC_SINK_URL: ${CDC_SINK_URL:-https://ignition:8043/system/webdev/icc-2026/cdc-sink?token=icc26-cdc-token}
+      CDC_DB_PASSWORD: ${CDC_DB_PASSWORD:-cdc}
+      # disableHostnameVerification is required, not laziness: `seed` restores the
+      # existing ssl.pfx, whose SAN is `DNS:localhost, IP:127.0.0.1` — it does not
+      # name `ignition`, which is the host Debezium dials. The signature is still
+      # verified against the mounted cert in the truststore. Remint the keystore
+      # to tighten this; the wider SAN list is already in tasks.py. The LIMS makes
+      # exactly the same trade for exactly the same reason (services/lims/README).
+      JAVA_TOOL_OPTIONS: >-
+        -Djavax.net.ssl.trustStore=/tmp/ign.jks
+        -Djavax.net.ssl.trustStorePassword=changeit
+        -Djdk.internal.httpclient.disableHostnameVerification=true
+      TZ: ${TZ:-America/Chicago}
+    volumes:
+      - ./ignition/certificates/icc26-ignition.crt:/certs/icc26-ignition.crt:ro
+      # /debezium/config, NOT /debezium/conf. The image's own failure message
+      # says "check ... /debezium/conf/application.properties" and is simply
+      # wrong: Quarkus scans /debezium/config, which is where the image keeps its
+      # .example files. Mounted at conf/, the container starts, reads nothing,
+      # and dies on a missing debezium.sink.type. Measured 2026-08-26.
+      - ./compose/debezium:/debezium/config:ro
+      # Offsets. Without a volume here the container forgets its WAL position on
+      # restart and the "stop it, keep clicking, start it again" demo shows
+      # nothing instead of catching up.
+      - debezium-data:/debezium/data
+    ports:
+      # Quarkus serves its health endpoints on 8080 inside the container.
+      - "${DEBEZIUM_PORT:-8083}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [icc26]
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Remaining pattern services land here:
   #   sim-metone       (pattern 6)  build: ./services/sim-metone
   #
   # (services/sim-vibration/ — the retired pattern-1 vibration gateway — was
@@ -504,6 +577,10 @@ volumes:
   # the topic somebody set on stage. `tasks.py nuke` returns both to factory.
   valve-mqtt-config:
   valve-spb-config:
+  # Debezium's WAL offsets. Survives a container restart on purpose; `nuke`
+  # clears it, which is what you want after a `nuke` of pgdata — an offset
+  # pointing into a WAL that no longer exists is worse than no offset.
+  debezium-data:
 
 networks:
   icc26:
