@@ -182,12 +182,75 @@ CREATE TABLE bes.batch_event (
 CREATE INDEX ix_batch_event_batch  ON bes.batch_event (batch_id, occurred_at);
 CREATE INDEX ix_batch_event_lookup ON bes.batch_event (equipment_id, occurred_at DESC, id DESC);
 
+-- ── em: environmental monitoring readings ────────────────────────────────────
+-- Pattern 6's store, written by the Ignition poll script (`metone_poll`) as it
+-- publishes -- so what pattern 7 reads is the same record the backbone saw,
+-- including `status`, which is OURS and not the instrument's. The MET ONE
+-- reports counts; the cleanroom limit is Ignition's rule and lives in exactly
+-- one place, `config/excursion_threshold` on the particle_counter UDT.
+-- docs/00-architecture.md § Derived flags travel with the fact that produced them.
+--
+-- Deliberately the same lookup shape as bes.batch_event, so pattern 7 has one
+-- query idiom for both of its flags rather than two:
+--
+--   SELECT status, occurred_at FROM em.reading
+--    WHERE device_id = ? AND occurred_at <= ?
+--    ORDER BY occurred_at DESC, id DESC
+--    LIMIT 1;
+--
+-- **em.reading must never join the icc26_cdc publication.** Pattern 5's
+-- exclusivity is the point of that publication naming exactly one table; adding
+-- this one would make pattern 6 arrive by CDC as well and quietly turn two
+-- mechanisms into one. `tasks.py health` asserts the membership.
+CREATE SCHEMA IF NOT EXISTS em AUTHORIZATION icc26;
+
+CREATE TABLE em.reading (
+    id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    device_id       text NOT NULL,             -- 'particle-counter-01', the topic form
+    -- The vendor's own uuid for the analysis. It is the dedupe key rather than
+    -- `sequence_number`, and that is a correction from measurement, not a
+    -- preference: sequence numbers restart at 1 when the instrument restarts, so
+    -- keying on them makes every reading of a fresh run collide with the
+    -- previous run's rows and vanish in silence -- exactly the failure the
+    -- stale-cursor demo is supposed to RECOVER from.
+    analysis_id     text NOT NULL,
+    sequence_number bigint NOT NULL,           -- the instrument's own counter
+    -- The operator's sample point, set on the instrument's touchscreen and
+    -- carried in the vendor record's `deviceName` -- that record has no location
+    -- field, and this is the overload, named rather than hidden.
+    location        text,
+    operator        text,
+    status          text NOT NULL,             -- 'normal' | 'excursion' -- OURS
+    -- The volume actually drawn. A raw count means something only against this,
+    -- so it travels: a consumer can normalise to /m3 even though we did not.
+    total_volume_l  numeric(10,3),
+    channels        jsonb NOT NULL,            -- [{"size_um":0.5,"count":842}, ...]
+    environment     jsonb,                     -- flow / temperature / humidity averages
+    occurred_at     timestamptz NOT NULL,      -- completedAt, the instrument's clock
+    ingested_at     timestamptz NOT NULL DEFAULT now(),
+    -- The dedupe guard, enforced. `metone_poll` also skips anything at or below
+    -- its last_sequence watermark, but a restarted gateway replaying a page must
+    -- not be able to double-insert. An insert that affects no rows is how the
+    -- poll knows not to publish the analysis a second time.
+    UNIQUE (device_id, analysis_id)
+);
+
+-- occurred_at is the INSTRUMENT's clock; ingested_at is when the poll found out.
+-- The difference between those two columns is the detection gap, per row:
+--
+--   SELECT occurred_at, ingested_at, ingested_at - occurred_at AS detection_lag,
+--          status FROM em.reading ORDER BY id DESC LIMIT 10;
+CREATE INDEX ix_em_reading_lookup ON em.reading (device_id, occurred_at DESC, id DESC);
+
 -- ── Grants ───────────────────────────────────────────────────────────────────
-GRANT USAGE ON SCHEMA lims, bes, plant TO icc26;
-GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA lims, bes, plant TO icc26;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA lims, bes, plant TO icc26;
+GRANT USAGE ON SCHEMA lims, bes, plant, em TO icc26;
+GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA lims, bes, plant, em TO icc26;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA lims, bes, plant, em TO icc26;
 
 -- Debezium needs to read the tables it decodes, and to own a publication.
+-- `em` is deliberately NOT granted here: the cdc role has no business reading
+-- pattern 6's store, and a role that cannot SELECT it cannot accidentally end up
+-- tailing it. See the em.reading comment above.
 GRANT USAGE  ON SCHEMA lims, bes, plant TO cdc;
 GRANT SELECT ON ALL TABLES IN SCHEMA lims, bes, plant TO cdc;
 ALTER DEFAULT PRIVILEGES IN SCHEMA lims, bes, plant GRANT SELECT ON TABLES TO cdc;

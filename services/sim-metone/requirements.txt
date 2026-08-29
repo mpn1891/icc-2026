@@ -1,0 +1,6 @@
+# All four have manylinux or pure-python wheels, so nothing compiles here and
+# nothing needs a toolchain on a conference network. Same rule as services/lims.
+ariadne>=0.23,<0.27
+uvicorn[standard]>=0.30,<1
+PyJWT>=2.8,<3
+cryptography>=42,<46

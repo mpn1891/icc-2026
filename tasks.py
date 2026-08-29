@@ -1335,6 +1335,33 @@ def task_health():
     elif rc == 0:
         warn("debezium  no replication slot yet - it is created on first connect")
 
+    # Pattern 6. The panel answering is liveness; a NON-EMPTY BUFFER is the
+    # thing that actually matters, because SEED_SAMPLES is 0 and nothing exists
+    # until somebody presses Start on the touchscreen. "Press Start" is a
+    # pre-show step that can be forgotten, and the symptom of forgetting it is a
+    # poll that runs perfectly and publishes nothing - indistinguishable from
+    # the stale-cursor failure unless you look here.
+    metone_port = env_value(env, "METONE_PANEL_PORT", "8089")
+    status, body = http("http://localhost:%s/api/state" % metone_port, timeout=8)
+    if status and 200 <= status < 300:
+        try:
+            state = json.loads(body)
+        except Exception:
+            state = {}
+        if state.get("buffer_count"):
+            ok("sim-metone %s, %s record(s) buffered, room %s"
+               % ("SAMPLING" if state.get("running") else "STOPPED",
+                  state.get("buffer_count"), state.get("room")))
+        elif state.get("running"):
+            warn("sim-metone running but the buffer is empty - the first "
+                 "analysis lands after %ss" % state.get("duration_s"))
+        else:
+            warn("sim-metone IDLE with an empty buffer - press Start on :%s, or "
+                 "pattern 6 has nothing to poll" % metone_port)
+    else:
+        warn("sim-metone not responding on :%s - pattern 6's topic will be silent"
+             % metone_port)
+
     print("")
     if healthy:
         ok("Step-1 stack looks healthy")
