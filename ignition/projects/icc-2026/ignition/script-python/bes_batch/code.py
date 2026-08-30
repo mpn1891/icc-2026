@@ -10,8 +10,9 @@ the pattern is gone.
 
 **How it fires.** A `valueChanged` script on `bioreactor/batch_data/manual_advance`
 (tag-type-definition/default/udts.json) calls `advance()` on the rising edge.
-Somebody types a batch_id in Tag Explorer and clicks the boolean; the reactor
-steps IDLE -> CIP -> SIP -> INOC -> GROWTH -> HARVEST -> IDLE. Auto-cycling on a
+Somebody clicks the boolean and the reactor steps IDLE -> CIP -> SIP -> INOC ->
+GROWTH -> HARVEST -> IDLE. The batch_id is minted on the first advance out of
+IDLE and cleared on batch_end, so nobody types one -- see `_mint_batch_id`. Auto-cycling on a
 dwell was the earlier design and was dropped 2026-08-26: manual is deterministic
 on stage, which is what parking the reactor in GROWTH before badging the valve
 requires.
@@ -100,6 +101,29 @@ def _equipment_id(base):
     return parts[-2]
 
 
+def _mint_batch_id(equipment_id):
+    """`B-20260830-01` -- the batch this click is starting.
+
+    Minted rather than typed. A hand-typed id is how this stack ended up with
+    four conventions live at once (`12345` in bes.batch_event, `B-2026-0142` and
+    `BR-2026-014` in lims.sample, blank on every sample pattern 1 mints), and a
+    batch identity that a person can typo is not one a GxP record should carry.
+    The shape follows the sample convention -- `S-20260830-0183` -- so the two
+    read as one system.
+
+    The suffix counts today's distinct batch ids on this reactor. Deleting rows
+    mid-day could collide; nothing in the demo does that, and a collision is
+    visible rather than silent because both batches share the id on screen.
+    """
+    prefix = "B-" + system.date.format(system.date.now(), "yyyyMMdd") + "-"
+    rows = system.db.runPrepQuery(
+        "SELECT count(DISTINCT batch_id) FROM bes.batch_event "
+        "WHERE equipment_id = ? AND batch_id LIKE ?",
+        [equipment_id, prefix + "%"], database=DATASOURCE)
+    used = int(rows[0][0]) if rows else 0
+    return "%s%02d" % (prefix, used + 1)
+
+
 def advance(base):
     """One manual operation advance. `base` is the batch_data folder path.
 
@@ -118,12 +142,7 @@ def advance(base):
     batch_id = values[0].value
     current = values[1].value
 
-    if batch_id is None or not str(batch_id).strip():
-        logger.warnf("advance refused at %s: no batch_id set", base)
-        system.tag.writeBlocking([flag_tag], [False])
-        return
-
-    batch_id = str(batch_id).strip()
+    # equipment_id first: the mint below keys its counter on it.
     equipment_id = _equipment_id(base)
     if not equipment_id:
         logger.warnf("advance refused at %s: cannot derive equipment_id", base)
@@ -131,6 +150,23 @@ def advance(base):
         return
 
     current = str(current) if current is not None else IDLE
+
+    minted = False
+    if batch_id is None or not str(batch_id).strip():
+        if current in SEQUENCE:
+            # Mid-batch with no id is not something to paper over. The rows
+            # already written carry an id a freshly minted one would not match,
+            # and silently starting a second batch id inside one batch is worse
+            # than refusing the click.
+            logger.warnf("advance refused at %s: mid-batch (%s) with no batch_id",
+                         base, current)
+            system.tag.writeBlocking([flag_tag], [False])
+            return
+        batch_id = _mint_batch_id(equipment_id)
+        minted = True
+    else:
+        batch_id = str(batch_id).strip()
+
     next_operation = _next_operation(current)
 
     # One instant for the whole transition. Both rows carry it.
@@ -146,7 +182,16 @@ def advance(base):
         rows.append(("operation_end", current, False))
 
     if next_operation is None:
-        rows.append(("batch_end", None, False))
+        # IDLE, not NULL. This row shares occurred_at with the operation_end
+        # above and takes the higher id, so it wins pattern 7's
+        # `ORDER BY occurred_at DESC, id DESC` tie-break -- and a sample drawn
+        # in the gap before the next batch resolved to an EMPTY operation.
+        # An empty string is not an answer a GxP document can carry. IDLE is
+        # what the reactor is actually in once the batch ends, and it is what
+        # the operation tag reads at that moment, so the table now agrees with
+        # the tag instead of contradicting it. Decided 2026-08-30 with 07 as
+        # the consumer that forced the call.
+        rows.append(("batch_end", IDLE, False))
     else:
         rows.append(("operation_start", next_operation, next_operation in QUALIFIED))
 
@@ -179,9 +224,18 @@ def advance(base):
             except Exception:
                 pass
 
-    # Only now. The record exists; the tag may follow it.
+    # Only now. The record exists; the tags may follow it.
     new_operation = next_operation if next_operation is not None else IDLE
-    system.tag.writeBlocking([operation_tag, flag_tag], [new_operation, False])
+    if next_operation is None:
+        # Batch over: clear the id so the next advance mints a fresh one rather
+        # than silently reusing this batch's.
+        system.tag.writeBlocking([operation_tag, flag_tag, batch_tag],
+                                 [new_operation, False, ""])
+    elif minted:
+        system.tag.writeBlocking([operation_tag, flag_tag, batch_tag],
+                                 [new_operation, False, batch_id])
+    else:
+        system.tag.writeBlocking([operation_tag, flag_tag], [new_operation, False])
 
     logger.infof("%s %s: %s -> %s (%d rows)",
                  equipment_id, batch_id, current, new_operation, len(rows))
