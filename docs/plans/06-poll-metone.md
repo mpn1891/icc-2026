@@ -14,13 +14,16 @@
 > in the same evening once the Gateway UI had been used to learn its on-disk shape (§ *The
 > timer*); nothing about pattern 6 is driven by hand any more.
 >
-> **One honest caveat on the word *broker*.** The 96-message end-to-end run earlier that day was
-> broker-verified with `mosquitto_sub`. The timer's own verification a few hours later was not:
-> Chariot's 2-hour trial had lapsed, so the MQTT listener was down and Transmission was
-> reconnecting in a loop. `poll()` stored, published to the Event Stream and returned normally
-> throughout — the wire hop is the one thing the timer run did not re-observe, and it is
-> unchanged by the timer. Restart the trial before the next full pass (§ *Trial timers* in
-> [`../00-architecture.md`](../00-architecture.md)).
+> **Broker-verified twice**: by hand for 96 analyses, and again on the timer's own clock once
+> Chariot's trial was restarted — five consecutive polls, three messages each, `mechanism=poll`,
+> sequence numbers strictly ascending. That second pass measured something the hand-driven one
+> could not: **the three analyses of a poll do not leave together.** § *Event Stream* has the
+> shape and why it is the stream's `batch` block rather than anything in `poll()`.
+>
+> The trial lapsing mid-session is worth knowing as a symptom: Transmission reconnect-loops,
+> `poll()` stores and returns normally, and the wire goes quiet with nothing in `state/last_error`
+> — a second way to look exactly like the stale-cursor failure. `tasks.py health` names it
+> directly (§ *Trial timers* in [`../00-architecture.md`](../00-architecture.md)).
 >
 > **Three predictions were wrong, and the corrections are inline below rather than quietly
 > applied:**
@@ -613,8 +616,46 @@ and the name. The `ignition.gatewayEvent` source and the Transmission handler ar
   "transform": { "enabled": true, "userCode": "\treturn metone_poll.build_document(event.data)\n" }
 ```
 
-The poll script passes a plain dict and the transform serialises it, so the envelope is built in
-one place a person can read, not in Event Stream user code.
+**Corrected: the poll passes a JSON string, not a dict.** This section originally said it "passes
+a plain dict and the transform serialises it"; `publishEvent` coerces its data argument to String
+and raises `TypeError` on a dict, so `poll()` sends `system.util.jsonEncode(record)` and
+`build_document` decodes it. The envelope is still built in one place a person can read, rather
+than in Event Stream user code — only the wire format between the two changed.
+
+### What one poll actually looks like on the wire
+
+Three analyses per poll do **not** leave together, and the shape is the copied stream's `batch`
+block rather than anything in `poll()`:
+
+```json
+  "batch": { "debounceMs": 250, "maxWaitMs": 1000, "maxQueueSize": 0, "overflow": "DROP_OLDEST" }
+```
+
+`poll()` publishes synchronously inside its oldest-first loop, ~5 ms apart. The debounce is
+**leading-edge**: the first event goes straight through and the rest of the 250 ms window is
+coalesced and flushed as a group. Measured across five consecutive polls, every one identical:
+
+| | published by `poll()` | on the wire |
+|---|---|---|
+| first analysis | 00:52:08.970 | 00:52:08.977 — **+8 ms** |
+| second | 00:52:08.975 | 00:52:09.238 — **+263 ms** |
+| third | 00:52:08.980 | 00:52:09.239 — **+260 ms** |
+
+So each poll puts **one message on the wire, then a doublet a quarter-second behind it**, total
+spread ~270 ms inside a 30 s interval. **Order is preserved end to end** — oldest first, the newest
+analysis always last — verified over 21 captured messages, strictly ascending within every
+capture, no duplicate.
+
+Two consequences worth knowing:
+
+- **The wire shows a burst of three every 30 s, not one message every 10 s.** That is the better
+  visual for the detection gap anyway: the instrument samples on its own clock and the backbone
+  learns in clumps.
+- **`maxQueueSize: 0` is unbounded, so `overflow: DROP_OLDEST` never fires.** Setting it to a
+  finite number would silently drop messages for rows already in `em.reading` — breaking the
+  one-row-one-message parity CP5 asserts, with nothing logging it. `maxWaitMs: 1000` is the cap
+  that matters during a backlog drain, where events never stop arriving for 250 ms and the stream
+  flushes groups every ~1 s instead of waiting for quiet.
 
 ## Checkpoints
 
@@ -628,7 +669,7 @@ the gateway timer, which went in that evening.
 | **2** | The cursor walk: `hasMore true` drains, an empty page returns the same cursor, a restarted sim reproduces the stale-cursor silence | **Pass, all three.** 80 records at `limit=50` drained over 2 pages; an empty page returned the identical cursor; after `docker restart icc26-sim-metone` the poll returned **0 published, `state/last_error` empty, nothing on the wire** — working perfectly and blind. Clearing **only** `state/cursor` recovered it |
 | **3** | Memory tag value persistence survives `docker restart icc26-ignition` | **Pass — and it is a tag-*provider* setting, not a per-tag one.** Every tag in the UDT came back with its value and Good quality across the restart, watermark included. Nothing needs setting per tag; `tag-provider/default/config.json` already carries `"valuePersistence": "Database"`. The design holds, but it rests on a provider-wide default that nothing in the UDT files declares |
 | **4** | JWT expiry → 401 → re-auth → the poll continues without a gap | **Pass.** 315 s after the previous poll (TTL 300 s) the cached token was rejected, `metone_poll` logged *"token expired; re-authenticating"*, and the same poll published all **32** analyses that had accumulated. No gap, no lost record — and incidentally the stall demo, unplanned |
-| **5** | One analysis → one `em.reading` row → one MQTT message. Never two, never zero | **Pass.** 96 analyses over the session → 96 rows → 96 messages on `mosquitto_sub`, with no duplicate `analysis_id`. Zero happens exactly once, deliberately: an insert that affects no rows suppresses the publish |
+| **5** | One analysis → one `em.reading` row → one MQTT message. Never two, never zero | **Pass, by hand and again on the timer.** 96 analyses over the build session → 96 rows → 96 messages on `mosquitto_sub`, no duplicate `analysis_id`. Re-run against the timer once the trial was restarted: sequences 703–711 gave **9 rows and 9 messages**, and 21 captured messages across five polls were strictly ascending with no duplicate. Zero happens exactly once, deliberately: an insert that affects no rows suppresses the publish |
 | **6** | `status` polarity | **Pass, both directions.** Dirty → sequence 84 published `excursion` at 3926 counts; clean → 87 published `normal` at 118. The flip is immediate rather than gradual because the simulator generates counts at completion instead of integrating over the sampling window — a simplification worth knowing before somebody reads meaning into a clean boundary |
 | **7** | `occurred_at` vs `ingested_at` lag matches the configured cadence | **Pass, and tighter than the ≤ ~40 s the claim needs.** Against the real 30 s timer the lag is a **7.2 / 17.2 / 27.2 s sawtooth**, three analyses per poll, repeating exactly — the 10 s sample duration stacked three-deep under one 30 s poll. **Steady-state maximum 27.2 s**, so the stage sentence *"on the backbone within 40 seconds of the air being dirty, worst case"* is true with room to spare. Poll starts were 30.03 / 30.04 / 30.04 s apart, the drift being the poll's own runtime under `fixedDelay`. The first poll after a 10-hour gap is the other end of the same measurement: it drained the sim's whole 500-record buffer over 10 pages in ~4.4 s, oldest record lagging **9.6 hours**, and the next poll still started 30 s after that one *finished* |
 | **8** | `em.reading` is **not** in `icc26_cdc`; `tasks.py health` still green | **Pass.** The publication still names `bes.batch_event` only, before and after the migration. `migrate-07` carries a guard that drops `em.reading` from the publication if it is ever found there, and the `cdc` role is deliberately not granted `SELECT` on the `em` schema — a role that cannot read it cannot tail it |
@@ -659,8 +700,10 @@ Verified in that order on 2026-08-29: 96 analyses, 96 rows, 96 messages, `status
 transitions — with the poll driven by hand, because the timer did not exist yet. It does now, and
 steps 2 and 3 were re-run against it the same evening: 515 more analyses arrived on the timer's
 own clock, `em.reading` reached **664 rows with 664 distinct `analysis_id`s**, and the lag settled
-into the sawtooth in CP7. Step 2's *"one message per analysis"* half was **not** re-observed —
-Chariot's trial had lapsed and the MQTT listener was down. Start the trial first.
+into the sawtooth in CP7. Step 2's *"one message per analysis"* half was re-observed too, once
+Chariot's trial was restarted: five consecutive polls, three messages each, in the burst shape
+§ *Event Stream* describes. **Start the trial before step 0** — a lapsed one leaves the poll
+storing happily and the wire silent, which reads exactly like the stale-cursor failure.
 
 Proving the server before Ignition saw it was worth the hour it took — pattern 3's step 5,
 applied. A throwaway Python client walked the cursor, forced the 401s and reproduced the
@@ -779,6 +822,13 @@ unspecified store left in its way.
    gesture at the cost of a second cadence concept and a poll that lies about its own name.
    Recorded rather than done: 30 s hardcoded is what the demo needs, and a mismatch that is
    written down in three places is not the kind that bites.
+10. **New 2026-08-29: a lapsed Chariot trial is a second way to look like the stale-cursor
+    failure.** Transmission reconnect-loops, `poll()` stores and returns normally, `state/cursor`
+    advances, `state/last_error` stays empty, and the wire is silent. The store and the wire
+    disagree, which the stale cursor never does — so `SELECT max(ingested_at) FROM em.reading`
+    tells the two apart in one query, and `tasks.py health` names it outright. Worth a sentence in
+    the talk track only if it happens on stage; worth knowing here because it happened during this
+    build and briefly looked like a pattern-6 regression.
 
 ## Progress log
 
@@ -788,4 +838,4 @@ unspecified store left in its way.
 | 2026-08-25 | Moved from `upstream/br-201` to `qc/analyzers`, so tag path and topic stay identical |
 | 2026-08-29 | Vendor API arrived as [`../reference/particle_counter_sim.md`](../reference/particle_counter_sim.md). Eight decisions taken and this spec written. **Nothing built** |
 | 2026-08-29 | **Built and broker-verified, same day, everything but the timer.** `services/sim-metone` (GraphQL over HTTPS + the :8089 touchscreen), the `em` schema and `migrate-07`, the `particle_counter` UDT and instance, `metone_poll`, and Event Stream `06_poll/metone-result`. 96 analyses → 96 `em.reading` rows → 96 messages on `icc26/site1/qc/analyzers/particle-counter-01/result`, `status` correct on both polarities, the stale-cursor trap reproduced twice and recovered by clearing one tag, and a real token expiry drove a re-auth mid-poll. `tasks.py health` gained the buffer check the spec asked for. **Three predictions in this document were wrong** — `publishEvent` refuses a dict, value persistence is a provider setting, and `sequence_number` is not a usable dedupe key — and all three are corrected inline above rather than quietly. The one predicted to cost an afternoon, `httpClient` against a self-signed cert, cost nothing. Four durable Ignition 8.3.8 facts went to [`../00-architecture.md`](../00-architecture.md) instead of here, because 07 will want them |
-| 2026-08-29 | **The gateway timer, and pattern 6 goes hands-off.** `ignition/timer/06-poll/` — schema learned from an empty resource created in the Gateway UI, then body and cadence written as files and applied with `scan`, `lastModificationSignature` deleted and not written back. First poll drained a 10-hour, 500-record backlog over 10 pages; steady state is 3 analyses per 30 s with a 7.2 / 17.2 / 27.2 s lag sawtooth. **CP1 and CP7 close, so all ten checkpoints are closed.** Found while closing them: `config/poll_interval_s` is decorative and cannot be made otherwise (open item 9), so the stall demo moved to `config/enabled` and three files that claimed the tag drives the cadence were corrected. The MQTT hop was not re-observed — Chariot's trial had lapsed |
+| 2026-08-29 | **The gateway timer, and pattern 6 goes hands-off.** `ignition/timer/06-poll/` — schema learned from an empty resource created in the Gateway UI, then body and cadence written as files and applied with `scan`, `lastModificationSignature` deleted and not written back. First poll drained a 10-hour, 500-record backlog over 10 pages; steady state is 3 analyses per 30 s with a 7.2 / 17.2 / 27.2 s lag sawtooth. **CP1 and CP7 close, so all ten checkpoints are closed.** Found while closing them: `config/poll_interval_s` is decorative and cannot be made otherwise (open item 9), so the stall demo moved to `config/enabled` and three files that claimed the tag drives the cadence were corrected. The MQTT hop was re-observed after the trial was restarted, and it measured something the hand-driven run could not: **the three analyses of a poll do not leave the broker together.** The Event Stream's leading-edge 250 ms debounce puts the first on the wire in ~8 ms and the other two ~260 ms later, order preserved, newest last — five consecutive polls, identical every time. § *Event Stream* |
