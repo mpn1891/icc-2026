@@ -534,12 +534,24 @@ class Store:
                         sample_completion, open_duration_s, cycle_result,
                         analyst, verified_at"""
 
-    def approve(self, sample_id: str, analyst: str) -> dict:
+    def _review(self, sample_id: str, analyst: str,
+                status: str, disposition: str) -> dict:
         """Flip the entry AND write the outbox row, in one transaction.
 
         If the process dies between them, a sample is released with nobody
         obliged to deliver it -- which is the exact failure this pattern exists
         to argue about, so it must not be possible to cause it by accident here.
+
+        Approve and reject differ only in the status they write and the
+        disposition they carry, so they share this body rather than drifting
+        apart in two copies. Both publish: a rejection is a disposition with
+        consequence, and it must not be the one outcome that leaves no trace on
+        the backbone.
+
+        The `status = 'received'` guard is what keeps the outbox honest. The
+        row is only built after the UPDATE returns one, so an outbox row can
+        never exist for an entry that was not actually transitioned -- a replay
+        of either verb finds nothing to update and returns before the INSERT.
         """
         analyst = (analyst or "").strip() or self.cfg.default_analyst
         with self.connect() as conn:
@@ -547,15 +559,16 @@ class Store:
                 row = conn.execute(
                     """
                     UPDATE lims.sample
-                    SET status = 'verified', verified_at = now(), analyst = %%s
+                    SET status = %%s, verified_at = now(), analyst = %%s
                     WHERE sample_id = %%s AND status = 'received'
                     RETURNING %s
                     """ % self._ENTRY_COLUMNS,
-                    (analyst, sample_id),
+                    (status, analyst, sample_id),
                 ).fetchone()
                 if row is None:
                     return self._not_reviewable(conn, sample_id)
-                payload = _build_envelope(row, self._result_rows(conn, sample_id))
+                payload = _build_envelope(
+                    row, self._result_rows(conn, sample_id), disposition)
                 inserted = conn.execute(
                     """
                     INSERT INTO lims.webhook_delivery (sample_id, payload)
@@ -576,26 +589,15 @@ class Store:
                     "UPDATE lims.webhook_delivery SET payload = %s WHERE id = %s",
                     (Jsonb(payload), inserted[0]),
                 )
-        LOG.info("approved %s by %s -- outbox id %s", sample_id, analyst, inserted[0])
+        LOG.info("%s %s by %s -- disposition %s, outbox id %s",
+                 status, sample_id, analyst, disposition, inserted[0])
         return {"ok": True, "sample_id": sample_id, "delivery_id": inserted[0]}
 
+    def approve(self, sample_id: str, analyst: str) -> dict:
+        return self._review(sample_id, analyst, "verified", "pass")
+
     def reject(self, sample_id: str, analyst: str) -> dict:
-        analyst = (analyst or "").strip() or self.cfg.default_analyst
-        with self.connect() as conn:
-            with conn.transaction():
-                row = conn.execute(
-                    """
-                    UPDATE lims.sample
-                    SET status = 'rejected', verified_at = now(), analyst = %%s
-                    WHERE sample_id = %%s AND status = 'received'
-                    RETURNING %s
-                    """ % self._ENTRY_COLUMNS,
-                    (analyst, sample_id),
-                ).fetchone()
-                if row is None:
-                    return self._not_reviewable(conn, sample_id)
-        LOG.info("rejected %s by %s -- nothing published", sample_id, analyst)
-        return {"ok": True, "sample_id": sample_id, "published": False}
+        return self._review(sample_id, analyst, "rejected", "fail")
 
     def _result_rows(self, conn, sample_id: str) -> list:
         return conn.execute(
@@ -751,7 +753,7 @@ class Store:
         return {"ok": True, "sample_id": sample_id, "batch_id": self.cfg.default_batch_id}
 
 
-def _build_envelope(entry: tuple, results: list) -> dict:
+def _build_envelope(entry: tuple, results: list, disposition: str) -> dict:
     """One message per sample, carrying both halves of the record.
 
     `ts` is the acquisition instant, not the approval instant -- the event being
@@ -766,6 +768,10 @@ def _build_envelope(entry: tuple, results: list) -> dict:
     cycle ended, beside the numbers a person just signed for.
 
     `seq` is filled in with the outbox id after INSERT.
+
+    `values.disposition` is the analyst's verdict -- `pass` or `fail`. Both
+    outcomes publish, so nothing downstream has to infer a rejection from
+    silence. Pattern 7 fires on the review either way.
     """
     (sample_id, batch_id, badge_id, badge_holder, sample_start,
      sample_completion, open_duration_s, cycle_result, analyst, _verified_at) = entry
@@ -784,6 +790,7 @@ def _build_envelope(entry: tuple, results: list) -> dict:
             "batch_id": batch_id,
             "collected_at": _iso(collected_at) if collected_at else None,
             "analyst": analyst,
+            "disposition": disposition,
             "collection": {
                 "badge_id": badge_id,
                 "badge_holder": badge_holder,
