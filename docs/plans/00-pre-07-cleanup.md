@@ -331,14 +331,24 @@ talk tracks for patterns that already work are worth more than a seventh pattern
 
 | CP | Check | State |
 |---|---|---|
-| **1** | `docker restart icc26-debezium` **twice**; healthy both times, cert imported both times | pending |
-| **2** | A `manual_advance` click reaches `.../br-201/batch/event` on the wire, `qualified_window` correct on both polarities | pending |
-| **3** | Reject publishes; both outcomes carry `values.disposition`; 04's existing checkpoints still pass | pending |
-| **4** | The Event Stream source dropdown is read, and 07's trigger route is chosen with a reason | pending |
-| **5** | `batch_id`, `batch_end` and `plant.equipment` each have a written decision | pending |
-| **6** | `python tasks.py health` fully green — no WARN lines | pending |
-| **7** | Talk tracks exist for 03, 05 and 06; 04's is rewritten | pending |
-| **8** | `docs/plans/07-*.md` written, with items 4, 5, 6 and 7 recorded as decisions | pending |
+| **1** | `docker restart icc26-debezium` **twice**; healthy both times, cert imported both times | **closed** 08-30 — 3 imports, 0 failures, slot active |
+| **2** | A `manual_advance` click reaches `.../br-201/batch/event` on the wire, `qualified_window` correct on both polarities | **closed** 08-30 — seq 35–41 captured live, `qw=True` on `operation_start GROWTH` |
+| **3** | Reject publishes; both outcomes carry `values.disposition`; 04's existing checkpoints still pass | **closed** 08-30 — seq 20 `pass`, seq 21 `fail`, 409 replay holds both verbs |
+| **4** | The Event Stream source dropdown is read, and 07's trigger route is chosen with a reason | **closed** 08-30 — MQTT Engine ships `EventStreamMqttSource`; settled from the `.modl`, dropdown unread |
+| **5** | `batch_id`, `batch_end` and `plant.equipment` each have a written decision | **closed** 08-30 — all three in [`07-sample-chain.md`](07-sample-chain.md) |
+| **6** | `python tasks.py health` fully green — no WARN lines | **closed** 08-30 |
+| **7** | Talk tracks exist for 03, 05 and 06; 04's is rewritten | **pending** — the largest remaining lump |
+| **8** | `docs/plans/07-*.md` written, with items 4, 5, 6 and 7 recorded as decisions | **closed** 08-30 — [`07-sample-chain.md`](07-sample-chain.md) |
+
+**Items 1, 3, 5 and 6 were also built, not just decided.** `batch_end` now carries `IDLE`,
+`batch_id` is minted rather than typed, `lims.sample` has an `equipment_id` the review message
+carries, and the bioreactor UDT has `asset_data/equipment_identifier`. Five commits,
+`0194226` → `19fb732`. The one thing the old plan got wrong: **`pg_db` is in use** — the
+historian provider and store-and-forward are both bound to it — so it stays.
+
+**Item 9's licence finding, which this file predates:** Chariot's trial is **two hours**, the
+broker refuses to start when it lapses, and the container reports `healthy` throughout. It is now
+the largest stage risk in the stack.
 
 ## What this deliberately does not do
 
