@@ -79,9 +79,11 @@ MQTTCommon   EventStreamMqttSourceConfig, EventStreamTopicFilterValidator,
 stays a genuine backbone subscriber** — which [`04-lims-webhook.md`](04-lims-webhook.md) leans on
 explicitly (*"this pattern and pattern 7 are the only two there are"*). That claim survives.
 
-> **Still worth one glance.** This was read out of class names, not out of a running registry.
+> ~~**Still worth one glance.** This was read out of class names, not out of a running registry.
 > The first time somebody opens Event Streams → New, confirm an MQTT source type is in the
-> dropdown. If it is not, fall back to route 1 in `00-pre-07-cleanup.md` § 4.
+> dropdown.~~ **Settled 2026-08-30, and the dropdown was never opened.** The stream was written
+> to disk with `type: com.cirruslink.mqtt.engine.gateway.mqtt.source`, applied with `scan`, and
+> the gateway logged its own subscription. Route 1 is not needed. § *As built*.
 
 ### 2. Batch identity comes from `bes.batch_event`, never from the review message
 
@@ -296,20 +298,117 @@ reactor past HARVEST will change that; put it back in GROWTH before demoing.
 
 ---
 
+## As built — 2026-08-30
+
+Built to this file in one pass, same evening it was written. Files:
+[`sample_chain/code.py`](../../ignition/projects/icc-2026/ignition/script-python/sample_chain/code.py),
+[`07_chain/lims-review/config.json`](../../ignition/projects/icc-2026/com.inductiveautomation.eventstream/event-streams/07_chain/lims-review/config.json),
+and this file's sibling talk track. Applied with `python tasks.py scan` — no gateway restart, no
+Designer session. **No table, no ACL, no datasource, and nothing in patterns 1–6 was touched.**
+
+### The MQTT Engine source, as it actually configures
+
+Route 0 held. The dropdown was still never opened — the gateway settled it out loud instead:
+
+```
+[c.c.m.e.g.e.EventStreamMqttSource] The '07_chain/lims-review' stream subscribed
+    on topic: icc26/site1/qc/lims/sample-result with QoS: 1
+```
+
+Four facts worth keeping, all read off the 5.0.4 jars and then confirmed running:
+
+| | |
+|---|---|
+| source `type` | `com.cirruslink.mqtt.engine.gateway.mqtt.source` (Sparkplug's is `…gateway.sparkplug.source`) |
+| source `config` | exactly `topic` and `qos`. Defaults `EventStreams/#` and `0` |
+| what the transform is handed | the MQTT payload as a **`byte[]`** — `EngineCallback` builds `EventPayload.builder(mqttMessage.getPayload())` with the topic as metadata |
+| so `sourceEncoder` | `ignition.string` / UTF-8, unchanged from the template. `StringEncoder` takes `byte[]` and returns a String, so `build()` receives text and decodes it exactly as `metone_poll.build_document` does |
+
+**The subscription does not disturb MQTT Engine's tag ingest.** Engine's custom namespace is
+`icc26/site1/upstream/br-201/sample-valve-01/#` only, so the review topic was never in it; the
+event stream's subscription is the only one on that topic.
+
+> **Not measured: what happens to the subscription when the broker drops.**
+> `EventStreamMqttSource.onStartup` subscribes each **connected** `CirrusClient` and there is no
+> visible re-subscribe hook on it. Given the Chariot trial lapses every two hours, this is worth
+> settling before the conference: bounce the broker, then approve a sample and see whether a
+> composite still lands. If it does not, disabling and re-enabling the stream is the recovery.
+
+### Five shapes decided at the keyboard
+
+The spec fixed the document; these are the places it left a choice, recorded here so the next
+reader does not have to re-derive them from the code.
+
+1. **`seq` carries the review's outbox delivery id** (`23`, `24`, `25` on the three live runs) — not the
+   literal `0` the document sketch shows, which was copied from the LIMS's own pre-INSERT
+   placeholder. 07 mints nothing: it holds no table, and an in-memory counter restarts at 1 on
+   every gateway restart and tells a subscriber nothing — the reason `bes_cdc` gives for using
+   its row id. The review and its composite sharing one `seq` is the statement that this document
+   *is* that review, answered. **One line to change if that reads wrong.**
+2. **The reasons are named siblings**, `batch_context_reason` and `environment_reason`, always
+   present and `null` on the success path. "A `null` block with a reason beside it, never a
+   missing key" is easiest to consume if the *shape* never moves either.
+3. **`age_s` is a distance, with `nearest_side` beside it** (`"before"` / `"after"`), rather than
+   one signed number whose sign quietly changes what it means. Nearest-either-side makes the side
+   real information; overloading the sign of the age field would hide it.
+4. **`em.reading.environment` lands as `environment.conditions`** — flow, temperature, humidity,
+   untouched. A key named after its own parent tells a reader nothing.
+5. **`equipment_identifier` is a tag read**, `asset_data/equipment_identifier` off the bioreactor
+   UDT, per decision 4 — not a join, and `null` rather than fatal if it is unreadable.
+
+### The two probes, and what they left behind
+
+CP4 and the null-with-reason path were closed with two **transient probe messages** published
+straight onto `icc26/site1/qc/lims/sample-result` as `ign-transmission`, ids `S-CP4-PROBE` and
+`S-NULLPATH-PROBE`. They exist because the reactor could not be advanced from a shell and because
+no real sample was ever drawn in the IDLE window. **They wrote nothing.** 07 has no table, the
+composites went out unretained, and neither id is in `lims.sample`, `bes.batch_event` or
+`em.reading` — the only trace is two gateway log lines. Do not go looking for rows.
+
 ## Checkpoints
 
 | CP | Check | State |
 |---|---|---|
-| **1** | An MQTT source type exists in the Event Stream source dropdown | pending |
-| **2** | Approving a sample lands one message on `icc26/site1/qc/sample-chain` | pending |
-| **3** | `batch_context.operation` is `GROWTH` and `qualified_window` is `true` for a sample drawn now | pending |
-| **4** | Advance past HARVEST, draw again: operation reads `IDLE`, `qualified_window` false, and **nothing is empty** | pending |
-| **5** | `environment.age_s` is present and under 30 s with the counter sampling | pending |
-| **6** | Stop the MET ONE sim, draw again: the block is `null` with a reason, and the message still publishes | pending |
-| **7** | A **rejected** sample produces a composite with `disposition: "fail"` | pending |
-| **8** | `docs/talk-tracks/07-sample-chain.md` exists | pending |
+| **1** | An MQTT source type exists in the Event Stream source dropdown | **closed** 08-30 — better than the dropdown: the gateway logged `The '07_chain/lims-review' stream subscribed on topic: icc26/site1/qc/lims/sample-result with QoS: 1`. Type id `com.cirruslink.mqtt.engine.gateway.mqtt.source`, config keys `topic` + `qos` |
+| **2** | Approving a sample lands one message on `icc26/site1/qc/sample-chain` | **closed** 08-30 — `S-20260830-0085`, one message, watched live as `observer` |
+| **3** | `batch_context.operation` is `GROWTH` and `qualified_window` is `true` for a sample drawn now | **closed** 08-30 — same message, `B-20260830-02`, `as_of` 22:55:37.922Z |
+| **4** | Advance past HARVEST, draw again: operation reads `IDLE`, `qualified_window` false, and **nothing is empty** | **closed** 08-30, **by a different route** — the reactor was *not* advanced, because the stack is parked in GROWTH on purpose. Probed instead with a sample instant inside the real IDLE window rows 34→35 already hold: `operation: "IDLE"`, `qualified_window: false`, `event_type: "batch_end"`, `batch_id: "B-20260830-01"`, no empty value anywhere. That instant also lands after rows 33 and 34, which **share** `22:50:19.034Z` — so this closes the `id DESC` tie-break too |
+| **5** | `environment.age_s` is present and under 30 s with the counter sampling | **closed** 08-30 — **2.5 s** on both live approvals with the counter sampling (`S-20260830-0085`, `S-20260830-0084`), and 1.4 s on the CP4 probe |
+| **6** | Stop the MET ONE sim, draw again: the block is `null` with a reason, and the message still publishes | **closed** 08-30, **and the wording was wrong** — see below |
+| **7** | A **rejected** sample produces a composite with `disposition: "fail"` | **closed** 08-30 — `S-20260830-0084`, rejected, composite published with `disposition: "fail"` |
+| **8** | `docs/talk-tracks/07-sample-chain.md` exists | **closed** 08-30 |
 
 CP4 and CP6 are the two that matter most on stage: **a gap is a finding, and 07 still speaks.**
+
+### CP6, corrected
+
+**Decision 7 and CP6 disagree, and decision 7 wins.** *Nearest either side, no tolerance* means
+07 always answers with the nearest reading it can find, so the `environment` block goes `null`
+**only when `em.reading` holds no row at all for `particle-counter-01`** — which on any database
+that has run for ten minutes it never does. Stopping the simulator does not produce a silence; it
+produces a stale reading with a growing `age_s`, which is the finding, in a field. Measured:
+`icc26-sim-metone` stopped at 23:39:11Z, `S-20260830-0087` drawn at 23:40:55Z and approved four
+minutes later, composite published unchanged with **`age_s: 122.6`, `nearest_side: "before"`** —
+against the 27.2 s pattern 6's timer normally guarantees.
+
+**And note which two instants that age is between.** It is the sample against the reading, not
+*now* against the reading, so it does not climb while the sample sits in review — a sample drawn
+one minute after the counter died reads 60-odd seconds however long the analyst takes. That is
+the right behaviour for a record about a sample, and it is worth saying out loud before somebody
+watches the number fail to move and thinks it is stuck.
+
+Both halves of what CP6 was *for* are closed anyway:
+
+- **07 still speaks with a lookup missing.** Probed with a sample instant that predates the
+  reactor's first batch event: `batch_context: null`,
+  `batch_context_reason: "no bes.batch_event row for br-201 at or before 2026-08-20T12:00:00.000Z"`,
+  every other key present, message published. The null-with-reason machinery is the same code on
+  both blocks.
+- **A stale reading cannot read as current.** The same probe's nearest particle count was
+  **nine days** from its sample instant and said so: `age_s: 786110.5`, `nearest_side: "after"`.
+
+The talk track carries this correction as a boxed note, because it is the beat somebody will try
+on stage and be surprised by.
 
 ---
 
@@ -334,3 +433,13 @@ CP4 and CP6 are the two that matter most on stage: **a gap is a finding, and 07 
 - **`S-EQTEST-001`** is synthetic test data in `lims.sample`, verified, outbox row 22. Delete it.
 - **Three `nonUseCount` tag-provider files** reappear as a diff on every gateway restart. Worth
   gitignoring.
+- **New, from the build: the MQTT source's subscription across a broker drop is unmeasured.**
+  § *As built*. It matters because the Chariot trial lapses on its own, and it is one bounce and
+  one approval to settle.
+
+## Progress log
+
+| Date | |
+|---|---|
+| 2026-08-30 | Spec written, from [`00-pre-07-cleanup.md`](00-pre-07-cleanup.md)'s four closed checkpoints and seven decisions |
+| 2026-08-30 | **Built and broker-verified the same evening. All eight checkpoints closed.** `sample_chain` + Event Stream `07_chain/lims-review`, applied with `scan` — no restart, no Designer, and nothing outside the two new resources changed. Route 0 held and the gateway said so in its own log; the source's type id, config keys and `byte[]` payload are recorded in § *As built* along with five document shapes the spec left open. Two real approvals (`S-20260830-0085` pass, `S-20260830-0084` fail) and two transient probes closed the eight. **One correction to this file:** CP6's wording contradicts decision 7 — nearest-either-side means the environment block is `null` only on an empty `em.reading`, so a stopped MET ONE shows a growing `age_s`, not a silence. Both halves of what CP6 was for are closed anyway. One new open item: the source's re-subscribe behaviour across a broker drop |

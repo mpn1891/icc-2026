@@ -1,0 +1,56 @@
+{
+  "enabled": true,
+  "source": {
+    "type": "com.cirruslink.mqtt.engine.gateway.mqtt.source",
+    "config": {
+      "topic": "icc26/site1/qc/lims/sample-result",
+      "qos": 1
+    }
+  },
+  "sourceEncoder": {
+    "type": "ignition.string",
+    "properties": {
+      "encoding": "UTF-8"
+    }
+  },
+  "handlers": [
+    {
+      "enabled": true,
+      "type": "com.cirruslink.mqtt.transmission.gateway.mqtt.handler",
+      "config": {
+        "serverName": "chariot_broker",
+        "topic": "icc26/site1/qc/sample-chain",
+        "qos": 1,
+        "retained": false
+      },
+      "failureStrategy": {
+        "type": "ABORT",
+        "retryPolicy": null
+      }
+    }
+  ],
+  "batch": {
+    "debounceMs": 250,
+    "maxWaitMs": 1000,
+    "maxQueueSize": 0,
+    "overflow": "DROP_OLDEST"
+  },
+  "filter": {
+    "enabled": true,
+    "userCode": "\treturn bool(event.data)\n"
+  },
+  "transform": {
+    "enabled": true,
+    "userCode": "\treturn sample_chain.build(event.data)\n"
+  },
+  "transformEncoder": {
+    "type": "ignition.string",
+    "properties": {
+      "encoding": "UTF-8"
+    }
+  },
+  "onError": {
+    "enabled": false,
+    "userCode": ""
+  }
+}
