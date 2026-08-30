@@ -47,7 +47,7 @@ Everything else publishes through Ignition. Pattern 7 is not a new inbound trans
 | `sim-valve-spb` | 8086 (config page) | pattern 2 |
 | `lims` | 8000 (review screen) | pattern 4 — built; pass/fail remaining |
 | `debezium` | 8083 | pattern 5 — built 2026-08-26 |
-| `sim-metone` | TBD (HTTP API) | pattern 6 — planned |
+| `sim-metone` | 8443 (GraphQL API), 8089 (operator panel) | pattern 6 — built 2026-08-29 |
 
 `lims` is built: see [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md) and
 [`talk-tracks/04-lims-webhook.md`](talk-tracks/04-lims-webhook.md). Odoo, the AMS stub, the DCS OPC server and a
@@ -147,7 +147,7 @@ icc26/site1/upstream/br-201/sample-valve-01/telemetry  # 1  air supply / enclosu
 icc26/site1/qc/analyzers/novaflex-01/result            # 3  Nova result
 icc26/site1/qc/lims/sample-result                      # 4  review: analyst + pass/fail
 icc26/site1/upstream/br-201/batch/event                # 5  CDC of bes.batch_event
-icc26/site1/qc/analyzers/particle-counter-01/result    # 6  MET ONE analysis (provisional)
+icc26/site1/qc/analyzers/particle-counter-01/result    # 6  MET ONE analysis
 icc26/site1/upstream/br-201/sample-chain/event         # 7  aggregate (provisional)
 
 spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|NDEATH}/SAMPLE-VALVE-02             # 2 — spec-mandated
@@ -193,8 +193,9 @@ Pattern 7 was going to be the first user of the pair (an AMS asking for a vibrat
 one document; it does not address a device. `cmd`, `response` and `ack` stay in the set with
 no user.
 
-The last two topics above are **provisional** — patterns 6 and 7 have no spec yet, and a topic
-is settled when its spec is written. `downstream` and `utilities` still have no user.
+Pattern 7's topic above is still **provisional** — a topic is settled when its spec is
+written, and 07 has none. Pattern 6's is settled: `docs/plans/06-poll-metone.md` was written on
+2026-08-29 and broker-verified the same day. `downstream` and `utilities` still have no user.
 
 **Pattern 6 moved from `upstream/br-201` to `qc/analyzers` on 2026-08-25.** The MET ONE now sits
 in the analyzer path beside the Nova rather than beside the reactor. It is an *instrument that
@@ -689,6 +690,12 @@ uses `IGNITION_API_TOKEN_HTTPS` and validates the gateway certificate; it delibe
 HTTP credential fallback. API keys are machine-local, so each clone must create its own key
 with a security level granted Gateway read/write access.
 
+**A project scan restarts anything with a clock.** Gateway timer scripts are stopped and re-armed
+by the project reload, so one interval is skipped and the cadence re-phases from whenever the
+reload finished — measured on pattern 6's 30 s timer as a 48 s gap and then 30 s spacing again.
+Harmless where the work is idempotent or watermarked, which is why pattern 6 lost nothing; worth
+knowing before reading a post-`scan` gap in a log as a fault.
+
 Fall back to `python tasks.py restart ignition` only when scan is unavailable (no API key yet)
 or when the change is a **container-consumed `.env` secret** — those are process environment
 and scan cannot pick them up.
@@ -1058,6 +1065,52 @@ reminder; this is the detail behind it.
 - Git Bash mangles container paths in `docker exec` (`/Chariot/...` becomes
   `C:/Program Files/Git/Chariot/...`). Prefix `MSYS_NO_PATHCONV=1` and use `//Chariot/...`, or
   just use PowerShell.
+
+### Five Ignition 8.3.8 facts pattern 6 measured
+
+All five were assumptions until 2026-08-29, and two of them cost a build cycle. They belong here
+rather than in one pattern's spec because pattern 7 will want all five.
+
+- **`system.net.httpClient(bypass_cert_validation=True)` is the correct spelling**, and
+  `bypassCertValidation` is accepted too. A wrong name fails loudly —
+  `TypeError: Got an unexpected keyword argument "trust_all_certificates"` — so this is not a
+  silent-failure risk. The gateway logs *"Bypassing certificate validation and hostname
+  verification is highly insecure"* on **every** request through such a client, which is the
+  right amount of noise for a trade that size. A GraphQL `POST` to a self-signed HTTPS endpoint
+  with a `Bearer` header works from gateway scope, and `response.getJson()` decodes the body
+  into Jython dicts and lists (integers arrive as `long`).
+- **`system.eventstream.publishEvent` coerces its data argument to String.** Passing a dict
+  raises `TypeError: publishEvent(): 3rd arg can't be coerced to String`. Pass
+  `system.util.jsonEncode(...)` and have the Event Stream transform decode it. Pattern 3 never
+  hit this because it passes a tag path.
+- **A WebDev python resource executes ONLY its handler function.** Module-level constants and
+  helpers in the same file are not in scope when the handler runs — the first call raises
+  `NameError: global name '_helper' is not defined`, and an unresolved *module-level* name can
+  come back as an empty `200` rather than a 500. Anything shared belongs in a project script
+  module, which is what `cdc-sink` and the LIMS endpoint already do by accident of style.
+- **Value persistence is a tag-*provider* setting in 8.3, not a per-tag one.**
+  `tag-provider/default/config.json` already carries `"valuePersistence": "Database"`, so
+  **every memory tag in the `default` provider survives a gateway restart** — verified by
+  `docker restart icc26-ignition` with pattern 6's watermark tags holding their values, quality
+  Good, across the restart. There is nothing to set per tag, and the consequence is wider than
+  the two tags that wanted it: a `current/` live-view folder comes back holding the last values
+  from before the restart, which are stale but timestamped and therefore honest.
+- **A gateway timer script on disk is a directory named for the timer, holding exactly two
+  files.** `ignition/timer/<name>/handleTimerEvent.py` defines a zero-arg
+  `handleTimerEvent()`, and `resource.json` carries `"scope": "G"` plus
+  `attributes: {delay, fixedDelay, sharedThread, enabled}` — the cadence is `delay`, in
+  milliseconds, and **nothing can change it at runtime**, so a "poll interval" tag can document
+  the number but never drive it. The file resolves project script modules unqualified, on the
+  strength of Gateway Scripting Project alone (§ *The Gateway Scripting Project*): no import,
+  no `system.util.getProjectName()` ceremony. `fixedDelay: true` measures end-of-run to
+  start-of-next, which is what stops a slow run stacking on itself.
+
+  **The schema was learned by creating the resource empty in the Gateway UI**, and that is the
+  general move whenever an 8.3 resource's on-disk shape is unknown — make a placeholder in the
+  UI, read what `git status` reveals, then hand-edit and `scan`. The UI's version carried a
+  `lastModificationSignature`; **deleting that key and re-applying works, and the gateway does
+  not write it back.** It is a UI artefact, not a checksum `scan` enforces, which is consistent
+  with every hand-authored resource in this repo omitting it.
 
 ### Committed secrets are `Embedded`, on purpose
 

@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<!--
+  The particle counter's own operator touchscreen.
+
+  Four controls, and each one exists because a person on stage has to do it:
+
+    Start / Stop      nothing free-runs. The operator starts the instrument, for
+                      the same reason the Nova stopped free-running on
+                      2026-08-26 -- a self-driving instrument produces records
+                      nobody in the room saw it take.
+    Sample point      free text, and it IS the location. The vendor record has
+                      no location field, so it rides in `deviceName`. The
+                      operator owns it.
+    Clean / dirty     the excursion, as a physical gesture rather than a curl.
+    Live readout      proves the instrument is running independently of whether
+                      Ignition is looking. That independence is the whole
+                      pattern: nothing pushes.
+
+  The instrument does not know what a cleanroom limit is and this screen must
+  never imply that it does. There is no "EXCURSION" light here -- the threshold
+  is Ignition's rule, lives once on the UDT, and is applied by metone_poll at
+  ingest. What this screen shows is counts.
+
+  Skin: a MET ONE-style portable particle counter -- dark instrument case, light
+  data panel, large numerals, physical-looking keys. No external assets of any
+  kind; the demo has to run with networking disabled (docs/00-architecture.md).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Particle Counter — Operator Panel</title>
+<style>
+  :root {
+    --case: #23282d;
+    --case-2: #2e353c;
+    --bezel: #14181c;
+    --panel: #eef1f3;
+    --panel-2: #ffffff;
+    --ink: #1b2228;
+    --muted: #66727c;
+    --line: #c8d0d6;
+    --accent: #0d7ab8;
+    --accent-2: #0a5f90;
+    --run: #1f9d55;
+    --stop: #b03636;
+    --dirty: #c9761b;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bezel);
+    color: var(--ink);
+    font: 15px/1.45 "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 1rem;
+  }
+
+  .instrument {
+    width: 100%;
+    max-width: 940px;
+    background: var(--case);
+    border: 1px solid #000;
+    border-radius: 10px;
+    box-shadow: 0 18px 45px rgba(0,0,0,.55);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── case header ─────────────────────────────────────────────────────── */
+  .case-top {
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+    padding: .7rem 1rem;
+    background: linear-gradient(180deg, var(--case-2), var(--case));
+    border-bottom: 1px solid #000;
+    color: #dde3e8;
+    flex-wrap: wrap;
+  }
+  .mark { font-weight: 800; letter-spacing: .14em; font-size: 1rem; }
+  .mark span {
+    display: block; font-size: .58rem; letter-spacing: .2em; opacity: .6;
+    font-weight: 600; text-transform: uppercase;
+  }
+  .model { font: 600 .78rem/1 var(--mono); letter-spacing: .08em; opacity: .8; }
+  .case-top .spacer { flex: 1; }
+  .serial { font: 600 .72rem/1 var(--mono); letter-spacing: .06em; opacity: .75; }
+  .lamp {
+    display: inline-flex; align-items: center; gap: .4rem;
+    font: 700 .68rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+  }
+  .lamp i {
+    width: .6rem; height: .6rem; border-radius: 50%;
+    background: #4b555e; display: inline-block;
+  }
+  .lamp.on i { background: var(--run); box-shadow: 0 0 9px var(--run); }
+
+  /* ── LCD ─────────────────────────────────────────────────────────────── */
+  .lcd {
+    margin: .85rem;
+    background: var(--panel);
+    border: 2px solid #0c1013;
+    border-radius: 4px;
+    padding: .9rem 1rem 1rem;
+  }
+
+  .idle-banner {
+    display: none;
+    background: #fff3d6;
+    border: 2px solid #d9a520;
+    border-radius: 3px;
+    padding: 1.1rem 1rem;
+    text-align: center;
+    margin-bottom: .9rem;
+  }
+  .idle-banner.show { display: block; }
+  .idle-banner strong {
+    display: block;
+    font: 800 1.35rem/1.1 "Segoe UI", system-ui, sans-serif;
+    letter-spacing: .06em;
+    color: #7a5300;
+  }
+  .idle-banner span { color: #8a6512; font-size: .86rem; }
+
+  .row { display: flex; gap: .9rem; flex-wrap: wrap; }
+  .col { flex: 1 1 260px; min-width: 240px; }
+
+  .block {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: .7rem .8rem;
+    margin-bottom: .8rem;
+  }
+  .block h2 {
+    margin: 0 0 .55rem;
+    font: 700 .68rem/1 var(--mono);
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .state-line { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+  .state {
+    font: 800 1.6rem/1 "Segoe UI", system-ui, sans-serif;
+    letter-spacing: .05em;
+  }
+  .state.running { color: var(--run); }
+  .state.idle { color: var(--muted); }
+  .countdown { font: 700 1.05rem/1 var(--mono); color: var(--accent-2); }
+  .sub { color: var(--muted); font-size: .8rem; }
+
+  table.counts { width: 100%; border-collapse: collapse; }
+  table.counts th, table.counts td {
+    padding: .3rem .45rem;
+    border-bottom: 1px solid var(--line);
+    font-size: .86rem;
+    text-align: right;
+  }
+  table.counts th:first-child, table.counts td:first-child { text-align: left; }
+  table.counts th {
+    font: 700 .66rem/1 var(--mono);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  table.counts td.count { font: 700 1rem/1 var(--mono); }
+  table.counts tr:last-child td { border-bottom: none; }
+
+  dl.kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: .28rem .8rem; }
+  dl.kv dt { color: var(--muted); font-size: .8rem; }
+  dl.kv dd { margin: 0; font: 600 .84rem/1.3 var(--mono); overflow-wrap: anywhere; }
+
+  /* ── keys ────────────────────────────────────────────────────────────── */
+  .keys {
+    display: flex;
+    gap: .7rem;
+    padding: 0 .85rem .95rem;
+    flex-wrap: wrap;
+  }
+  button {
+    font: 700 .82rem/1 "Segoe UI", system-ui, sans-serif;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    padding: .85rem 1.2rem;
+    border-radius: 4px;
+    border: 1px solid #0c1013;
+    background: linear-gradient(180deg, #59636c, #454e56);
+    color: #eef2f5;
+    cursor: pointer;
+    box-shadow: 0 2px 0 #0c1013;
+  }
+  button:active { transform: translateY(1px); box-shadow: 0 1px 0 #0c1013; }
+  button.run { background: linear-gradient(180deg, #29b264, #1c8a4b); }
+  button.halt { background: linear-gradient(180deg, #cc4444, #9e2f2f); }
+  button.on { outline: 2px solid #ffd166; outline-offset: 1px; }
+  button.dirty.on { background: linear-gradient(180deg, #e0902c, #b06712); }
+  button.clean.on { background: linear-gradient(180deg, #2f9fd6, #17709e); }
+
+  .field { display: flex; gap: .5rem; }
+  .field input {
+    flex: 1;
+    font: 600 .9rem/1 var(--mono);
+    padding: .55rem .6rem;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    min-width: 0;
+  }
+  .field button { padding: .55rem .9rem; }
+
+  .note {
+    padding: 0 1rem 1rem;
+    color: #8c98a2;
+    font-size: .76rem;
+    line-height: 1.5;
+  }
+  .note code { font-family: var(--mono); color: #b9c4cc; }
+</style>
+</head>
+<body>
+<div class="instrument">
+
+  <div class="case-top">
+    <div class="mark">MET ONE<span>Particle Counter</span></div>
+    <div class="model">3400+ / ISO 21501-4</div>
+    <div class="spacer"></div>
+    <div class="serial" id="serial">&mdash;</div>
+    <div class="lamp" id="lamp"><i></i> Sampling</div>
+  </div>
+
+  <div class="lcd">
+
+    <div class="idle-banner" id="idle-banner">
+      <strong>NO RUN ACTIVE</strong>
+      <span>The buffer is empty. Press <b>Start sampling</b> — nothing is measured until you do.</span>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <div class="block">
+          <h2>Run status</h2>
+          <div class="state-line">
+            <div class="state idle" id="state">IDLE</div>
+            <div class="countdown" id="countdown"></div>
+          </div>
+          <div class="sub" id="run-sub">&mdash;</div>
+        </div>
+
+        <div class="block">
+          <h2>Sample point</h2>
+          <div class="field">
+            <input id="sample-point" placeholder="e.g. USP Suite A - BR-201 sample port">
+            <button id="set-point">Set</button>
+          </div>
+          <div class="sub" style="margin-top:.45rem">
+            Carried to the host in the record's <code>deviceName</code>.
+          </div>
+        </div>
+
+        <div class="block">
+          <h2>Room condition</h2>
+          <div class="keys" style="padding:0">
+            <button class="clean" id="btn-clean">Clean</button>
+            <button class="dirty" id="btn-dirty">Dirty</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="block">
+          <h2>Last analysis</h2>
+          <table class="counts">
+            <thead>
+              <tr><th>Channel</th><th>Counts</th></tr>
+            </thead>
+            <tbody id="channels">
+              <tr><td colspan="2" class="sub">No analysis yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="block">
+          <h2>Conditions</h2>
+          <dl class="kv" id="conditions">
+            <dt>Sequence</dt><dd id="seq">&mdash;</dd>
+            <dt>Completed</dt><dd id="completed">&mdash;</dd>
+            <dt>Volume</dt><dd id="volume">&mdash;</dd>
+            <dt>Flow</dt><dd id="flow">&mdash;</dd>
+            <dt>Temp / RH</dt><dd id="th">&mdash;</dd>
+            <dt>Buffer</dt><dd id="buffer">&mdash;</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="keys">
+    <button class="run" id="btn-start">Start sampling</button>
+    <button class="halt" id="btn-stop">Stop</button>
+  </div>
+
+  <div class="note">
+    The instrument samples on its own clock and holds results in a rolling buffer.
+    It sends nothing anywhere: the host reads them when it next asks. Records are
+    served on <code>https://&lt;host&gt;:8443/graphql</code>.
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var el = function (id) { return document.getElementById(id); };
+
+  function post(path, body) {
+    return fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {})
+    }).then(function (r) { return r.json(); }).then(render);
+  }
+
+  var pointFocused = false;
+  el("sample-point").addEventListener("focus", function () { pointFocused = true; });
+  el("sample-point").addEventListener("blur", function () { pointFocused = false; });
+
+  el("btn-start").addEventListener("click", function () { post("/api/start"); });
+  el("btn-stop").addEventListener("click", function () { post("/api/stop"); });
+  el("btn-clean").addEventListener("click", function () { post("/api/room", { value: "clean" }); });
+  el("btn-dirty").addEventListener("click", function () { post("/api/room", { value: "dirty" }); });
+  el("set-point").addEventListener("click", function () {
+    post("/api/sample-point", { value: el("sample-point").value });
+  });
+  el("sample-point").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { el("set-point").click(); el("sample-point").blur(); }
+  });
+
+  function render(payload) {
+    var s = payload && payload.state ? payload.state : payload;
+    if (!s) { return; }
+
+    el("serial").textContent = s.device_id;
+    el("lamp").className = "lamp" + (s.running ? " on" : "");
+
+    el("state").textContent = s.running ? "SAMPLING" : "IDLE";
+    el("state").className = "state " + (s.running ? "running" : "idle");
+    el("countdown").textContent = s.running && s.seconds_to_next !== null
+      ? "next in " + s.seconds_to_next + " s" : "";
+    el("run-sub").textContent = s.duration_s + " s per analysis at "
+      + s.flow_rate_lpm + " LPM (~" + s.sample_volume_l + " L), continuous until stopped";
+
+    if (!pointFocused) { el("sample-point").value = s.sample_point; }
+
+    el("btn-clean").className = "clean" + (s.room === "clean" ? " on" : "");
+    el("btn-dirty").className = "dirty" + (s.room === "dirty" ? " on" : "");
+
+    var idle = (!s.running && s.buffer_count === 0);
+    el("idle-banner").className = "idle-banner" + (idle ? " show" : "");
+
+    var tbody = el("channels");
+    if (!s.last) {
+      tbody.innerHTML = '<tr><td colspan="2" class="sub">No analysis yet.</td></tr>';
+      el("seq").textContent = "—";
+      el("completed").textContent = "—";
+      el("volume").textContent = "—";
+      el("flow").textContent = "—";
+      el("th").textContent = "—";
+    } else {
+      var rows = "";
+      s.last.channels.forEach(function (c) {
+        rows += "<tr><td>&ge; " + c.sizeUm.toFixed(1) + " &micro;m</td>"
+             + '<td class="count">' + c.particleCount + "</td></tr>";
+      });
+      tbody.innerHTML = rows;
+      el("seq").textContent = "#" + s.last.sequence_number;
+      el("completed").textContent = s.last.completed_at;
+      el("volume").textContent = s.last.total_volume_l + " L";
+      el("flow").textContent = s.last.flow_rate_lpm + " LPM";
+      el("th").textContent = s.last.temperature_c + " °C / "
+        + s.last.humidity_pct + " %RH";
+    }
+    el("buffer").textContent = s.buffer_count + " / " + s.buffer_max
+      + (s.evicted ? "  (" + s.evicted + " evicted)" : "");
+  }
+
+  function poll() {
+    fetch("/api/state").then(function (r) { return r.json(); })
+      .then(render).catch(function () {});
+  }
+
+  poll();
+  setInterval(poll, 1000);
+})();
+</script>
+</body>
+</html>

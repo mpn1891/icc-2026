@@ -1699,6 +1699,168 @@
     "typeId": null
   },
   {
+    "name": "particle_counter",
+    "tagType": "UdtType",
+    "typeId": null,
+    "tags": [
+      {
+        "name": "config",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "dataType": "Int4",
+            "documentation": "Seconds between polls -- DOCUMENTATION ONLY. Nothing reads this tag. The cadence really lives in the 06-poll gateway timer's attributes.delay (30000 ms), because a timer's delay is fixed at resource load and no tag can change it live. Kept because the number is half of pattern 6's argument: the detection gap is the sample duration plus this, worst case, and it belongs on screen. Change it here and in ignition/timer/06-poll/resource.json together. For the stall demo use config/enabled, which the poll DOES read -- widening this tag does nothing.",
+            "name": "poll_interval_s",
+            "tagType": "AtomicTag",
+            "value": 30,
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Int8",
+            "documentation": "Raw particle count in the 0.5 um and larger channel above which metone_poll writes status='excursion'. 1660 counts in the 4.717 L a 10 s sample draws at 28.3 LPM, which is 352,000 particles per cubic metre -- ISO 14644-1 Class 7, EU GMP Grade C at rest. **Chosen for DURATION=10.** Change the sample duration and this number silently means something else, with nothing in the system to catch it. That is the price of thresholding raw counts, and it is why the volume it was chosen for is written down here. Measured against the simulator on 2026-08-29: clean room 113-137 counts, dirty room 3346-4350, so the limit sits an order of magnitude clear of both. It applies to the 0.5 um channel ONLY. One raw-count number cannot also threshold the 5.0 um channel, whose ISO 7 limit is 2,930 per cubic metre -- about 14 counts at this volume, two orders of magnitude away. The 5 um count is published and stored so a consumer can see it; it is not compared here, because a second threshold would be a second copy of the cleanroom spec. THIS TAG IS THE ONLY COPY OF THE RULE.",
+            "name": "excursion_threshold",
+            "tagType": "AtomicTag",
+            "value": 1660,
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Boolean",
+            "documentation": "The stall demo. Uncheck it and metone_poll returns immediately: the instrument keeps sampling on its own clock and the backbone goes silent, with nothing failing and nothing alarming. Re-enable it and the cursor walk drains the whole backlog in one burst -- hasMore, visible on the wire.",
+            "name": "enabled",
+            "tagType": "AtomicTag",
+            "value": true,
+            "valueSource": "memory"
+          }
+        ]
+      },
+      {
+        "name": "current",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "dataType": "DateTime",
+            "documentation": "completedAt from the instrument -- the acquisition instant, not the instant we found out about it. state/last_poll_ts is the other half of that pair, and the distance between them is the detection gap.",
+            "name": "ts",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Int8",
+            "documentation": "The instrument's own monotonic counter for this analysis. Published as the envelope's `seq`, exactly as pattern 5 publishes bes.batch_event.id -- the source system's number, never one we invent. It restarts at 1 when the simulator restarts, which is what makes the stale-cursor trap possible; see state/cursor.",
+            "name": "sequence_number",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "String",
+            "documentation": "normal | excursion. THE FLAG. Computed by metone_poll at ingest from current/ch_0_5 against config/excursion_threshold, stored in em.reading.status and published as values.status. The instrument does not produce it and must never be asked to: the cleanroom limit is Ignition's rule and has exactly one home. Pattern 7 reads this flag and does no arithmetic of its own -- docs/00-architecture.md, 'Derived flags travel with the fact that produced them'.",
+            "name": "status",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "String",
+            "documentation": "The operator's sample point, typed on the instrument's touchscreen at :8089 and carried in the vendor record's deviceName. The vendor record has no location field; this is that overload, named rather than hidden. If the vendor API ever grows a real location field, move it and delete this sentence.",
+            "name": "location",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "String",
+            "documentation": "Who the instrument says ran the analysis. The instrument's claim, not a gateway login.",
+            "name": "operator",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Float8",
+            "documentation": "Litres actually drawn by this analysis (about 4.717 L at 28.3 LPM for 10 s). Every raw count in this folder means something only against this number, which is why it goes on the wire too: a consumer can normalise to counts per cubic metre even though we did not.",
+            "name": "total_volume_l",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Int8",
+            "documentation": "Raw particle count in the 0.3 um and larger channel for the last analysis. Raw, not normalised -- see config/excursion_threshold for what that binds the number to.",
+            "name": "ch_0_3",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Int8",
+            "documentation": "Raw particle count in the 0.5 um and larger channel for the last analysis. Raw, not normalised -- see config/excursion_threshold for what that binds the number to.",
+            "name": "ch_0_5",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Int8",
+            "documentation": "Raw particle count in the 1.0 um and larger channel for the last analysis. Raw, not normalised -- see config/excursion_threshold for what that binds the number to.",
+            "name": "ch_1_0",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Int8",
+            "documentation": "Raw particle count in the 3.0 um and larger channel for the last analysis. Raw, not normalised -- see config/excursion_threshold for what that binds the number to.",
+            "name": "ch_3_0",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Int8",
+            "documentation": "Raw particle count in the 5.0 um and larger channel for the last analysis. Raw, not normalised -- see config/excursion_threshold for what that binds the number to.",
+            "name": "ch_5_0",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Int8",
+            "documentation": "Raw particle count in the 10.0 um and larger channel for the last analysis. Raw, not normalised -- see config/excursion_threshold for what that binds the number to.",
+            "name": "ch_10_0",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          }
+        ]
+      },
+      {
+        "name": "state",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "dataType": "String",
+            "documentation": "THE WATERMARK. The opaque cursor the instrument last handed back, base64 of an id. Written once per poll, after the last complete page, so a partial walk leaves it where the last whole page ended. It persists across a gateway restart -- value persistence on the `default` provider is Database -- so the poll resumes rather than replaying the buffer. **Clear this tag to recover from the stale-cursor trap.** Restart the simulator and its sequence numbers begin at 1 again while this still points past the end, so the server answers 'nothing after 45' -- correctly -- and the poll runs perfectly while publishing nothing, with every health check green. Emptying this string forces a replay.",
+            "name": "cursor",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Int8",
+            "documentation": "The highest sequenceNumber this gateway has already stored and published. The dedupe guard: the poll skips anything at or below it, which is what makes re-reading a page after a mid-page failure safe and what stops a stale-cursor replay from publishing an analysis twice. Per-record, not per-page, deliberately. Persists with state/cursor and is cleared with it.",
+            "name": "last_sequence",
+            "tagType": "AtomicTag",
+            "value": 0,
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "DateTime",
+            "documentation": "When the poll last ran -- not when the last analysis happened, which is current/ts. The two far apart with no error means the poll is healthy and the instrument is stopped; the two close together with a sequence_number that never moves means the cursor is stale.",
+            "name": "last_poll_ts",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "String",
+            "documentation": "Whatever the last poll hit -- the 401, the timeout, the connection refused -- or empty on success. **The stale-cursor failure writes nothing here**, and that is the whole point of it: the poll is working.",
+            "name": "last_error",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "name": "sample_valve",
     "parameters": {
       "cycle_result_path": {
