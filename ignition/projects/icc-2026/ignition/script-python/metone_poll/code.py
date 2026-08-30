@@ -1,11 +1,10 @@
 """Pattern 6 -- poll a MET ONE particle counter, store the reading, publish it.
 
 **Nothing pushes.** The instrument does not know this gateway exists. It samples
-on its own clock, holds results in a rolling buffer, and a gateway timer calls
-`poll()` every `config/poll_interval_s` seconds to find out what happened. The
-honest consequence is a **detection gap**: for up to one poll interval plus one
-sample duration the room can be out of spec and the backbone can be silent about
-it. That gap is characterized, not hidden -- `values.ts` is the instrument's
+on its own clock, holds results in a rolling buffer, and the `06-poll` gateway
+timer calls `poll()` every 30 s to find out what happened. The honest consequence
+is a **detection gap**: for up to one poll interval plus one sample duration the
+room can be out of spec and the backbone can be silent about it. That gap is characterized, not hidden -- `values.ts` is the instrument's
 clock and `meta.ingest_ts` is ours, so every message on the wire shows it.
 
 **The cursor is a watermark the vendor did not call one.** `getSamples(cursor,
@@ -413,8 +412,10 @@ def _watermark(cursor, last_sequence):
 def poll(base=BASE):
     """One pass: walk the cursor, store and publish everything new.
 
-    Called from a gateway timer every `config/poll_interval_s` seconds. Returns
-    the number of analyses published.
+    Called from the `06-poll` gateway timer. The cadence is that timer's
+    `attributes.delay`, not `config/poll_interval_s` -- which this function does
+    not read; see the timer's own docstring. Returns the number of analyses
+    published.
     """
     logger = system.util.getLogger(LOGGER_NAME)
 

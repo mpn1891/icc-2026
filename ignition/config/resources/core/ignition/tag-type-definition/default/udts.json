@@ -1709,7 +1709,7 @@
         "tags": [
           {
             "dataType": "Int4",
-            "documentation": "Seconds between polls, read by the gateway timer script. The detection gap is the sample duration plus this, worst case, and putting the number on screen is half of pattern 6's argument. Widen it to 300 for the stall demo: the instrument keeps sampling and the backbone goes quiet.",
+            "documentation": "Seconds between polls -- DOCUMENTATION ONLY. Nothing reads this tag. The cadence really lives in the 06-poll gateway timer's attributes.delay (30000 ms), because a timer's delay is fixed at resource load and no tag can change it live. Kept because the number is half of pattern 6's argument: the detection gap is the sample duration plus this, worst case, and it belongs on screen. Change it here and in ignition/timer/06-poll/resource.json together. For the stall demo use config/enabled, which the poll DOES read -- widening this tag does nothing.",
             "name": "poll_interval_s",
             "tagType": "AtomicTag",
             "value": 30,

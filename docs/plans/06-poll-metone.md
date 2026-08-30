@@ -6,13 +6,21 @@
 > Talk track (`../talk-tracks/06-poll.md`) is written as the closing step, once this is
 > broker-verified.
 >
-> ## Built and broker-verified 2026-08-29 — except the timer
+> ## Built and verified 2026-08-29 — timer included, and it runs hands-off
 >
 > This document was written **before** the build, unlike
 > [`05-cdc-batch-event.md`](05-cdc-batch-event.md), so every checkpoint was a prediction. They
-> are now measured; see *Checkpoints*. **Everything runs except the gateway timer script**,
-> which is UI-first because its file format is unknown — `metone_poll.poll()` was driven by hand
-> for the verification below.
+> are now measured; see *Checkpoints*, **all ten of which are closed.** The gateway timer went
+> in the same evening once the Gateway UI had been used to learn its on-disk shape (§ *The
+> timer*); nothing about pattern 6 is driven by hand any more.
+>
+> **One honest caveat on the word *broker*.** The 96-message end-to-end run earlier that day was
+> broker-verified with `mosquitto_sub`. The timer's own verification a few hours later was not:
+> Chariot's 2-hour trial had lapsed, so the MQTT listener was down and Transmission was
+> reconnecting in a loop. `poll()` stored, published to the Event Stream and returned normally
+> throughout — the wire hop is the one thing the timer run did not re-observe, and it is
+> unchanged by the timer. Restart the trial before the next full pass (§ *Trial timers* in
+> [`../00-architecture.md`](../00-architecture.md)).
 >
 > **Three predictions were wrong, and the corrections are inline below rather than quietly
 > applied:**
@@ -274,11 +282,12 @@ in between.
 | UDT instance `particle-counter-01` | `tag-definition/default/icc26/site1/qc/analyzers/udts.json` | **built** — files + `scan`. No parameters: nothing here is OPC-bound, so there is nothing to substitute |
 | Script module `metone_poll` | `ignition/script-python/metone_poll/code.py` | **built** — files + `scan` |
 | Event Stream `06_poll/metone-result` | `com.inductiveautomation.eventstream/event-streams/06_poll/metone-result/` | **built** — copied `03_opcua/novaflex-result` and changed the topic, the transform and the filter, exactly as predicted |
-| **Gateway timer script** | `ignition/timer/…` — **schema unknown, the directory is empty** | **NOT built. UI first, then commit what `git status` reveals** |
+| **Gateway timer script** `06-poll` | `ignition/timer/06-poll/` | **built** — created empty in the Gateway UI to learn the schema, then given its body and its 30 s cadence as files + `scan`. § *The timer* |
 | `ICC26` datasource | already exists, built for pattern 5 | — |
 
-Everything above except the timer went in as files and applied with `python tasks.py scan` — no
-gateway restart, and the UI was not opened once. The Event Stream copy worked with no surprises,
+Everything above went in as files and applied with `python tasks.py scan` — no gateway restart.
+The UI was opened exactly once, to create the timer empty and learn its on-disk shape;
+everything else in the table, the timer's real body included, was written on disk. The Event Stream copy worked with no surprises,
 which is the second time that shortcut has paid (§ 6 of
 [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md) records the first).
 
@@ -428,6 +437,52 @@ Four things this ordering decides, deliberately:
   `--port 8443` ever serves plain HTTP, the same class of failure appears with a different
   message.
 
+### The timer — the clock that makes this a poll
+
+`ignition/timer/06-poll/`, and it is the whole of pattern 6's acquisition. Two files:
+
+```
+ignition/projects/icc-2026/ignition/timer/06-poll/
+  handleTimerEvent.py     def handleTimerEvent(): metone_poll.poll()
+  resource.json           scope G, delay 30000, fixedDelay true, sharedThread true, enabled true
+```
+
+**The directory name is the timer name**, the handler is a zero-arg `handleTimerEvent()`, and
+the cadence lives in `attributes.delay` (ms). `scope: "G"` is gateway; the module resolves
+because **Gateway Scripting Project** is `icc-2026` (§ *The Gateway Scripting Project* in
+[`../00-architecture.md`](../00-architecture.md)).
+
+**The schema was learned by creating the resource empty in the Gateway UI**, which is the same
+route the `ICC26` datasource and the Gateway Scripting Project took in pattern 5 — UI first when
+the on-disk shape is unknown, then hand-edit the files and `scan`. The UI's version carried a
+`lastModificationSignature`; **it was dropped**, matching every hand-authored resource in this
+repo, and the gateway applied the edit and did not put it back. That answers the open question
+the build left: a signature is a UI artefact, not a checksum the gateway enforces.
+
+**`fixedDelay: true` measures end-of-run to start-of-next**, so a poll that runs long cannot
+stack runs on top of each other. That is not hypothetical here: the first poll after a 10-hour
+gap drained the sim's entire 500-record buffer over 10 pages, and the next poll started 30 s
+after *that* finished rather than 30 s after it began.
+
+**`python tasks.py scan` restarts the timer's clock.** A project reload stops and re-arms it, so
+one interval is skipped and the next poll lands wherever the reload left it — measured: a poll at
+19:40:23, a scan, then the next at 19:41:11 picking up **5** analyses instead of 3, and 30 s
+spacing from there. Nothing is lost, because the cursor is a watermark and not a schedule. Worth
+knowing only so a 48 s gap in the log after a `scan` is not mistaken for a fault.
+
+**The timer is thin on purpose.** Everything — the cursor walk, the dedupe floor, the excursion
+flag, store-before-publish — lives in `metone_poll`, and there is no `try` in the handler because
+`poll()` catches its own failures into `state/last_error`. A reader who opens the timer looking
+for the pattern should find one line and a pointer.
+
+**Two sources of truth for the cadence, and the timer wins.** `config/poll_interval_s` (Int4, 30)
+is **decorative**: `poll()` never reads it, and a gateway timer's delay is fixed at resource load,
+so nothing can make the tag drive it live. The consequence is a stage move that does not work as
+the *Decisions* table imagined — widening `poll_interval_s` to 300 does **not** slow the poll, so
+the stall demo has to be `config/enabled`, which the poll does read and which does work. Recorded
+in § *Open items* rather than fixed: the honest repairs are to delete the tag or to have the
+timer tick fast and gate on it, and both are bigger than a demo needs.
+
 ## Schema — `em.reading`
 
 New schema `em`, one table. Full DDL goes in
@@ -563,19 +618,19 @@ one place a person can read, not in Event Stream user code.
 
 ## Checkpoints
 
-Measured 2026-08-29 unless the row says otherwise. Two remain open and both wait on the gateway
-timer, which is the user's to create.
+Measured 2026-08-29 unless the row says otherwise. **All ten are closed** — CP1 and CP7 waited on
+the gateway timer, which went in that evening.
 
 | CP | Check | Result |
 |---|---|---|
 | **0** | `system.net.httpClient` POSTs GraphQL to an HTTPS endpoint with a self-signed cert and a bearer header, from gateway scope | **Pass, and the spec's guess was right.** `bypass_cert_validation=True` is the correct keyword on 8.3.8 (`bypassCertValidation` also accepted; `trust_all_certificates` raises `TypeError` naming the argument, so a wrong guess fails loudly). `authenticate` → 200, `getSamples` with a bearer header → 200 with `hasMore` honoured, junk token → **401**. `response.getJson()` decodes to Jython dicts with `long` integers. The gateway logs the insecure-bypass warning on every request. Measured from a WebDev resource, which is gateway-scoped like a timer; the transport question is answered, the timer question is CP1 |
-| **1** | A gateway timer script resolves the `metone_poll` project module | **Open — the timer does not exist yet.** What *is* measured: a gateway-scoped project resource resolves project script modules (`bes_batch` and `metone_poll` both resolve from the WebDev handler), and **Gateway Scripting Project** has been `icc-2026` since pattern 5. A timer script is a project resource, so it should not need anything further. Unverified until the timer exists |
+| **1** | A gateway timer script resolves the `metone_poll` project module | **Pass, first try, with no import and no qualification.** `def handleTimerEvent(): metone_poll.poll()` at `scope: "G"`; 24 s after `tasks.py scan` the gateway logged *"particle-counter-01: 500 analysis(es) published, watermark 604, 10 page(s)"* from the `metone_poll` logger. **Gateway Scripting Project** = `icc-2026` is the whole of what makes it resolve. Incidental finding: the resource applied with `lastModificationSignature` **deleted**, and the gateway did not write it back — the signature is a UI artefact, not something `scan` enforces |
 | **2** | The cursor walk: `hasMore true` drains, an empty page returns the same cursor, a restarted sim reproduces the stale-cursor silence | **Pass, all three.** 80 records at `limit=50` drained over 2 pages; an empty page returned the identical cursor; after `docker restart icc26-sim-metone` the poll returned **0 published, `state/last_error` empty, nothing on the wire** — working perfectly and blind. Clearing **only** `state/cursor` recovered it |
 | **3** | Memory tag value persistence survives `docker restart icc26-ignition` | **Pass — and it is a tag-*provider* setting, not a per-tag one.** Every tag in the UDT came back with its value and Good quality across the restart, watermark included. Nothing needs setting per tag; `tag-provider/default/config.json` already carries `"valuePersistence": "Database"`. The design holds, but it rests on a provider-wide default that nothing in the UDT files declares |
 | **4** | JWT expiry → 401 → re-auth → the poll continues without a gap | **Pass.** 315 s after the previous poll (TTL 300 s) the cached token was rejected, `metone_poll` logged *"token expired; re-authenticating"*, and the same poll published all **32** analyses that had accumulated. No gap, no lost record — and incidentally the stall demo, unplanned |
 | **5** | One analysis → one `em.reading` row → one MQTT message. Never two, never zero | **Pass.** 96 analyses over the session → 96 rows → 96 messages on `mosquitto_sub`, with no duplicate `analysis_id`. Zero happens exactly once, deliberately: an insert that affects no rows suppresses the publish |
 | **6** | `status` polarity | **Pass, both directions.** Dirty → sequence 84 published `excursion` at 3926 counts; clean → 87 published `normal` at 118. The flip is immediate rather than gradual because the simulator generates counts at completion instead of integrating over the sampling window — a simplification worth knowing before somebody reads meaning into a clean boundary |
-| **7** | `occurred_at` vs `ingested_at` lag matches the configured cadence | **Partially measured; needs the timer.** Driving the poll by hand produced the right *shape* — a sawtooth of 4.4 / 14.4 / 24.4 / 34.4 s across one drained page, which is the 10 s sample duration stacked under one poll. Whether the steady-state maximum is ≤ ~40 s can only be measured against a real 30 s timer |
+| **7** | `occurred_at` vs `ingested_at` lag matches the configured cadence | **Pass, and tighter than the ≤ ~40 s the claim needs.** Against the real 30 s timer the lag is a **7.2 / 17.2 / 27.2 s sawtooth**, three analyses per poll, repeating exactly — the 10 s sample duration stacked three-deep under one 30 s poll. **Steady-state maximum 27.2 s**, so the stage sentence *"on the backbone within 40 seconds of the air being dirty, worst case"* is true with room to spare. Poll starts were 30.03 / 30.04 / 30.04 s apart, the drift being the poll's own runtime under `fixedDelay`. The first poll after a 10-hour gap is the other end of the same measurement: it drained the sim's whole 500-record buffer over 10 pages in ~4.4 s, oldest record lagging **9.6 hours**, and the next poll still started 30 s after that one *finished* |
 | **8** | `em.reading` is **not** in `icc26_cdc`; `tasks.py health` still green | **Pass.** The publication still names `bes.batch_event` only, before and after the migration. `migrate-07` carries a guard that drops `em.reading` from the publication if it is ever found there, and the `cdc` role is deliberately not granted `SELECT` on the `em` schema — a role that cannot read it cannot tail it |
 | **9** | Two hours at 10 s sampling does not grow the sim's buffer without bound | **Pass, by construction and by test.** `BUFFER_MAX` is 500, ~83 minutes at 10 s. A throwaway container with `BUFFER_MAX=5` held at 5 records, evicted oldest-first, and logged each eviction with a running total. Eviction is safe for the cursor — keyset paging on "greater than N" does not care that earlier records left — but a poll that fell more than 83 minutes behind would skip records silently, which is why the eviction is a `WARNING` |
 
@@ -600,8 +655,12 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 4. Press **dirty**. The next analysis publishes `status: "excursion"`. Press clean; the one
    after returns to `normal`.
 
-Verified in that order on 2026-08-29 with the poll driven by hand, since the timer does not exist
-yet: 96 analyses, 96 rows, 96 messages, `status` correct on both transitions.
+Verified in that order on 2026-08-29: 96 analyses, 96 rows, 96 messages, `status` correct on both
+transitions — with the poll driven by hand, because the timer did not exist yet. It does now, and
+steps 2 and 3 were re-run against it the same evening: 515 more analyses arrived on the timer's
+own clock, `em.reading` reached **664 rows with 664 distinct `analysis_id`s**, and the lag settled
+into the sawtooth in CP7. Step 2's *"one message per analysis"* half was **not** re-observed —
+Chariot's trial had lapsed and the MQTT listener was down. Start the trial first.
 
 Proving the server before Ignition saw it was worth the hour it took — pattern 3's step 5,
 applied. A throwaway Python client walked the cursor, forced the 401s and reproduced the
@@ -611,9 +670,10 @@ key) were found in minutes rather than being confused with an API that might als
 
 **The failure demos — two, and the second is the better one:**
 
-- **The stall.** Uncheck `config/enabled` (or widen `poll_interval_s` to 300). The instrument
-  keeps sampling and the backbone goes quiet. Ask what happened between polls, then re-enable
-  and watch the backlog arrive in one burst — the walk draining `hasMore`, visible on the wire.
+- **The stall.** Uncheck `config/enabled` — **not** `poll_interval_s`, which nothing reads and
+  which does nothing (§ *The timer*). The instrument keeps sampling and the backbone goes quiet.
+  Ask what happened between polls, then re-enable and watch the backlog arrive in one burst —
+  the walk draining `hasMore`, visible on the wire.
 - **The silent stale cursor.** `docker restart icc26-sim-metone`. The buffer regenerates from
   id 1, the stored bookmark still points past the end, and **the poll runs perfectly while
   publishing nothing.** Every health check green. Clear `state/cursor` in Tag Explorer and it
@@ -655,22 +715,25 @@ unspecified store left in its way.
 
 ## Open items
 
-1. **The gateway timer script is the one thing still missing.** Still true, and it is now the
-   only thing between pattern 6 and a hands-off demo. `ignition/projects/icc-2026/ignition/timer/`
-   exists and is empty. UI first, read what `git status` reveals, commit, then parametrize — the
-   same route the `ICC26` datasource and the Gateway Scripting Project took in pattern 5. It
-   needs to call `metone_poll.poll()` on `config/poll_interval_s` (30 s); everything downstream
-   of that call is built and verified. CP1 and CP7 close when it exists.
+1. ~~**The gateway timer script is the one thing still missing.**~~ **Closed 2026-08-29**, the
+   same evening, by the route this item proposed: created empty in the Gateway UI to learn the
+   schema, then given its body and cadence as files and applied with `scan`.
+   `ignition/timer/06-poll/` — § *The timer*. CP1 and CP7 closed with it, and pattern 6 now runs
+   hands-off.
 
-   Until then, drive it by hand from the Designer script console:
+   The parametrize half did **not** happen, and turned out not to be possible as imagined; that
+   is item 9 below.
+
+   Driving it by hand from the Designer script console still works and is still the fastest way
+   to test a change to `metone_poll` without waiting 30 s:
 
    ```python
    metone_poll.poll()      # returns the number of analyses published
    ```
 
-   That is a *Designer* scope call and it worked in gateway scope during the build, so it proves
-   the poll and not the timer. The build's temporary harness — a WebDev resource that called
-   `poll()` over HTTP — was deleted afterwards and is not in the repo.
+   That is *Designer* scope, so it proves the poll and not the timer. The build's temporary
+   harness — a WebDev resource that called `poll()` over HTTP — was deleted afterwards and is
+   not in the repo.
 2. ~~**The excursion threshold has no number yet.**~~ **Closed 2026-08-29: 1660** raw counts at
    ≥0.5 µm, which is 352,000/m³ at the 4.717 L a 10 s sample draws — ISO 14644-1 Class 7 / EU
    GMP Grade C at rest. Clean measured 113–137, dirty 3346–4350. The number, the volume it was
@@ -702,6 +765,20 @@ unspecified store left in its way.
    been exercised that way. The Event Stream topic is likewise a literal, not built from the
    device id the way `bes_cdc` builds pattern 5's — one instrument, one topic, and if a second
    ever appears that is the line to change first.
+9. **New 2026-08-29: `config/poll_interval_s` is decorative, and the *Decisions* table's "the
+   interval in a tag so it can be widened live" is not achievable as written.** A gateway timer's
+   `delay` is read when the resource loads; no tag can change it at runtime, and `poll()` never
+   reads the tag. So the cadence has two written homes — `attributes.delay` in
+   `ignition/timer/06-poll/resource.json`, which the gateway obeys, and the tag, which documents
+   the number for the screen. **Change them together.** The tag's documentation string now says
+   so, and the stall demo has been moved off it onto `config/enabled`, which does work.
+
+   Two honest repairs, neither taken: delete the tag and put the number on the Perspective page
+   as a literal, or tick the timer at 5 s and have `poll()` return early unless
+   `poll_interval_s` has elapsed since `state/last_poll_ts`. The second restores the live-widen
+   gesture at the cost of a second cadence concept and a poll that lies about its own name.
+   Recorded rather than done: 30 s hardcoded is what the demo needs, and a mismatch that is
+   written down in three places is not the kind that bites.
 
 ## Progress log
 
@@ -711,3 +788,4 @@ unspecified store left in its way.
 | 2026-08-25 | Moved from `upstream/br-201` to `qc/analyzers`, so tag path and topic stay identical |
 | 2026-08-29 | Vendor API arrived as [`../reference/particle_counter_sim.md`](../reference/particle_counter_sim.md). Eight decisions taken and this spec written. **Nothing built** |
 | 2026-08-29 | **Built and broker-verified, same day, everything but the timer.** `services/sim-metone` (GraphQL over HTTPS + the :8089 touchscreen), the `em` schema and `migrate-07`, the `particle_counter` UDT and instance, `metone_poll`, and Event Stream `06_poll/metone-result`. 96 analyses → 96 `em.reading` rows → 96 messages on `icc26/site1/qc/analyzers/particle-counter-01/result`, `status` correct on both polarities, the stale-cursor trap reproduced twice and recovered by clearing one tag, and a real token expiry drove a re-auth mid-poll. `tasks.py health` gained the buffer check the spec asked for. **Three predictions in this document were wrong** — `publishEvent` refuses a dict, value persistence is a provider setting, and `sequence_number` is not a usable dedupe key — and all three are corrected inline above rather than quietly. The one predicted to cost an afternoon, `httpClient` against a self-signed cert, cost nothing. Four durable Ignition 8.3.8 facts went to [`../00-architecture.md`](../00-architecture.md) instead of here, because 07 will want them |
+| 2026-08-29 | **The gateway timer, and pattern 6 goes hands-off.** `ignition/timer/06-poll/` — schema learned from an empty resource created in the Gateway UI, then body and cadence written as files and applied with `scan`, `lastModificationSignature` deleted and not written back. First poll drained a 10-hour, 500-record backlog over 10 pages; steady state is 3 analyses per 30 s with a 7.2 / 17.2 / 27.2 s lag sawtooth. **CP1 and CP7 close, so all ten checkpoints are closed.** Found while closing them: `config/poll_interval_s` is decorative and cannot be made otherwise (open item 9), so the stall demo moved to `config/enabled` and three files that claimed the tag drives the cadence were corrected. The MQTT hop was not re-observed — Chariot's trial had lapsed |
