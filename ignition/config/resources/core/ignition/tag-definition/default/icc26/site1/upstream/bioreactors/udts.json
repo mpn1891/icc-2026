@@ -5,6 +5,17 @@
     "typeId": "bioreactor",
     "tags": [
       {
+        "name": "asset_data",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "name": "equipment_identifier",
+            "tagType": "AtomicTag",
+            "value": "br-201"
+          }
+        ]
+      },
+      {
         "name": "process_data",
         "tagType": "Folder",
         "tags": [
@@ -36,6 +47,17 @@
     "tagType": "UdtInstance",
     "typeId": "bioreactor",
     "tags": [
+      {
+        "name": "asset_data",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "name": "equipment_identifier",
+            "tagType": "AtomicTag",
+            "value": "br-202"
+          }
+        ]
+      },
       {
         "name": "process_data",
         "tagType": "Folder",

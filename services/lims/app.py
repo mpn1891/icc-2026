@@ -228,6 +228,25 @@ class Store:
 
     # ---- ingest: two topics, two entry points
 
+    @staticmethod
+    def _equipment_from_topic(topic: str) -> str | None:
+        """'br-201' from 'icc26/site1/upstream/br-201/sample-valve-01/event/...'.
+
+        Pattern 1's payload does not name the reactor -- the valve reports its
+        own cycle and nothing else -- so the topic is the only place a sample's
+        vessel exists. Parsing it here is what lets pattern 7 key its two
+        lookups on a real value instead of a hardcoded 'br-201'.
+
+        Position 3, under icc26/site1/<area>/<equipment>/<device>/... None on
+        anything that does not have that shape, so a topic change surfaces as a
+        null the review message carries rather than a wrong vessel silently
+        joined against the wrong batch.
+        """
+        parts = [p for p in topic.split("/") if p]
+        if len(parts) < 5:
+            return None
+        return parts[3] or None
+
     def create_sample(self, topic: str, document: dict) -> dict:
         """Open the entry from pattern 1's `event/sample-complete`.
 
@@ -266,14 +285,16 @@ class Store:
                 created = conn.execute(
                     """
                     INSERT INTO lims.sample
-                        (sample_id, badge_id, badge_holder, sample_start, sample_completion,
+                        (sample_id, equipment_id, badge_id, badge_holder,
+                         sample_start, sample_completion,
                          open_duration_s, cycle_result, cycle_count, source_topic, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (sample_id) DO NOTHING
                     RETURNING sample_id
                     """,
                     (
                         sample_id,
+                        self._equipment_from_topic(topic),
                         values.get("badge_id"),
                         values.get("badge_holder"),
                         _ts("sample_start"),
@@ -530,9 +551,9 @@ class Store:
     # ---- review
 
     # Selected on both review paths, and the column order _build_envelope reads.
-    _ENTRY_COLUMNS = """sample_id, batch_id, badge_id, badge_holder, sample_start,
-                        sample_completion, open_duration_s, cycle_result,
-                        analyst, verified_at"""
+    _ENTRY_COLUMNS = """sample_id, batch_id, equipment_id, badge_id, badge_holder,
+                        sample_start, sample_completion, open_duration_s,
+                        cycle_result, analyst, verified_at"""
 
     def _review(self, sample_id: str, analyst: str,
                 status: str, disposition: str) -> dict:
@@ -769,11 +790,17 @@ def _build_envelope(entry: tuple, results: list, disposition: str) -> dict:
 
     `seq` is filled in with the outbox id after INSERT.
 
+    `values.equipment_id` is the vessel, parsed from pattern 1's topic. It is
+    pattern 7's join key into bes.batch_event and em.reading, and it is the
+    reason 07 does not have to hardcode a reactor. `values.batch_id` is NOT --
+    every sample pattern 1 mints carries an empty one, so 07 takes batch
+    identity from bes.batch_event instead.
+
     `values.disposition` is the analyst's verdict -- `pass` or `fail`. Both
     outcomes publish, so nothing downstream has to infer a rejection from
     silence. Pattern 7 fires on the review either way.
     """
-    (sample_id, batch_id, badge_id, badge_holder, sample_start,
+    (sample_id, batch_id, equipment_id, badge_id, badge_holder, sample_start,
      sample_completion, open_duration_s, cycle_result, analyst, _verified_at) = entry
     collected_at = min((row[3] for row in results), default=None) or sample_completion
     return {
@@ -788,6 +815,7 @@ def _build_envelope(entry: tuple, results: list, disposition: str) -> dict:
         "values": {
             "sample_id": sample_id,
             "batch_id": batch_id,
+            "equipment_id": equipment_id,
             "collected_at": _iso(collected_at) if collected_at else None,
             "analyst": analyst,
             "disposition": disposition,
