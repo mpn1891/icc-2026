@@ -16,6 +16,13 @@ gutted the same day, because most of it was either duplicated or archaeology:
 If this file disagrees with either of the other two, this file is newer, and the fix is to move
 the fact rather than keep two copies.
 
+## Do this next
+
+[`00-post-07.md`](00-post-07.md) — written 2026-08-30, the current step. All seven
+patterns are built, so what is left is the gap between *the mechanisms work* and *the talk
+can be given*: a review queue that cannot currently demo 07, the Chariot licence, three and
+a half talk tracks, and one unmeasured behaviour in 07's trigger.
+
 ## Built
 
 | | State |

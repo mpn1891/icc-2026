@@ -5,8 +5,11 @@
 >
 > **Written to be executed cold**, like [`00-next-step.md`](00-next-step.md) was for patterns 1
 > and 2 — everything needed is here or one link away, and nothing below asks the reader to
-> reconstruct a decision. That file stays where it is as the record of 2026-08-17; this is the
-> current step.
+> reconstruct a decision. That file stays where it is as the record of 2026-08-17.
+>
+> **Superseded 2026-08-30.** Every item here is closed except item 7, the talk tracks, which
+> moved to [`00-post-07.md`](00-post-07.md) along with everything else still outstanding.
+> That file is the current step; this one is the record of what 07 stood on.
 >
 > Every claim in here was checked against the running stack on 2026-08-29, not read off a spec.
 > Where something is unknown it says so.

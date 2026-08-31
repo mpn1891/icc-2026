@@ -424,6 +424,10 @@ on stage and be surprised by.
 
 ## Still open, and not 07's problem
 
+> **All of this moved to [`00-post-07.md`](00-post-07.md) on 2026-08-30**, which is the current
+> step and adds the two items 07's build turned up — the review queue's twelve null-`equipment_id`
+> reviewables, and the re-subscribe question below. Kept here so this file still reads whole.
+
 - **The Chariot licence is the largest stage risk in the stack.** The trial is **two hours**, the
   broker refuses to start when it lapses, and the container reports `healthy` throughout. It has
   expired mid-session twice on 2026-08-30 alone. A Cirrus Link demo key is a prerequisite for the
