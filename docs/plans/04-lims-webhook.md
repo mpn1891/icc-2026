@@ -167,8 +167,8 @@ only.
 
 1. Badge `B-1042` on `:8085`. ~15 s later the entry appears on `:8000` as **Awaiting analysis**,
    badge holder and open duration populated, no Approve button.
-2. Type that id into `:8087`, press Run. The *same* entry flips to ready with three analytes and
-   a batch id. **No second entry appears.**
+2. Type that id into `:8087`, press Run. The *same* entry flips to ready with two analytes and
+   a batch id — two, not three; see [the mapping table](#granularity). **No second entry appears.**
 3. Approve. One message on `icc26/site1/qc/lims/sample-result` carrying `values.collection`
    beside the analytes.
 4. **Do it wrong.** Repeat step 2 with a transposed character: the entry stays awaiting, the
@@ -286,6 +286,12 @@ a projector:
 genuinely the acquisition instant. `sample_id` ← `values.sample_id`, `batch_id` ←
 `values.batch_id`. A `null` analyte value (Bad OPC quality, per pattern 3's `_value`) must produce
 **no row at all**, not a zero — same absent-vs-zero discipline as the analyzer.
+
+**A released sample carries two of these three.** `NOVAFLEX_OSMO_INSTALLED` is `false` on the
+shipped defaults, so `Osmo/Result` sits at `Bad_NoData`, the rule above produces no row, and
+osmolality never appears — deterministically, because `NOVAFLEX_SENSOR_ERROR_RATE` is `0.0` as
+well. The third row is the mapping for a stack with the module installed, not a description of
+what the room will see. Measured on the wire 2026-08-31 (`S-20260831-0103`: glucose, lactate).
 
 ### Approval is manual, and nothing is released without it
 
