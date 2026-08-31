@@ -830,6 +830,14 @@ unspecified store left in its way.
     the talk track only if it happens on stage; worth knowing here because it happened during this
     build and briefly looked like a pattern-6 regression.
 
+    **2026-08-31: that query is now in `tasks.py health`**, and this item predicted the right
+    column before there was a failure to use it on. The store check warns when
+    `max(ingested_at)` is over 180 s old and prints the cursor tag to clear; a lapsed trial
+    deliberately does *not* trip it, because the poll still stores and the listener check above
+    is what goes red. `ingested_at` rather than `occurred_at` matters more than it looks: the
+    instrument's clock reads hours stale all through a healthy backlog drain, so `occurred_at`
+    would fire a warning at the exact moment somebody recovers from the trap.
+
 ## Progress log
 
 | Date | |

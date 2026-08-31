@@ -139,8 +139,15 @@ Chosen 2026-08-30 over a before-only lookup and over a 60-second cutoff.
   buried in it. A forty-minute-old reading must not be able to read as current.
 
 Pattern 6's timer bounds the normal case to **≤ 27.2 s** (pattern 6 CP7), and the live table
-shows readings landing every 10 s. So a large age only happens when nobody pressed Start — the
-pre-show failure `tasks.py health` already names.
+shows readings landing every 10 s.
+
+> **Corrected 2026-08-31.** This paragraph used to end *"a large age only happens when nobody
+> pressed Start — the pre-show failure `tasks.py health` already names."* Both halves were wrong.
+> A **stale cursor** produces a large age too, with the instrument sampling happily, and that is
+> what actually happened: the CP6 verification restarted `icc26-sim-metone` on 2026-08-30 and left
+> the cursor past the end, so `em.reading` froze for 15.5 hours while every check stayed green.
+> `health` did not name it — it read the simulator's buffer and never asked whether anything was
+> landing. **It does now**, on `max(ingested_at)`, and it prints the cursor tag to clear.
 
 ---
 

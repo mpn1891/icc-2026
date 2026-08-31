@@ -1221,6 +1221,16 @@ def task_trial():
     return both_clocks_read
 
 
+def _human_age(seconds):
+    """'42 s', '7 min', '15.3 h'. A stall measured in seconds is unreadable."""
+    seconds = int(seconds)
+    if seconds < 120:
+        return "%d s" % seconds
+    if seconds < 7200:
+        return "%d min" % (seconds // 60)
+    return "%.1f h" % (seconds / 3600.0)
+
+
 def task_health():
     assert_env()
     env = dotenv()
@@ -1335,19 +1345,29 @@ def task_health():
     elif rc == 0:
         warn("debezium  no replication slot yet - it is created on first connect")
 
-    # Pattern 6. The panel answering is liveness; a NON-EMPTY BUFFER is the
-    # thing that actually matters, because SEED_SAMPLES is 0 and nothing exists
-    # until somebody presses Start on the touchscreen. "Press Start" is a
-    # pre-show step that can be forgotten, and the symptom of forgetting it is a
-    # poll that runs perfectly and publishes nothing - indistinguishable from
-    # the stale-cursor failure unless you look here.
+    # Pattern 6, half one: the instrument. The panel answering is liveness; a
+    # NON-EMPTY BUFFER is the thing that actually matters, because SEED_SAMPLES
+    # is 0 and nothing exists until somebody presses Start on the touchscreen.
+    # "Press Start" is a pre-show step that can be forgotten.
+    #
+    # **This half alone cannot tell you pattern 6 is working**, and a comment
+    # here used to claim it could. Forgetting Start and the stale-cursor failure
+    # both look like a poll that runs perfectly and publishes nothing -- but
+    # only the first one empties the buffer. A stale cursor leaves the simulator
+    # SAMPLING with a healthy buffer, which is this branch's OK. The store check
+    # below is what separates them, and it is the one that matters: on
+    # 2026-08-30 the cursor went stale and this check reported OK for 15 hours.
     metone_port = env_value(env, "METONE_PANEL_PORT", "8089")
     status, body = http("http://localhost:%s/api/state" % metone_port, timeout=8)
+    metone_sampling = False
+    metone_buffered = 0
     if status and 200 <= status < 300:
         try:
             state = json.loads(body)
         except Exception:
             state = {}
+        metone_sampling = bool(state.get("running"))
+        metone_buffered = state.get("buffer_count") or 0
         if state.get("buffer_count"):
             ok("sim-metone %s, %s record(s) buffered, room %s"
                % ("SAMPLING" if state.get("running") else "STOPPED",
@@ -1361,6 +1381,45 @@ def task_health():
     else:
         warn("sim-metone not responding on :%s - pattern 6's topic will be silent"
              % metone_port)
+
+    # Pattern 6, half two: the store. Ask whether anything is LANDING, which is
+    # the only question that distinguishes a working poll from a green one.
+    # Pattern 6 open item 10 named this query before the failure happened.
+    #
+    # `ingested_at`, NOT `occurred_at`. It has to be the clock that says "we
+    # wrote a row", because `occurred_at` is the instrument's and goes hours
+    # stale during a perfectly healthy backlog drain -- which is exactly the
+    # state this check leaves behind the moment somebody clears the cursor.
+    # Using the instrument's clock would fire a warning at the recovery.
+    #
+    # 180 s is well clear of normal: the timer is a 30 s fixed delay and the
+    # measured lag sawtooth tops out at 27.2 s (pattern 6 CP7), so six poll
+    # intervals of silence is a stall, not a slow patch.
+    #
+    # A lapsed trial does NOT land here, and that is correct: the poll still
+    # stores, so this stays green while the chariot listener check above goes
+    # red. Store and wire are two questions and they get two checks.
+    rc, lag = psql("SELECT round(extract(epoch FROM (now() - max(ingested_at)))) "
+                   "FROM em.reading;")
+    if rc != 0:
+        pass  # postgres already reported above; do not say it twice
+    elif not lag:
+        warn("em.reading  empty - pattern 6 has never stored a reading")
+    elif float(lag) <= 180:
+        ok("em.reading  last stored %s ago" % _human_age(float(lag)))
+    elif metone_sampling and metone_buffered:
+        # The stale-cursor trap, and the buffer depth is what names it: the
+        # instrument is sampling and its backlog is growing, so the poll is
+        # asking for records "after" a bookmark past the end and being told,
+        # correctly, that there are none. Every other check stays green.
+        warn("em.reading  STALLED - last stored %s ago while sim-metone is "
+             "SAMPLING with %s buffered. Stale cursor: clear"
+             % (_human_age(float(lag)), metone_buffered))
+        warn("            [default]icc26/site1/qc/analyzers/particle-counter-01"
+             "/state/cursor")
+    else:
+        warn("em.reading  STALLED - last stored %s ago and the instrument is "
+             "not sampling; press Start on :%s" % (_human_age(float(lag)), metone_port))
 
     print("")
     if healthy:
