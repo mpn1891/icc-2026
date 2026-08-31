@@ -49,6 +49,12 @@ CREATE TABLE plant.batch (
 CREATE TABLE lims.sample (
     sample_id         text PRIMARY KEY,      -- minted by the valve on the badge grant
     batch_id          text,                  -- from the analyzer result, not the valve
+    -- Which vessel this was drawn from, topic form and lowercase (br-201).
+    -- Pattern 7's join key into bes.batch_event and em.reading; parsed from the
+    -- valve event topic by the bridge, because pattern 1's payload does not
+    -- name the reactor. Not a foreign key to plant.equipment -- that table
+    -- holds 'BR-201' in the wrong case and is not on pattern 7's path.
+    equipment_id      text,
     badge_id          text,
     badge_holder      text,
     sample_start      timestamptz,           -- valve open-finish

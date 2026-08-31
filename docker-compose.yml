@@ -520,6 +520,14 @@ services:
       - /bin/sh
       - -c
       - |
+        # rm first, every time. /tmp lives in the container's writable layer, so
+        # the keystore survives a *restart* (only a recreate clears it) and
+        # keytool refuses a duplicate alias — which turned the `|| exit 1` guard
+        # below into a permanent crash loop after one transient Postgres blip on
+        # 2026-08-26. Deleting also guarantees the trust store holds the cert
+        # `seed` minted most recently rather than whichever one this container
+        # first started with. Measured 2026-08-30.
+        rm -f /tmp/ign.jks
         /usr/lib/jvm/java-21/bin/keytool -importcert -noprompt \
           -alias icc26-ignition -file /certs/icc26-ignition.crt \
           -keystore /tmp/ign.jks -storepass changeit >/dev/null \

@@ -228,6 +228,25 @@ class Store:
 
     # ---- ingest: two topics, two entry points
 
+    @staticmethod
+    def _equipment_from_topic(topic: str) -> str | None:
+        """'br-201' from 'icc26/site1/upstream/br-201/sample-valve-01/event/...'.
+
+        Pattern 1's payload does not name the reactor -- the valve reports its
+        own cycle and nothing else -- so the topic is the only place a sample's
+        vessel exists. Parsing it here is what lets pattern 7 key its two
+        lookups on a real value instead of a hardcoded 'br-201'.
+
+        Position 3, under icc26/site1/<area>/<equipment>/<device>/... None on
+        anything that does not have that shape, so a topic change surfaces as a
+        null the review message carries rather than a wrong vessel silently
+        joined against the wrong batch.
+        """
+        parts = [p for p in topic.split("/") if p]
+        if len(parts) < 5:
+            return None
+        return parts[3] or None
+
     def create_sample(self, topic: str, document: dict) -> dict:
         """Open the entry from pattern 1's `event/sample-complete`.
 
@@ -266,14 +285,16 @@ class Store:
                 created = conn.execute(
                     """
                     INSERT INTO lims.sample
-                        (sample_id, badge_id, badge_holder, sample_start, sample_completion,
+                        (sample_id, equipment_id, badge_id, badge_holder,
+                         sample_start, sample_completion,
                          open_duration_s, cycle_result, cycle_count, source_topic, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (sample_id) DO NOTHING
                     RETURNING sample_id
                     """,
                     (
                         sample_id,
+                        self._equipment_from_topic(topic),
                         values.get("badge_id"),
                         values.get("badge_holder"),
                         _ts("sample_start"),
@@ -530,16 +551,28 @@ class Store:
     # ---- review
 
     # Selected on both review paths, and the column order _build_envelope reads.
-    _ENTRY_COLUMNS = """sample_id, batch_id, badge_id, badge_holder, sample_start,
-                        sample_completion, open_duration_s, cycle_result,
-                        analyst, verified_at"""
+    _ENTRY_COLUMNS = """sample_id, batch_id, equipment_id, badge_id, badge_holder,
+                        sample_start, sample_completion, open_duration_s,
+                        cycle_result, analyst, verified_at"""
 
-    def approve(self, sample_id: str, analyst: str) -> dict:
+    def _review(self, sample_id: str, analyst: str,
+                status: str, disposition: str) -> dict:
         """Flip the entry AND write the outbox row, in one transaction.
 
         If the process dies between them, a sample is released with nobody
         obliged to deliver it -- which is the exact failure this pattern exists
         to argue about, so it must not be possible to cause it by accident here.
+
+        Approve and reject differ only in the status they write and the
+        disposition they carry, so they share this body rather than drifting
+        apart in two copies. Both publish: a rejection is a disposition with
+        consequence, and it must not be the one outcome that leaves no trace on
+        the backbone.
+
+        The `status = 'received'` guard is what keeps the outbox honest. The
+        row is only built after the UPDATE returns one, so an outbox row can
+        never exist for an entry that was not actually transitioned -- a replay
+        of either verb finds nothing to update and returns before the INSERT.
         """
         analyst = (analyst or "").strip() or self.cfg.default_analyst
         with self.connect() as conn:
@@ -547,15 +580,16 @@ class Store:
                 row = conn.execute(
                     """
                     UPDATE lims.sample
-                    SET status = 'verified', verified_at = now(), analyst = %%s
+                    SET status = %%s, verified_at = now(), analyst = %%s
                     WHERE sample_id = %%s AND status = 'received'
                     RETURNING %s
                     """ % self._ENTRY_COLUMNS,
-                    (analyst, sample_id),
+                    (status, analyst, sample_id),
                 ).fetchone()
                 if row is None:
                     return self._not_reviewable(conn, sample_id)
-                payload = _build_envelope(row, self._result_rows(conn, sample_id))
+                payload = _build_envelope(
+                    row, self._result_rows(conn, sample_id), disposition)
                 inserted = conn.execute(
                     """
                     INSERT INTO lims.webhook_delivery (sample_id, payload)
@@ -576,26 +610,15 @@ class Store:
                     "UPDATE lims.webhook_delivery SET payload = %s WHERE id = %s",
                     (Jsonb(payload), inserted[0]),
                 )
-        LOG.info("approved %s by %s -- outbox id %s", sample_id, analyst, inserted[0])
+        LOG.info("%s %s by %s -- disposition %s, outbox id %s",
+                 status, sample_id, analyst, disposition, inserted[0])
         return {"ok": True, "sample_id": sample_id, "delivery_id": inserted[0]}
 
+    def approve(self, sample_id: str, analyst: str) -> dict:
+        return self._review(sample_id, analyst, "verified", "pass")
+
     def reject(self, sample_id: str, analyst: str) -> dict:
-        analyst = (analyst or "").strip() or self.cfg.default_analyst
-        with self.connect() as conn:
-            with conn.transaction():
-                row = conn.execute(
-                    """
-                    UPDATE lims.sample
-                    SET status = 'rejected', verified_at = now(), analyst = %%s
-                    WHERE sample_id = %%s AND status = 'received'
-                    RETURNING %s
-                    """ % self._ENTRY_COLUMNS,
-                    (analyst, sample_id),
-                ).fetchone()
-                if row is None:
-                    return self._not_reviewable(conn, sample_id)
-        LOG.info("rejected %s by %s -- nothing published", sample_id, analyst)
-        return {"ok": True, "sample_id": sample_id, "published": False}
+        return self._review(sample_id, analyst, "rejected", "fail")
 
     def _result_rows(self, conn, sample_id: str) -> list:
         return conn.execute(
@@ -751,7 +774,7 @@ class Store:
         return {"ok": True, "sample_id": sample_id, "batch_id": self.cfg.default_batch_id}
 
 
-def _build_envelope(entry: tuple, results: list) -> dict:
+def _build_envelope(entry: tuple, results: list, disposition: str) -> dict:
     """One message per sample, carrying both halves of the record.
 
     `ts` is the acquisition instant, not the approval instant -- the event being
@@ -766,8 +789,18 @@ def _build_envelope(entry: tuple, results: list) -> dict:
     cycle ended, beside the numbers a person just signed for.
 
     `seq` is filled in with the outbox id after INSERT.
+
+    `values.equipment_id` is the vessel, parsed from pattern 1's topic. It is
+    pattern 7's join key into bes.batch_event and em.reading, and it is the
+    reason 07 does not have to hardcode a reactor. `values.batch_id` is NOT --
+    every sample pattern 1 mints carries an empty one, so 07 takes batch
+    identity from bes.batch_event instead.
+
+    `values.disposition` is the analyst's verdict -- `pass` or `fail`. Both
+    outcomes publish, so nothing downstream has to infer a rejection from
+    silence. Pattern 7 fires on the review either way.
     """
-    (sample_id, batch_id, badge_id, badge_holder, sample_start,
+    (sample_id, batch_id, equipment_id, badge_id, badge_holder, sample_start,
      sample_completion, open_duration_s, cycle_result, analyst, _verified_at) = entry
     collected_at = min((row[3] for row in results), default=None) or sample_completion
     return {
@@ -782,8 +815,10 @@ def _build_envelope(entry: tuple, results: list) -> dict:
         "values": {
             "sample_id": sample_id,
             "batch_id": batch_id,
+            "equipment_id": equipment_id,
             "collected_at": _iso(collected_at) if collected_at else None,
             "analyst": analyst,
+            "disposition": disposition,
             "collection": {
                 "badge_id": badge_id,
                 "badge_holder": badge_holder,

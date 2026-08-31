@@ -913,12 +913,25 @@
     "typeId": null,
     "tags": [
       {
+        "name": "asset_data",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "dataType": "String",
+            "documentation": "The identifier this reactor is known by on the wire and in every record: the topic form, lowercase -- br-201, br-202. Pattern 7 keys both of its lookups on this, as a literal against bes.batch_event.equipment_id and em.reading.equipment_id, and pattern 1\u0027s valve event carries it to the LIMS so a sample knows which vessel it came from. NOT plant.equipment\u0027s \u0027BR-201\u0027 -- that table is deliberately not on pattern 7\u0027s path and its casing does not match anything else in the stack. A memory tag for now; the obvious next step is a SQL lookup against an asset register, which is why it lives in its own folder rather than beside the process values.",
+            "name": "equipment_identifier",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          }
+        ]
+      },
+      {
         "name": "batch_data",
         "tagType": "Folder",
         "tags": [
           {
             "dataType": "String",
-            "documentation": "The batch this reactor is running, typed in by hand before the first advance. bes_batch refuses to advance without one -- an unnamed batch writes an unusable record. Pattern 1's valve event carries no batch_id at all; the LIMS gets its copy from the analyzer result, not from here.",
+            "documentation": "The batch this reactor is running. Minted by bes_batch on the first advance out of IDLE and cleared when the batch ends -- not typed. A hand-typed id is how four conventions ended up live at once. Pattern 7 takes batch identity from bes.batch_event, which is where this is stamped on every row, NOT from the LIMS review message: every sample pattern 1 has actually minted carries an empty batch_id.",
             "name": "batch_id",
             "tagType": "AtomicTag",
             "valueSource": "memory"
@@ -1709,7 +1722,7 @@
         "tags": [
           {
             "dataType": "Int4",
-            "documentation": "Seconds between polls -- DOCUMENTATION ONLY. Nothing reads this tag. The cadence really lives in the 06-poll gateway timer's attributes.delay (30000 ms), because a timer's delay is fixed at resource load and no tag can change it live. Kept because the number is half of pattern 6's argument: the detection gap is the sample duration plus this, worst case, and it belongs on screen. Change it here and in ignition/timer/06-poll/resource.json together. For the stall demo use config/enabled, which the poll DOES read -- widening this tag does nothing.",
+            "documentation": "Seconds between polls -- DOCUMENTATION ONLY. Nothing reads this tag. The cadence really lives in the 06-poll gateway timer\u0027s attributes.delay (30000 ms), because a timer\u0027s delay is fixed at resource load and no tag can change it live. Kept because the number is half of pattern 6\u0027s argument: the detection gap is the sample duration plus this, worst case, and it belongs on screen. Change it here and in ignition/timer/06-poll/resource.json together. For the stall demo use config/enabled, which the poll DOES read -- widening this tag does nothing.",
             "name": "poll_interval_s",
             "tagType": "AtomicTag",
             "value": 30,
@@ -1717,7 +1730,7 @@
           },
           {
             "dataType": "Int8",
-            "documentation": "Raw particle count in the 0.5 um and larger channel above which metone_poll writes status='excursion'. 1660 counts in the 4.717 L a 10 s sample draws at 28.3 LPM, which is 352,000 particles per cubic metre -- ISO 14644-1 Class 7, EU GMP Grade C at rest. **Chosen for DURATION=10.** Change the sample duration and this number silently means something else, with nothing in the system to catch it. That is the price of thresholding raw counts, and it is why the volume it was chosen for is written down here. Measured against the simulator on 2026-08-29: clean room 113-137 counts, dirty room 3346-4350, so the limit sits an order of magnitude clear of both. It applies to the 0.5 um channel ONLY. One raw-count number cannot also threshold the 5.0 um channel, whose ISO 7 limit is 2,930 per cubic metre -- about 14 counts at this volume, two orders of magnitude away. The 5 um count is published and stored so a consumer can see it; it is not compared here, because a second threshold would be a second copy of the cleanroom spec. THIS TAG IS THE ONLY COPY OF THE RULE.",
+            "documentation": "Raw particle count in the 0.5 um and larger channel above which metone_poll writes status\u003d\u0027excursion\u0027. 1660 counts in the 4.717 L a 10 s sample draws at 28.3 LPM, which is 352,000 particles per cubic metre -- ISO 14644-1 Class 7, EU GMP Grade C at rest. **Chosen for DURATION\u003d10.** Change the sample duration and this number silently means something else, with nothing in the system to catch it. That is the price of thresholding raw counts, and it is why the volume it was chosen for is written down here. Measured against the simulator on 2026-08-29: clean room 113-137 counts, dirty room 3346-4350, so the limit sits an order of magnitude clear of both. It applies to the 0.5 um channel ONLY. One raw-count number cannot also threshold the 5.0 um channel, whose ISO 7 limit is 2,930 per cubic metre -- about 14 counts at this volume, two orders of magnitude away. The 5 um count is published and stored so a consumer can see it; it is not compared here, because a second threshold would be a second copy of the cleanroom spec. THIS TAG IS THE ONLY COPY OF THE RULE.",
             "name": "excursion_threshold",
             "tagType": "AtomicTag",
             "value": 1660,
@@ -1746,28 +1759,28 @@
           },
           {
             "dataType": "Int8",
-            "documentation": "The instrument's own monotonic counter for this analysis. Published as the envelope's `seq`, exactly as pattern 5 publishes bes.batch_event.id -- the source system's number, never one we invent. It restarts at 1 when the simulator restarts, which is what makes the stale-cursor trap possible; see state/cursor.",
+            "documentation": "The instrument\u0027s own monotonic counter for this analysis. Published as the envelope\u0027s `seq`, exactly as pattern 5 publishes bes.batch_event.id -- the source system\u0027s number, never one we invent. It restarts at 1 when the simulator restarts, which is what makes the stale-cursor trap possible; see state/cursor.",
             "name": "sequence_number",
             "tagType": "AtomicTag",
             "valueSource": "memory"
           },
           {
             "dataType": "String",
-            "documentation": "normal | excursion. THE FLAG. Computed by metone_poll at ingest from current/ch_0_5 against config/excursion_threshold, stored in em.reading.status and published as values.status. The instrument does not produce it and must never be asked to: the cleanroom limit is Ignition's rule and has exactly one home. Pattern 7 reads this flag and does no arithmetic of its own -- docs/00-architecture.md, 'Derived flags travel with the fact that produced them'.",
+            "documentation": "normal | excursion. THE FLAG. Computed by metone_poll at ingest from current/ch_0_5 against config/excursion_threshold, stored in em.reading.status and published as values.status. The instrument does not produce it and must never be asked to: the cleanroom limit is Ignition\u0027s rule and has exactly one home. Pattern 7 reads this flag and does no arithmetic of its own -- docs/00-architecture.md, \u0027Derived flags travel with the fact that produced them\u0027.",
             "name": "status",
             "tagType": "AtomicTag",
             "valueSource": "memory"
           },
           {
             "dataType": "String",
-            "documentation": "The operator's sample point, typed on the instrument's touchscreen at :8089 and carried in the vendor record's deviceName. The vendor record has no location field; this is that overload, named rather than hidden. If the vendor API ever grows a real location field, move it and delete this sentence.",
+            "documentation": "The operator\u0027s sample point, typed on the instrument\u0027s touchscreen at :8089 and carried in the vendor record\u0027s deviceName. The vendor record has no location field; this is that overload, named rather than hidden. If the vendor API ever grows a real location field, move it and delete this sentence.",
             "name": "location",
             "tagType": "AtomicTag",
             "valueSource": "memory"
           },
           {
             "dataType": "String",
-            "documentation": "Who the instrument says ran the analysis. The instrument's claim, not a gateway login.",
+            "documentation": "Who the instrument says ran the analysis. The instrument\u0027s claim, not a gateway login.",
             "name": "operator",
             "tagType": "AtomicTag",
             "valueSource": "memory"
@@ -1829,7 +1842,7 @@
         "tags": [
           {
             "dataType": "String",
-            "documentation": "THE WATERMARK. The opaque cursor the instrument last handed back, base64 of an id. Written once per poll, after the last complete page, so a partial walk leaves it where the last whole page ended. It persists across a gateway restart -- value persistence on the `default` provider is Database -- so the poll resumes rather than replaying the buffer. **Clear this tag to recover from the stale-cursor trap.** Restart the simulator and its sequence numbers begin at 1 again while this still points past the end, so the server answers 'nothing after 45' -- correctly -- and the poll runs perfectly while publishing nothing, with every health check green. Emptying this string forces a replay.",
+            "documentation": "THE WATERMARK. The opaque cursor the instrument last handed back, base64 of an id. Written once per poll, after the last complete page, so a partial walk leaves it where the last whole page ended. It persists across a gateway restart -- value persistence on the `default` provider is Database -- so the poll resumes rather than replaying the buffer. **Clear this tag to recover from the stale-cursor trap.** Restart the simulator and its sequence numbers begin at 1 again while this still points past the end, so the server answers \u0027nothing after 45\u0027 -- correctly -- and the poll runs perfectly while publishing nothing, with every health check green. Emptying this string forces a replay.",
             "name": "cursor",
             "tagType": "AtomicTag",
             "valueSource": "memory"
