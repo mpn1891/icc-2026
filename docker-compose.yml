@@ -202,8 +202,8 @@ services:
   # every result field — and reads the LastResult branch when it changes. That
   # is the pattern: event-on-completion, not value-change polling.
   #
-  # Runs alongside opcua-novaflex, not instead of it. The Countess has no vendor
-  # OPC server, so this address space is the one we would design; the FLEX2 has
+  # Runs alongside opcua-cell-analyzer, not instead of it. The Countess has no vendor
+  # OPC server, so this address space is the one we would design; the analyzer has
   # a real one, so that address space is the one a vendor actually ships. The
   # pair is the pattern-3 argument — see docs/plans/03-opcua-analyzer-playbook.md.
   # ───────────────────────────────────────────────────────────────────────────
@@ -241,10 +241,10 @@ services:
     networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Pattern 3 — a simulated Nova Biomedical BioProfile FLEX2 bioanalyzer,
+  # Pattern 3 — a simulated cell-culture analyzer,
   # served over OPC UA
   #
-  # The second half of pattern 3, and the reason there are two. The FLEX2 has a
+  # The second half of pattern 3, and the reason there are two. The analyzer has a
   # REAL vendor OPC UA server, and this container reproduces the address space
   # its manual documents (LPN 60644B section 9) — two flat trees of string-id
   # tags, OPCSystemObjects and OPCSystemCommands, inherited from the OPC DA
@@ -253,59 +253,59 @@ services:
   # What that vendor server does NOT have is the whole point:
   #   * no completion counter, no events — SampleResults just changes
   #   * no methods at all — every action is a writable Boolean you set to 1
-  # So ICC26Extensions/ is ours, is named so nobody mistakes it for Nova's, and
+  # So ICC26Extensions/ is ours, is named so nobody mistakes it for the vendor's, and
   # is where SampleCompleteCounter lives. Countess = the model we wish vendors
-  # shipped; FLEX2 = what they actually ship. Both, side by side, is the talk.
+  # shipped; analyzer = what they actually ship. Both, side by side, is the talk.
   #
   # Model + provenance: docs/reference/novaflex2-opcua-model.md
-  # Deviations:         services/opcua-novaflex/README.md
+  # Deviations:         services/opcua-cell-analyzer/README.md
   # ───────────────────────────────────────────────────────────────────────────
-  opcua-novaflex:
-    build: ./services/opcua-novaflex
-    container_name: icc26-opcua-novaflex
+  opcua-cell-analyzer:
+    build: ./services/opcua-cell-analyzer
+    container_name: icc26-opcua-cell-analyzer
     restart: unless-stopped
     environment:
-      ANALYZER_ID: ${NOVAFLEX_ANALYZER_ID:-FLEX2-01}
+      ANALYZER_ID: ${CELL_ANALYZER_ANALYZER_ID:-CELL-ANALYZER-01}
       # The osmometer stays unfitted on purpose: Osmo/Result then reads
       # Bad_NoData beside chemistry values that are Good, in the same result, at
       # the same timestamp — while the vendor's own ModuleInformation/Modules/
       # Osmo says False, Good. Absent vs zero, in the vendor's vocabulary.
-      OSMO_INSTALLED: ${NOVAFLEX_OSMO_INSTALLED:-false}
+      OSMO_INSTALLED: ${CELL_ANALYZER_OSMO_INSTALLED:-false}
       # Autosampler bank B likewise: ten RSM status tags at Bad_NoData.
-      AUTOSAMPLER_BANK_B: ${NOVAFLEX_AUTOSAMPLER_BANK_B:-false}
+      AUTOSAMPLER_BANK_B: ${CELL_ANALYZER_AUTOSAMPLER_BANK_B:-false}
       # Both 0: the analyzer starts nothing on its own. Since 2026-08-26 the
       # sample id reaches this instrument by a person typing it on the
       # sample-login page below, and a free-running analyzer invents ids nobody
       # typed — every result it produced would park unmatched in the LIMS. Set
       # them non-zero to get the old self-driving behaviour back.
-      SAMPLE_INTERVAL_S: ${NOVAFLEX_SAMPLE_INTERVAL_S:-0}
-      FIRST_SAMPLE_DELAY_S: ${NOVAFLEX_FIRST_SAMPLE_DELAY_S:-0}
+      SAMPLE_INTERVAL_S: ${CELL_ANALYZER_SAMPLE_INTERVAL_S:-0}
+      FIRST_SAMPLE_DELAY_S: ${CELL_ANALYZER_FIRST_SAMPLE_DELAY_S:-0}
       HTTP_PORT: 8087
       # Every Nth free-running cycle runs an onboard QC instead of a sample. QC
       # writes QCResults and increments QcCompleteCounter — never the sample
       # counter. That is the manual's own section 9 warning, live.
       # QC rides on free-running cycles, so with the interval at 0 this never
       # fires by itself. The sample-login page has a Run QC button instead.
-      QC_EVERY_N: ${NOVAFLEX_QC_EVERY_N:-6}
-      SENSOR_ERROR_RATE: ${NOVAFLEX_SENSOR_ERROR_RATE:-0.0}
+      QC_EVERY_N: ${CELL_ANALYZER_QC_EVERY_N:-6}
+      SENSOR_ERROR_RATE: ${CELL_ANALYZER_SENSOR_ERROR_RATE:-0.0}
       # The arrow is what the manual prints inside the NodeId identifier itself
-      # (§1.2.2). Whether a real FLEX2 uses it or a dot is unresolved — one env
+      # (§1.2.2). Whether a real instrument uses it or a dot is unresolved — one env
       # var settles it without touching a field table. See the model doc § 11.
-      NODE_SEPARATOR: ${NOVAFLEX_NODE_SEPARATOR:-->}
-      LOG_LEVEL: ${NOVAFLEX_LOG_LEVEL:-INFO}
+      NODE_SEPARATOR: ${CELL_ANALYZER_NODE_SEPARATOR:-->}
+      LOG_LEVEL: ${CELL_ANALYZER_LOG_LEVEL:-INFO}
       # INFO here logs every node a client creates a monitored item for — the only reliable
       # way to tell whether an Ignition tag actually bound. Same trick as the Countess.
-      ASYNCUA_LOG_LEVEL: ${NOVAFLEX_ASYNCUA_LOG_LEVEL:-WARNING}
+      ASYNCUA_LOG_LEVEL: ${CELL_ANALYZER_ASYNCUA_LOG_LEVEL:-WARNING}
       TZ: ${TZ:-America/Chicago}
     ports:
       # 4841 on the host, 4840 in the container: both analyzers run at once and
       # the host side would collide otherwise. Ignition reaches it by service
       # name on the compose network and never sees this number.
-      - "${OPCUA_NOVAFLEX_PORT:-4841}:4840"
+      - "${OPCUA_CELL_ANALYZER_PORT:-4841}:4840"
       # The instrument's own sample-login touchscreen, in the same spirit as the
       # two valve pages on 8085/8086. This is where the valve's sample id gets
       # transcribed into the analyzer.
-      - "${NOVAFLEX_HTTP_PORT:-8087}:8087"
+      - "${CELL_ANALYZER_HTTP_PORT:-8087}:8087"
     healthcheck:
       test: ["CMD", "python", "-c",
              "import socket; socket.create_connection(('127.0.0.1', 4840), 3).close()"]
@@ -580,7 +580,7 @@ services:
   # The API is transcribed from docs/reference/particle_counter_sim.md and gets
   # nothing added to it: no since_id, no excursion status, no location field, no
   # cursor reset. The awkwardness stays on our side, which is the same rule
-  # pattern 3 keeps with the Nova's vendor address space.
+  # pattern 3 keeps with the analyzer's vendor address space.
   #
   # Spec:  docs/plans/06-poll-metone.md
   # ───────────────────────────────────────────────────────────────────────────

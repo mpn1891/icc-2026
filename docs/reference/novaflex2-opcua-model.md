@@ -38,9 +38,9 @@ simulator will outlive anyone's memory of which half was invented.
 | Item | Real FLEX2 (manual §1.2.2) | This simulator |
 |---|---|---|
 | Server description | Nova Biomedical OPC UA Server | ICC26 BioProfile FLEX2 (simulated) |
-| Endpoint | `opc.tcp://<ip>:59888/NovaBiomedical` | `opc.tcp://opcua-novaflex:4840/novaflex/` |
+| Endpoint | `opc.tcp://<ip>:59888/NovaBiomedical` | `opc.tcp://opcua-cell-analyzer:4840/cell-analyzer/` |
 | Namespace index | **`ns=3` for tags, `ns=2` for tag folders** | `ns=2` for everything |
-| Namespace URI | **not published in the manual** | `http://icc26.demo/UA/NovaflexII/` |
+| Namespace URI | **not published in the manual** | `http://icc26.demo/UA/CellAnalyzer/` |
 | Identifier type | String, for every tag | String, for every tag |
 | Identifier | `OPCSystemObjects->Example.Item.Name` | same, separator configurable |
 
@@ -68,7 +68,7 @@ Unresolvable without a live instrument. So the simulator takes `NODE_SEPARATOR`,
 If a real FLEX2 turns out to use dots, one environment variable fixes it and no table changes.
 
 ```
-nsu=http://icc26.demo/UA/NovaflexII/;s=OPCSystemObjects->HistoricalSampleResults->Chem->Gluc->Result
+nsu=http://icc26.demo/UA/CellAnalyzer/;s=OPCSystemObjects->HistoricalSampleResults->Chem->Gluc->Result
 ```
 
 ---
@@ -348,9 +348,10 @@ them separate from their uncorrected twins.
 
 ## 10. MQTT projection (ICC-2026 pattern 03)
 
-Topic `icc26/site1/qc/analyzers/novaflex-01/result`, envelope per `docs/00-architecture.md`.
-The device id is `novaflex-01`. This document, the simulator directory, and the Event Stream
-name keep `novaflex` because those name the manual and the service.
+Topic `icc26/site1/qc/analyzers/cell-analyzer-01/result`, envelope per `docs/00-architecture.md`.
+The device id is `cell-analyzer-01`. This document keeps its `novaflex2-opcua-model.md` filename
+because it names the manual it transcribes; the demo's own naming dropped the vendor's name on
+2026-09-05.
 
 
 
@@ -358,7 +359,7 @@ name keep `novaflex` because those name the manual and the service.
 {
   "ts": "2026-08-13T18:46:17.700Z",
   "seq": 412,
-  "source": { "id": "novaflex-01", "type": "analyzer" },
+  "source": { "id": "cell-analyzer-01", "type": "analyzer" },
   "meta": { "mechanism": "opcua-event", "ingest_ts": "2026-08-13T18:46:17.760Z" },
   "values": {
     "sample_id": "S-00042", "batch_id": "BR-2026-014", "vessel_id": "BRX-2000-A",
@@ -381,7 +382,7 @@ Rules for the projection:
   is a vendor field, not `ICC26Extensions/SampleCompleteCounter`. The simulator writes
   `SampleTime` last on the historical tree so the trigger cannot fire before the rest of the
   result is settled. QC does not touch this tree and is a separate event.
-- Read the **historical UDT tags** already bound under `novaflex-01/result/…`. Do not read
+- Read the **historical UDT tags** already bound under `cell-analyzer-01/result/…`. Do not read
   `ICC26Extensions/ResultJson` — that node is an extension, and the publish path stays on
   vendor tags. Bad quality maps to JSON `null`, never `0`.
 - `values` carries the result, **not `StartTags->Ranges`**. That is 52 of the 141 leaves,
@@ -392,8 +393,8 @@ Rules for the projection:
 - QC results go to a **separate topic** (`…/qc`) if/when that stream is built. They are not
   samples and must not land in a sample trend.
 
-Ignition side: tag-change on `result/sample_time` → Event Stream `03_opcua/novaflex-result`
-(`opcua_event.build_novaflex_result`) → MQTT Transmission handler → the topic above.
+Ignition side: tag-change on `result/sample_time` → Event Stream `03_opcua/cell-analyzer-result`
+(`opcua_event.build_cell_analyzer_result`) → MQTT Transmission handler → the topic above.
 Transmission, not Engine, per the ACL split in `docs/plans/00-master-plan.md`.
 
 ---
@@ -424,12 +425,12 @@ printed data type** where they conflict, since the name is what a client address
 
 ## 12. Deviations in this simulator
 
-Implemented in [`services/opcua-novaflex/`](../../services/opcua-novaflex/README.md).
+Implemented in [`services/opcua-cell-analyzer/`](../../services/opcua-cell-analyzer/README.md).
 
 | Real FLEX2 | Here | Why |
 |---|---|---|
 | `ns=3` tags, `ns=2` folders | one namespace | the manual publishes neither URI |
-| Port 59888, path `/NovaBiomedical` | 4840 (host 4841), `/novaflex/` | compose convention; 4841 because the Countess already holds 4840 host-side |
+| Port 59888, path `/NovaBiomedical` | 4840 (host 4841), `/cell-analyzer/` | compose convention; 4841 because the Countess already holds 4840 host-side |
 | Basic256Sha256 Sign & Encrypt down to None | **None**, anonymous | a certificate exchange before the gateway will browse is a twenty-minute detour on stage. A production integration should use the vendor's strongest policy |
 | Licensed per instrument; unlicensed = no tags | always on | |
 | Bridge PC also serves OPC **DA** | UA only | DA is COM/DCOM on Windows and irrelevant to this demo |

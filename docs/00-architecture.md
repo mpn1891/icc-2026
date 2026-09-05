@@ -42,7 +42,7 @@ Everything else publishes through Ignition. Pattern 7 is not a new inbound trans
 | `postgres` | 5432 | step 1 |
 | `ignition` | 8088, 8043 | step 1 |
 | `chariot` | 1883, 8883, 8090, 8081, 8444 | step 1 |
-| `opcua-novaflex` | 4841, 8087 (sample login) | step 4 |
+| `opcua-cell-analyzer` | 4841, 8087 (sample login) | step 4 |
 | `sim-valve-mqtt` | 8085 (config page) | pattern 1 |
 | `sim-valve-spb` | 8086 (config page) | pattern 2 |
 | `lims` | 8000 (review screen) | pattern 4 — built; pass/fail remaining |
@@ -144,7 +144,7 @@ icc26/site1/upstream/br-201/sample-valve-01/event/badge-scan       # 1  every ba
 icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete  # 1  only when a sample ran
 icc26/site1/upstream/br-201/sample-valve-01/status     # 1  online/offline, retained; also the LWT
 icc26/site1/upstream/br-201/sample-valve-01/telemetry  # 1  air supply / enclosure temp, every 5 s
-icc26/site1/qc/analyzers/novaflex-01/result            # 3  Nova result
+icc26/site1/qc/analyzers/cell-analyzer-01/result            # 3  analyzer result
 icc26/site1/qc/lims/sample-result                      # 4  review: analyst + pass/fail
 icc26/site1/upstream/br-201/batch/event                # 5  CDC of bes.batch_event
 icc26/site1/qc/analyzers/particle-counter-01/result    # 6  MET ONE analysis
@@ -198,19 +198,26 @@ written, and 07 has none. Pattern 6's is settled: `docs/plans/06-poll-metone.md`
 2026-08-29 and broker-verified the same day. `downstream` and `utilities` still have no user.
 
 **Pattern 6 moved from `upstream/br-201` to `qc/analyzers` on 2026-08-25.** The MET ONE now sits
-in the analyzer path beside the Nova rather than beside the reactor. It is an *instrument that
+in the analyzer path beside the analyzer rather than beside the reactor. It is an *instrument that
 runs analyses*, which is what the `qc/analyzers` cell holds, and putting it there keeps the
 Ignition tag path and the MQTT topic identical — every other pattern has that property and a
 split would be the first exception. The cost is the "environmental reading taken beside the
 reactor" framing: the reactor association now lives in the payload and in pattern 7's join,
 not in the address. Nothing on stage depends on the old address.
 
-**Pattern 3's device id is `novaflex-01`.** Topic, Ignition UDT instance, `uns_path`, Event
-Stream handler topic, and `plant.equipment` id all use that name. The service directory, the
-compose entry, the Event Stream name `03_opcua/novaflex-result`, and the reference model doc
-keep `novaflex` because those name the *simulator and its source manual*, not a second
-instrument id. A shorter `flex-01` was considered on 2026-08-25 and reverted so the running
-gateway and the files stay aligned; revisit later if wanted, and rename every place in one pass.
+**Pattern 3's device id is `cell-analyzer-01`.** Topic, Ignition UDT instance, `uns_path`, Event
+Stream handler topic and `plant.equipment` id all use that name — as do the service directory, the
+compose entry, the Event Stream name `03_opcua/cell-analyzer-result`, the OPC UA namespace and
+endpoint path, and the `cell_analyzer` UDT type. **Renamed from `novaflex` on 2026-09-05**, in one
+pass, with the stack down — the 2026-08-25 `flex-01` attempt was reverted because a running gateway
+drifted from the files, so this pass was done with no containers up. The vendor's name is now absent
+from everything the demo shows. Its provenance is not:
+[`reference/novaflex2-opcua-model.md`](reference/novaflex2-opcua-model.md) keeps its filename and
+its citation of the published manual, because that document's whole value is that it reports an
+address space that really exists. A live volume keeps the old `plant.equipment` id until
+[`../compose/postgres/migrate-09-cell-analyzer-rename.sql`](../compose/postgres/migrate-09-cell-analyzer-rename.sql)
+is applied — cosmetic, since that table is not on pattern 7's path, but it is the one piece the
+`initdb/` seed cannot fix on an existing database.
 
 **There is no `mes` area, deliberately.** An MES is a piece of software, not a place, and an
 area slot filled with a system name is the same mistake as organising by ingestion mechanism —
@@ -252,7 +259,7 @@ strings that appear in topics. Keep it that way.
 > **Known wart, found 2026-08-26 building pattern 5: the bioreactors already break that rule.**
 > `plant.equipment` holds `BR-201` / `BR-202`; the topics, the tag paths and now
 > `bes.batch_event.equipment_id` hold `br-201` / `br-202`. The valves and the analyzer are
-> consistent (`sample-valve-01`, `novaflex-01`) — only the vessels are split. Pattern 5 stores the
+> consistent (`sample-valve-01`, `cell-analyzer-01`) — only the vessels are split. Pattern 5 stores the
 > **topic form**, because the `cdc-sink` builds its topic from that column and a case-folding step
 > in the middle is a bug waiting to happen. Fixing it properly means one pass across the seed, the
 > topic strings and pattern 7's joins; four weeks out, it is recorded rather than done. Whoever
@@ -284,7 +291,7 @@ A second re-source, after 2026-08-19's Odoo / Modbus MET ONE / vibration-AMS-DCS
 | 4 | `webhook` | LIMS review (already built) | `analyst` + `disposition` pass/fail |
 | 5 | `cdc` | Ignition timer → `bes.batch_event` → Debezium | reactor operation cycle |
 | 6 | `poll` | MET ONE HTTP API in `qc/analyzers`, Ignition poll → Event Stream | particle-count analysis |
-| 7 | `aggregate` | MQTT listener on the LIMS review | sample chain: valve, Nova, batch, env |
+| 7 | `aggregate` | MQTT listener on the LIMS review | sample chain: valve, analyzer, batch, env |
 
 Pattern 5 is an application we own. Say that on stage: the textbook CDC case is an app you
 cannot modify; this engine is a stand-in for the **batch execution system** we would not patch,
@@ -333,10 +340,10 @@ pre-show trial checklist that lived in the runbook now lives in *Trial timers* b
 `meta.mechanism` — is **moot**, not resolved: there is no colouring.
 
 **Countess is out of the demo.** `services/opcua-countess` still builds and runs, the
-`cell_analyzer` OPC UA connection and UDT type are still in the repo, and
+`cell_counter` OPC UA connection and UDT type are still in the repo, and
 [`reference/countess-3fl-opcua-model.md`](reference/countess-3fl-opcua-model.md) is still the
 designed-model reference. What is gone is its stage time: the `countess-01` UDT instance is
-deleted, its MQTT publish is not to be finished, and pattern 3 is the Nova alone. The
+deleted, its MQTT publish is not to be finished, and pattern 3 is the analyzer alone. The
 two-analyzer contrast — "the model we would design versus the one a vendor ships" — survives as
 a sentence, not a second running instrument.
 
@@ -349,7 +356,7 @@ the current numbers.
 New with the 2026-08-25 revision, and it is the one item that grew rather than shrank.
 
 Pattern 7 fires on the pattern-4 LIMS review and then has to answer four questions **about the
-past**: when the valve opened, when the Nova ran, what phase was running at the sample-open
+past**: when the valve opened, when the analyzer ran, what phase was running at the sample-open
 instant, and what the nearest MET ONE reading said. A subscriber holding only the message that
 woke it up cannot answer any of them. So **patterns 1, 3, 5 and 6 need their events persisted,
 not just published** — today only pattern 5's events land in a table, and that table is the CDC
@@ -413,12 +420,12 @@ Same rule that renamed `mes.` → `bes.`: **the schema follows the words spoken 
 
 The rule, settled here so that no spec re-litigates it: **the valve mints the sample id, because
 the sample begins when material leaves the reactor.** Everything downstream carries it unchanged.
-The Nova sim already reads `SampleInformation/SampleID` from writable OPC UA nodes, so Ignition
+The analyzer sim already reads `SampleInformation/SampleID` from writable OPC UA nodes, so Ignition
 writes the valve's id into the analyzer before the run instead of the analyzer inventing one.
 
 **Done 2026-08-26, and the mechanism is a person.** The valve mints `S-YYYYMMDD-NNNN`. The
-analyzer's own sample-login screen (`services/opcua-novaflex/webui.py`, port 8087) is where
-somebody reads that id off BR-201's page and types or scans it in, and the FLEX2 echoes it back
+analyzer's own sample-login screen (`services/opcua-cell-analyzer/webui.py`, port 8087) is where
+somebody reads that id off BR-201's page and types or scans it in, and the analyzer echoes it back
 on `HistoricalSampleResults/StartTags/SampleInformation/SampleID` because that is what the
 vendor's `SampleInformation` nodes are for. Nothing automated bridges the two containers.
 
@@ -427,7 +434,7 @@ actually does, and it is where pattern 1's GxP hook — *the record originates a
 action; no transcription, no intermediary* — meets its intermediary. Type it wrong and the
 result correlates with nothing: the LIMS holds an open entry with no analysis and a parked
 analysis with no entry, side by side on one screen. An Ignition tag write into
-`bioanalyzer/command/sample_id` would do the same job without the fallibility, which is
+`cell_analyzer/command/sample_id` would do the same job without the fallibility, which is
 precisely why it is not what we built.
 
 The analyzer no longer free-runs (`SAMPLE_INTERVAL_S=0`). It cannot: a self-driving instrument
@@ -454,7 +461,7 @@ LIMS opens its sample entry from pattern 1's `event/sample-complete` and appends
 result to it, so the released review message carries `values.collection.sample_start` beside the
 analytes. Two of the four sources pattern 7's unspecified event store was going to have to
 persist are therefore no longer its problem — the cost being that pattern 4 now performs the
-valve↔Nova half of the join that pattern 7 was going to demonstrate. That was decided
+valve↔analyzer half of the join that pattern 7 was going to demonstrate. That was decided
 deliberately; see [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md).
 
 ### Payload envelope
@@ -465,7 +472,7 @@ Every non-Sparkplug payload **that Ignition publishes** — patterns 3, 4, 5, 6 
 {
   "ts": "2026-08-07T14:03:22.145Z",
   "seq": 1041,
-  "source": { "id": "novaflex-01", "type": "analyzer" },
+  "source": { "id": "cell-analyzer-01", "type": "analyzer" },
   "meta": { "mechanism": "cdc", "ingest_ts": "…", "correlation_id": "…" },
   "values": { }
 }
@@ -528,7 +535,7 @@ request/response pattern is ever added, this is the constraint it will run into 
 **`meta.correlation_id` has a working first user in pattern 4.** The analyzer envelope stamps
 `sample_id` into it; the LIMS carries it through review and the webhook republishes it under
 `mechanism=webhook`. Pattern 7 reuses the same id on the aggregate, so one sample is
-traceable from Nova through the LIMS review to the sample-chain document. That still does
+traceable from the analyzer through the LIMS review to the sample-chain document. That still does
 not need MQTT 5 response-topic properties — pattern 7 is a subscriber, not a requester.
 
 ### MQTT Engine has two ingest surfaces, and they produce different things

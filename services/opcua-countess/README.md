@@ -159,10 +159,10 @@ What to look at, in order:
 
 ## Ignition side
 
-1. **OPC UA client connection** `cell_analyzer` → `opc.tcp://opcua-countess:4840/countess/`,
+1. **OPC UA client connection** `cell_counter` → `opc.tcp://opcua-countess:4840/countess/`,
    no security, anonymous. Created in the UI, committed under
-   `ignition/config/resources/core/ignition/opc-connection/cell_analyzer/`.
-2. **`cell_analyzer` UDT + `countess-01` instance** — done, see below.
+   `ignition/config/resources/core/ignition/opc-connection/cell_counter/`.
+2. **`cell_counter` UDT + `countess-01` instance** — done, see below.
 3. **Tag-change gateway event script** on `count_completed_counter` — not built yet. It reads
    the `result` branch (or `result_json`) and publishes once, via Transmission, not Engine, per
    the ACL split in the master plan:
@@ -174,14 +174,14 @@ fields are not among them — is §10 of the model doc.
 
 ### The UDT
 
-`cell_analyzer` (in `tag-type-definition/default/udts.json`), instantiated as `countess-01` at
+`cell_counter` (in `tag-type-definition/default/udts.json`), instantiated as `countess-01` at
 `[default]icc26/site1/qc/analyzers/countess-01`.
 
 | Parameter | Default | Purpose |
 |---|---|---|
 | `device_id` | `Countess-01` | First segment of every NodeId — matches `DEVICE_ID` on the container |
 | `namespace_uri` | `http://icc26.demo/UA/Countess3FL/` | The information model's namespace. Declared once on the type instead of repeated in 42 bindings |
-| `opc_server` | `cell_analyzer` | The gateway's OPC UA connection name |
+| `opc_server` | `cell_counter` | The gateway's OPC UA connection name |
 | `uns_path` | *(none — set per instance)* | Where this instance publishes; used by the tag-change script |
 
 Every address is built from parameters — nothing in the type names a gateway, a server or a

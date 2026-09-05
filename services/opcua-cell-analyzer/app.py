@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""A simulated Nova Biomedical BioProfile FLEX2 bioanalyzer, served over OPC UA.
+"""A simulated cell-culture analyzer, served over OPC UA.
 
 Implements the information model in docs/reference/novaflex2-opcua-model.md, which transcribes
-Section 9 ("BioProfile FLEX2 OPC Tag List") of the vendor's OPC Server Instructions for Use
+Section 9 of the vendor's OPC Server Instructions for Use
 Manual (LPN 60644B, 2024-03). Read that document first -- it carries the provenance note, the
 tag mapping and the list of places the published table contradicts itself.
 
@@ -11,7 +11,7 @@ READ THIS BEFORE COMPARING WITH opcua-countess. The two servers look different o
   * The Countess 3 FL has NO vendor OPC server. Its address space is ours, so it is shaped the
     way OPC UA wants -- DeviceSet, FunctionalUnitSet, ResultSet, DI and LADS browse names.
 
-  * The FLEX2 HAS a real vendor OPC UA server, and this file reproduces what that server
+  * The analyzer HAS a real vendor OPC UA server, and this file reproduces what that server
     actually publishes: two flat trees of string-NodeId tags, OPCSystemObjects (read) and
     OPCSystemCommands (write), inherited from the OPC DA server they were derived from. It is
     not what a greenfield OPC UA model would look like. That is precisely why it is worth
@@ -29,7 +29,7 @@ Three facts about the vendor server drive everything below, and each is a talk p
     a vendor field, and this simulator writes that node last so the trigger fires after
     every other historical leaf has settled.
 
-  * There are NO methods. Every action the FLEX2 exposes is a writable Boolean you set to 1 --
+  * There are NO methods. Every action the analyzer exposes is a writable Boolean you set to 1 --
     ESMScheduleAnalysis, GasCalibration, ClearWells. §6.1 of the Countess model doc argued that
     command bits are what ships because a SCADA tag cannot invoke a method; this instrument is
     that argument, from a vendor, in a shipping product. So the stage trigger here is the
@@ -65,10 +65,10 @@ from asyncua import Server, ua
 
 import webui
 
-NAMESPACE_URI = "http://icc26.demo/UA/NovaflexII/"
-LOG = logging.getLogger("novaflex")
+NAMESPACE_URI = "http://icc26.demo/UA/CellAnalyzer/"
+LOG = logging.getLogger("cell-analyzer")
 
-# How long an analysis sits in Running before its result lands. A real FLEX2 running the full
+# How long an analysis sits in Running before its result lands. A real instrument running the full
 # panel (pH/gas + chemistry + osmolality + cell density) takes several minutes; 8 s is a demo
 # choice, long enough to watch State sit in Running and the counter lag the trigger, short
 # enough not to narrate dead air. Fixed rather than a range so a rehearsal is predictable.
@@ -106,16 +106,16 @@ class Config:
         # published port. See set_match_discovery_client_ip in main_async().
         self.bind_host = _env("OPCUA_BIND_HOST", "0.0.0.0")
         self.port = _env_int("OPCUA_PORT", 4840)
-        self.endpoint_path = _env("OPCUA_ENDPOINT_PATH", "/novaflex/")
+        self.endpoint_path = _env("OPCUA_ENDPOINT_PATH", "/cell-analyzer/")
 
         # The manual prints browse paths as `OPCSystemObjects -> Item` and prints the NodeId
         # identifier the same way (§1.2.2: `s = OPCSystemObjects -> Example.Item.Name`), so the
         # arrow appears to BE the separator rather than typography. It is not possible to be
-        # certain from a PDF, and a real FLEX2 is the only way to settle it -- hence a knob.
+        # certain from a PDF, and a real instrument is the only way to settle it -- hence a knob.
         # Set NODE_SEPARATOR=. if a live instrument turns out to use dotted item ids.
         self.separator = _env("NODE_SEPARATOR", "->")
 
-        self.analyzer_id = _env("ANALYZER_ID", "FLEX2-01")
+        self.analyzer_id = _env("ANALYZER_ID", "CELL-ANALYZER-01")
         self.location = _env("LOCATION", "Site 1 / QC Lab")
         self.software_version = _env("SOFTWARE_VERSION", "4.3.1")
         self.serial_number = _env("SERIAL_NUMBER", "FX2-2026-0119")
@@ -209,7 +209,7 @@ RANGE_PARAMS = GAS_PARAMS + CHEM_PARAMS + ("Osmo", "TotalDensity")
 ALERT_PARAMS = GAS_PARAMS + CHEM_PARAMS + ("Osmo", "CDV")
 UNIT_PARAMS = GAS_PARAMS + CHEM_PARAMS + ("Osmo", "Density")
 
-# The FLEX2 publishes units as String tags, one per analyte, rather than as OPC UA
+# The analyzer publishes units as String tags, one per analyte, rather than as OPC UA
 # EUInformation properties. That is the vendor's answer to units and it is reproduced verbatim
 # -- no EngineeringUnits/EURange properties are attached to the vendor branch. See the model
 # doc's deviations table for what a properly modelled server would do instead.
@@ -409,7 +409,7 @@ PORTED_COMMANDS = ("AutosamplerCleanup", "AutosamplerPrimePack", "AutosamplerPri
 SYNC_EVENTS = ("ESMRequestDispenseRemaining", "ESMRequestInitialDispense",
                "EXT_OLSRequestSample", "EXT_OLSSampleAspirated")
 
-# ICC26Extensions/State. Not a vendor enum -- the FLEX2 publishes no analyzer state tag at all,
+# ICC26Extensions/State. Not a vendor enum -- the analyzer publishes no analyzer state tag at all,
 # only ActiveTasks as free text. Modelled on the LADS functional-unit state machine, same as
 # the Countess, so the two analyzers read alike where the demo touches them.
 UNIT_STATE = {"Idle": 0, "Running": 1, "Completed": 2, "Aborted": 3, "Error": 4,
@@ -513,12 +513,12 @@ class _CommandHandler:
     is currently delivering the notification.
     """
 
-    def __init__(self, flex: "Novaflex") -> None:
-        self.flex = flex
+    def __init__(self, analyzer: "CellAnalyzer") -> None:
+        self.analyzer = analyzer
 
     async def datachange_notification(self, node, value, data) -> None:
         if value:
-            asyncio.create_task(self.flex.on_command(node))
+            asyncio.create_task(self.analyzer.on_command(node))
 
 
 def _nest(flat: dict[str, object]) -> dict:
@@ -545,7 +545,7 @@ def _duration(seconds: float) -> str:
 # ── the instrument ───────────────────────────────────────────────────────────────────────
 
 
-class Novaflex:
+class CellAnalyzer:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
         self.rng = random.Random(cfg.seed or None)
@@ -810,18 +810,18 @@ class Novaflex:
         await branch.leaves["SetSyncEvent/Event"].write(SYNC_EVENTS[0], ts)
 
     async def _build_extensions(self, objects) -> None:
-        """ICC26Extensions -- NOT part of the FLEX2. Everything a counter-driven client needs.
+        """ICC26Extensions -- NOT part of the analyzer. Everything a counter-driven client needs.
 
         Kept in a separate top-level object with an unmistakable name so that nobody browsing
         this server, or reading a tag export taken from it, can mistake our additions for
-        something Nova ships. The vendor server has no counter, no state tag, no event and no
+        something the vendor ships. The vendor server has no counter, no state tag, no event and no
         whole-result document; all four live here.
         """
         root = await self._add_object(objects, "ICC26Extensions", "ICC26Extensions")
 
         await self._add_var(
             root, "ICC26Extensions/README", "README", V.String,
-            value=("Not part of the BioProfile FLEX2. The vendor OPC server publishes no "
+            value=("Not part of the cell analyzer. The vendor OPC server publishes no "
                    "completion counter, no state variable, no events and no whole-result "
                    "document; these nodes are added by the ICC-2026 demo simulator. "
                    "See docs/reference/novaflex2-opcua-model.md section 6."))
@@ -839,7 +839,7 @@ class Novaflex:
             root, "ICC26Extensions/QcResultJson", "QcResultJson", V.String)
         self.ext["LastError"] = await self._add_var(
             root, "ICC26Extensions/LastError", "LastError", V.String)
-        # Demo-only, and the FLEX2 has no equivalent button. Say so on stage.
+        # Demo-only, and the analyzer has no equivalent button. Say so on stage.
         self.ext["InjectFailure"] = await self._add_var(
             root, "ICC26Extensions/InjectFailure", "InjectFailure", V.Boolean,
             value=False, writable=True)
@@ -1051,7 +1051,7 @@ class Novaflex:
         # One-shot, cleared before the work starts, so the next run needs a fresh rising edge
         # and a client that never resets the bit still gets exactly one run per write. The
         # clear is itself a data change, which the handler ignores because the value is False.
-        # Whether a real FLEX2 does this is not documented -- see COMMAND_AUTO_CLEAR.
+        # Whether a real instrument does this is not documented -- see COMMAND_AUTO_CLEAR.
         if path == "ICC26Extensions/InjectFailure":
             await self.ext["InjectFailure"].write(False, _now())
             self.inject_failure = True
@@ -1671,8 +1671,8 @@ async def main_async() -> int:
 
     endpoint = f"opc.tcp://{cfg.bind_host}:{cfg.port}{cfg.endpoint_path}"
     server.set_endpoint(endpoint)
-    server.set_server_name("ICC26 BioProfile FLEX2 (simulated)")
-    # Anonymous, unencrypted. The real FLEX2 offers Basic256Sha256 Sign & Encrypt down to None
+    server.set_server_name("ICC26 Cell Analyzer (simulated)")
+    # Anonymous, unencrypted. The real instrument offers Basic256Sha256 Sign & Encrypt down to None
     # (manual §1.4.3.2) and a production integration should use the former; this is a demo
     # instrument on a private compose network, and a certificate exchange before the gateway
     # will browse is a twenty-minute detour nobody watching wants to sit through.
@@ -1683,8 +1683,8 @@ async def main_async() -> int:
     if hasattr(server, "set_match_discovery_client_ip"):
         server.set_match_discovery_client_ip(True)
 
-    flex = Novaflex(cfg)
-    await flex.build(server)
+    analyzer = CellAnalyzer(cfg)
+    await analyzer.build(server)
 
     loop = asyncio.get_running_loop()
     for signame in ("SIGTERM", "SIGINT"):
@@ -1692,28 +1692,28 @@ async def main_async() -> int:
         if sig is None:
             continue
         try:
-            loop.add_signal_handler(sig, flex.stopping.set)
+            loop.add_signal_handler(sig, analyzer.stopping.set)
         except NotImplementedError:  # Windows, outside the container
-            signal.signal(sig, lambda *_: flex.stopping.set())
+            signal.signal(sig, lambda *_: analyzer.stopping.set())
 
-    console = webui.Console(flex, loop)
+    console = webui.Console(analyzer, loop)
     page_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 
     async with server:
-        await flex.watch_commands()
+        await analyzer.watch_commands()
         # After watch_commands(): the page's Run button writes the command bits,
         # and those do nothing until the server is subscribed to its own nodes.
         webui.serve(cfg.http_port, page_path, console)
         LOG.info("serving %s (namespace %s, ns=%s, separator %r)",
-                 endpoint, NAMESPACE_URI, flex.idx, cfg.separator)
+                 endpoint, NAMESPACE_URI, analyzer.idx, cfg.separator)
         LOG.info("modules: gas %s, chem %s, cdv %s, osmo %s -- %s sample fields, %s QC fields",
                  "yes" if cfg.gas_installed else "NO",
                  "yes" if cfg.chem_installed else "NO",
                  "yes" if cfg.cdv_installed else "NO",
                  "yes" if cfg.osmo_installed else "NO",
                  len(HISTORICAL_RESULT_FIELDS), len(QC_RESULT_FIELDS))
-        tasks = [asyncio.create_task(flex.run()), asyncio.create_task(flex.heartbeat())]
-        await flex.stopping.wait()
+        tasks = [asyncio.create_task(analyzer.run()), asyncio.create_task(analyzer.heartbeat())]
+        await analyzer.stopping.wait()
         for task in tasks:
             task.cancel()
         for task in tasks:

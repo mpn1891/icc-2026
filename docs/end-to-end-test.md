@@ -12,7 +12,7 @@
 | | |
 |---|---|
 | **Proves** | Patterns 1, 3, 4, 5, 6 and 7 in one chain of gestures — the only path that exercises them together |
-| **Costs** | ~10 minutes, most of it a 13.5 s valve stroke and a Nova run |
+| **Costs** | ~2 minutes, most of it a 13.5 s valve stroke and an analyzer run |
 | **Changes** | One batch advance and one sample. No file is edited, no service restarted, nothing seeded |
 | **Needs** | A stack already up (`python tasks.py up`, see [`../README.md`](../README.md)) and a Chariot trial with time left on it |
 | **Does not prove** | **Pattern 2.** `br-202`'s samples never reach the LIMS by design — `lims-bridge`'s ACL does not subscribe to its topic. It looks live in Tag Explorer and is not. [`plans/07-sample-chain.md`](plans/07-sample-chain.md) decision 5 |
@@ -97,13 +97,13 @@ seconds the sample exists at :8000 as **Awaiting analysis**, with no Approve but
 
 ## 5. Run the analysis — <http://localhost:8087>
 
-Type that id into the Nova's sample-login screen and press Run. Nothing free-runs here either —
-`NOVAFLEX_SAMPLE_INTERVAL_S` is `0` deliberately, so that a person types the id in.
+Type that id into the analyzer's sample-login screen and press Run. Nothing free-runs here either —
+`CELL_ANALYZER_SAMPLE_INTERVAL_S` is `0` deliberately, so that a person types the id in.
 
 The *same* entry at :8000 flips to `received` with a batch id. **No second entry appears** — if one
 does, the id was transposed; see the troubleshooting table.
 
-**Expect two analytes, glucose and lactate.** Not three: `NOVAFLEX_OSMO_INSTALLED` is `false` on the
+**Expect two analytes, glucose and lactate.** Not three: `CELL_ANALYZER_OSMO_INSTALLED` is `false` on the
 shipped defaults, so `Osmo/Result` sits at `Bad_NoData` and the absent-vs-zero rule correctly writes
 no row. [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md) § *Granularity*.
 
@@ -180,7 +180,7 @@ an instrument and sign. That gap is provenance, not lag.
 | `age_s` in the thousands | The poll recovered but the instrument is not sampling | Press **Start** on <http://localhost:8089> |
 | Nothing on any topic and `health` is green | The Chariot trial lapsed. The container still reports `healthy` | Restart `icc26-chariot` |
 | The entry stays `awaiting-analysis` and the result appears under **Unmatched results** | The id was transposed at :8087 | Attach it from that screen. The wrong id is preserved on purpose |
-| Two analytes rather than three | Correct — `NOVAFLEX_OSMO_INSTALLED` is `false` | None. Do not "fix" it |
+| Two analytes rather than three | Correct — `CELL_ANALYZER_OSMO_INSTALLED` is `false` | None. Do not "fix" it |
 | `git status` dirty afterwards | A gateway restart rewrote the tag-provider files — `uuid` and `nonUseCount` churn | Known and unresolved. [`plans/00-post-07.md`](plans/00-post-07.md) § 6 |
 
 ## What this test does not cover

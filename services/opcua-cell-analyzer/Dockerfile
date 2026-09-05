@@ -1,4 +1,4 @@
-# Pattern 3 — simulated Nova Biomedical BioProfile FLEX2 bioanalyzer, served over OPC UA.
+# Pattern 3 — simulated cell-culture analyzer, served over OPC UA.
 #
 # asyncua is the only dependency. It pulls cryptography (for the security policies this
 # server does not enable) and a handful of small pure-Python packages; all have manylinux
@@ -18,8 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py webui.py page.html ./
 
 # Non-root. The server listens on 4840 and writes nothing.
-RUN useradd --create-home --uid 10003 novaflex && chown -R novaflex:novaflex /app
-USER novaflex
+RUN useradd --create-home --uid 10003 cell-analyzer && chown -R cell-analyzer:cell-analyzer /app
+USER cell-analyzer
 
 # 4840 OPC UA, 8087 the instrument's sample-login touchscreen.
 EXPOSE 4840 8087

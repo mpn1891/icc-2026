@@ -158,7 +158,7 @@ re-run them rather than inventing new ones.
 **Ten seconds of looking decides the shape of the whole pattern, so look before designing.**
 
 Open the Designer, Event Streams, New, and read the **source** dropdown. Both existing streams
-(`03_opcua/novaflex-result`, `06_poll/metone-result`) use `ignition.gatewayEvent`, which fires
+(`03_opcua/cell-analyzer-result`, `06_poll/metone-result`) use `ignition.gatewayEvent`, which fires
 from script. 07 needs the opposite: something that fires when a message *arrives* on
 `icc26/site1/qc/lims/sample-result`.
 
@@ -276,7 +276,7 @@ pass 05's own MVP note asks for, and this branch is where it happens.
 The table currently holds:
 
 ```
- BR-201 | novaflex-01 | vib-01 | vib-02 | vib-03 | vib-04
+ BR-201 | cell-analyzer-01 | vib-01 | vib-02 | vib-03 | vib-04
 ```
 
 Three problems, all latent:

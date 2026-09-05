@@ -1,7 +1,7 @@
 """The GraphQL surface, transcribed from the vendor reference.
 
 `docs/reference/particle_counter_sim.md` is treated the way
-`docs/reference/novaflex2-opcua-model.md` is treated for the Nova: as a vendor
+`docs/reference/novaflex2-opcua-model.md` is treated for the analyzer: as a vendor
 document. The SDL below carries every field that document's `getSamples` query
 selects and every argument its mutations take, in the same shape and the same
 camelCase, and **nothing else**.
@@ -22,7 +22,7 @@ costs us something on our side of the boundary rather than theirs:
 `startSampling`, `stopSampling` and `clearSamples` are implemented because the
 vendor documents them. **Ignition calls none of them.** The instrument is started
 by a person on the touchscreen, which is the same change-control boundary
-pattern 3 keeps with the Nova's 104 writable bits.
+pattern 3 keeps with the analyzer's 104 writable bits.
 """
 
 from __future__ import annotations

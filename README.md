@@ -13,11 +13,11 @@ PostgreSQL 17, all under `docker compose`, all version controlled.
 |---|---------|--------------|-------|
 | 1 | Native MQTT pub/sub | Smart sample valve assembly — RFID badge scan opens a bioreactor sample valve | built |
 | 2 | Sparkplug B edge node | **The same valve assembly**, other firmware — birth/death, RBE, self-describing metrics | built |
-| 3 | OPC UA → MQTT | Nova Flex analyzer (`novaflex-01`); Ignition publishes on sample-complete. Sample id typed in on the instrument's own screen (:8087) | built |
+| 3 | OPC UA → MQTT | Cell analyzer (`cell-analyzer-01`); Ignition publishes on sample-complete. Sample id typed in on the instrument's own screen (:8087) | built |
 | 4 | Webhook / Push API | LIMS opens the sample entry from the valve event, appends the analyzer result, POSTs the reviewed record to Ignition; remaining: pass/fail on both outcomes | built, pass/fail open |
 | 5 | CDC / log tailing | Click a boolean in Tag Explorer → `bes.batch_event` → Debezium → MQTT. The writer holds no broker credentials | built |
 | 6 | Poll / diff | MET ONE HTTP API in `qc/analyzers`, Ignition poll → Event Stream | planned |
-| 7 | Scripted aggregation | LIMS-review listener joins valve, Nova, batch phase, nearest MET ONE | planned |
+| 7 | Scripted aggregation | LIMS-review listener joins valve, analyzer, batch phase, nearest MET ONE | planned |
 
 **Patterns 1 and 2 are one device in two firmwares**, which is the point of running both: a
 badge-operated sample valve on `BR-201` speaking plain MQTT, and the identical assembly on
@@ -111,7 +111,7 @@ python tasks.py down     # stops the stack, keeps volumes
 | PostgreSQL | `localhost:5432` — db `icc26`, user `icc26` |
 | Sample valve — plain MQTT | <http://localhost:8085> — the device's own config page (pattern 1) |
 | Sample valve — Sparkplug B | <http://localhost:8086> — the same page, three controls disabled (pattern 2) |
-| Nova FLEX2 sample login | <http://localhost:8087> — the instrument's own screen, where the valve's sample id is typed in (pattern 3) |
+| Cell analyzer sample login | <http://localhost:8087> — the instrument's own screen, where the valve's sample id is typed in (pattern 3) |
 
 > **Why the separate `seed` step?** Ignition 8.3 seeds `data/` from the image on first launch,
 > and bind-mounting host directories over `data/config` at that moment blocks the seeding and

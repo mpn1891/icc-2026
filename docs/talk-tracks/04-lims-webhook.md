@@ -37,9 +37,9 @@ does in the WAL — which is pattern 5's argument arriving from the opposite dir
 ## The chain
 
 ```
-opcua-novaflex ──OPC UA──▶ Ignition ──Event Stream──▶ Transmission
+opcua-cell-analyzer ──OPC UA──▶ Ignition ──Event Stream──▶ Transmission
                                                           │
-                          icc26/site1/qc/analyzers/novaflex-01/result   (mechanism: opcua-event)
+                          icc26/site1/qc/analyzers/cell-analyzer-01/result   (mechanism: opcua-event)
                                                           │
                                               subscribe (QoS 1, lims-bridge)
                                                           ▼
@@ -94,7 +94,7 @@ One message per sample, all analytes that were present. `ts` is `collected_at` (
 }
 ```
 
-Osmolality is often absent: the Nova osmometer is unfitted on purpose, and a null analyte
+Osmolality is often absent: the analyzer osmometer is unfitted on purpose, and a null analyte
 produces **no row**, not a zero. `/trigger` synthesises all three so the fallback path is
 readable on a projector.
 
@@ -133,7 +133,7 @@ curl.exe -X POST http://localhost:8000/samples/<id>/approve -d "analyst=mnorris"
 
 Expected: rows appear, **nothing** on `qc/lims/sample-result` until Approve, then exactly one
 message. `/trigger` does not publish onto the analyzer topic — this service has no publish
-grant. To see the analyzer half of the chain, trigger Nova.
+grant. To see the analyzer half of the chain, trigger the analyzer.
 
 ```powershell
 docker exec -it icc26-postgres psql -U icc26 -d icc26 -c `
@@ -164,7 +164,7 @@ to fix this close to a deadline.
 | WebDev resource was file-authored | Mount path is `/system/webdev/icc-2026/lims/sample-result`. The 8.3 discriminator is `resource-type: python-resource` in `config.json` — `resourceType: python` yields `500 Unknown resource factory:` with an empty name |
 | Gateway cert SAN is `localhost` only | LIMS verifies the mounted public cert and skips hostname matching. Ignition 302s `:8088` → `:8043`, so the default URL is HTTPS |
 | LoggerEx is not Python logging | `logger.info("… %s", x)` throws. Use `infof` / `warnf`, matching `lims_webhook` and `opcua_event` (this idiom used to point at `vibsim`, deleted 2026-08-23) |
-| Live Nova sample is two rows | Osmometer unfitted → `osmo` is null → no row, not a zero. `/trigger` still synthesises all three |
+| Live analyzer sample is two rows | Osmometer unfitted → `osmo` is null → no row, not a zero. `/trigger` still synthesises all three |
 
 ## Progress log
 
@@ -172,5 +172,5 @@ to fix this close to a deadline.
 |---|---|
 | 2026-08-20 | Service, schema, ACL, `correlation_id` on pattern 3, WebDev + `lims_webhook` script, approval screen on :8000. |
 | 2026-08-20 | **Ingest verified without a nuke.** Schema applied live (`migrate-04-lims.sql`); `lims-bridge` ACL updated via `PUT /mqttusers/lims-bridge`. MQTT connect as `lims-bridge`, `/trigger` → 3 rows, QoS-1 redelivery is a no-op, Reject writes `rejected` and no outbox row, Approve is one transaction (rows + outbox). |
-| 2026-08-20 | **Publish checkpoints after a trial reset.** Trial lapse returned WebDev `402` — check `GET /data/api/v1/trial` before anything else. File-authored WebDev needed `resource-type: python-resource` or GET/POST is `500 Unknown resource factory`. LoggerEx needs `infof`/`warnf`. Then: Approve → one message on `qc/lims/sample-result` with `mechanism: webhook`; replay of the same idempotency key → `409` and no second message; wrong secret → `401`; disable drainer, approve two, `docker restart icc26-lims` → both deliver from Postgres. Pattern 3 `correlation_id` watched live on `qc/analyzers/novaflex-01/result`. |
+| 2026-08-20 | **Publish checkpoints after a trial reset.** Trial lapse returned WebDev `402` — check `GET /data/api/v1/trial` before anything else. File-authored WebDev needed `resource-type: python-resource` or GET/POST is `500 Unknown resource factory`. LoggerEx needs `infof`/`warnf`. Then: Approve → one message on `qc/lims/sample-result` with `mechanism: webhook`; replay of the same idempotency key → `409` and no second message; wrong secret → `401`; disable drainer, approve two, `docker restart icc26-lims` → both deliver from Postgres. Pattern 3 `correlation_id` watched live on `qc/analyzers/cell-analyzer-01/result`. |
 | 2026-08-23 | **Remaining:** publish both review outcomes with `analyst` + `disposition` pass/fail. Reject is still silent in the running service. Pattern 7 will listen for this message. |

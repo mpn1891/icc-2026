@@ -47,11 +47,11 @@ The analyst reviews one record holding both halves. Approve publishes both halve
 
 The two ids only match because **a person makes them match.** The valve mints
 `S-YYYYMMDD-NNNN` on the badge grant; the analyzer's own sample-login screen
-(`services/opcua-novaflex/webui.py`, port 8087) is where somebody reads that id off BR-201's
-page and types or scans it in. The FLEX2 echoes it back on its result because that is what the
+(`services/opcua-cell-analyzer/webui.py`, port 8087) is where somebody reads that id off BR-201's
+page and types or scans it in. The analyzer echoes it back on its result because that is what the
 vendor's writable `SampleInformation/SampleID` node is for.
 
-An Ignition tag write into `bioanalyzer/command/sample_id` would do the same job and could not
+An Ignition tag write into `cell_analyzer/command/sample_id` would do the same job and could not
 be typed wrong. **That is exactly why it is not what we built.** Pattern 1's GxP hook is *the
 record originates at the point of action; no transcription, no intermediary* — and this is the
 intermediary, on stage, with a keyboard. One transposed character and the LIMS shows the whole
@@ -65,7 +65,7 @@ free-running cycles.
 
 ### What this costs pattern 7, and what it buys
 
-Pattern 4 now performs the valve↔Nova half of the join pattern 7 exists to demonstrate. Decided
+Pattern 4 now performs the valve↔analyzer half of the join pattern 7 exists to demonstrate. Decided
 deliberately, and it is a trade rather than a loss: the released review message carries
 `values.collection.sample_start`, which is **the instant both of pattern 7's derived flags are
 evaluated at**. Two of the four sources its unspecified event store had to persist are no longer
@@ -236,9 +236,9 @@ pattern having to share a topic with the other.
 
 
 ```
-opcua-novaflex ──OPC UA──▶ Ignition ──Event Stream──▶ Transmission
+opcua-cell-analyzer ──OPC UA──▶ Ignition ──Event Stream──▶ Transmission
                                                           │
-                          icc26/site1/qc/analyzers/novaflex-01/result   (mechanism: opcua-event)
+                          icc26/site1/qc/analyzers/cell-analyzer-01/result   (mechanism: opcua-event)
                                                           │
                                               subscribe (QoS 1, lims-bridge)
                                                           ▼
@@ -287,9 +287,9 @@ genuinely the acquisition instant. `sample_id` ← `values.sample_id`, `batch_id
 `values.batch_id`. A `null` analyte value (Bad OPC quality, per pattern 3's `_value`) must produce
 **no row at all**, not a zero — same absent-vs-zero discipline as the analyzer.
 
-**A released sample carries two of these three.** `NOVAFLEX_OSMO_INSTALLED` is `false` on the
+**A released sample carries two of these three.** `CELL_ANALYZER_OSMO_INSTALLED` is `false` on the
 shipped defaults, so `Osmo/Result` sits at `Bad_NoData`, the rule above produces no row, and
-osmolality never appears — deterministically, because `NOVAFLEX_SENSOR_ERROR_RATE` is `0.0` as
+osmolality never appears — deterministically, because `CELL_ANALYZER_SENSOR_ERROR_RATE` is `0.0` as
 well. The third row is the mapping for a stack with the module installed, not a description of
 what the room will see. Measured on the wire 2026-08-31 (`S-20260831-0103`: glucose, lactate).
 
@@ -401,7 +401,7 @@ that spec is written so a LIMS approval is not also a CDC event.
 
 ### `services/lims/app.py`
 
-House style from `services/opcua-novaflex/app.py`: `_env`/`_env_float`/`_env_bool` helpers, a
+House style from `services/opcua-cell-analyzer/app.py`: `_env`/`_env_float`/`_env_bool` helpers, a
 `Config` class, docstrings that say *why*. FastAPI + `psycopg` + `paho-mqtt`, with the paho network
 loop on its own thread (`loop_start()`) rather than in the event loop, and the outbox drainer on a
 third.
@@ -457,7 +457,7 @@ All have manylinux wheels — nothing compiles, which matters on a conference ne
 
 ### `services/lims/Dockerfile`
 
-Copy `services/opcua-novaflex/Dockerfile`: `python:3.12-slim`, `PYTHONUNBUFFERED`, non-root
+Copy `services/opcua-cell-analyzer/Dockerfile`: `python:3.12-slim`, `PYTHONUNBUFFERED`, non-root
 (`--uid 10004 lims`), `EXPOSE 8000`, `STOPSIGNAL SIGTERM`, `CMD ["python", "-u", "app.py"]`.
 
 ### `services/lims/README.md`
@@ -611,7 +611,7 @@ the point of the whole pattern.
 Falsifiable, in order. Do not proceed past a red one.
 
 1. **Pattern 3 is actually on the broker.** `mosquitto_sub` on
-   `icc26/site1/qc/analyzers/novaflex-01/result`, trigger `ESMScheduleAnalysis`, exactly one
+   `icc26/site1/qc/analyzers/cell-analyzer-01/result`, trigger `ESMScheduleAnalysis`, exactly one
    message per completed sample. It has never been watched (`00-status.md`).
 2. `correlation_id` is present in that message.
 3. Nuke, reseed, confirm the schema: `status`, `verified_at`, `uq_sample_analyte` and
@@ -686,7 +686,7 @@ argument this pattern makes about durability.
 | WebDev `500 Unknown resource factory:` | `config.json` used `resourceType: python` | `"resource-type": "python-resource"` |
 | POST 500 after a successful publish | `logger.info("… %s", key)` | `logger.infof` / `logger.warnf` |
 | TLS error following `:8088` → `:8043` | self-signed cert, SAN is `localhost` only | mount the public cert, `CERT_REQUIRED`, `check_hostname = False` |
-| Two rows from a live Nova sample, not three | osmometer unfitted, `osmo` is null | a null analyte produces **no row**. `/trigger` synthesises all three |
+| Two rows from a live analyzer sample, not three | osmometer unfitted, `osmo` is null | a null analyte produces **no row**. `/trigger` synthesises all three |
 | Second `/trigger` in the same second is a no-op | sample id is `S-%Y%m%d-%H%M%S` | wait a second, or use a live analyzer sample |
 | `mqtt-users.json` edit does nothing | Chariot seeds users on first run only | `PUT /mqttusers/lims-bridge` against the running broker, or nuke |
 

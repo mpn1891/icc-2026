@@ -16,7 +16,7 @@
       "type": "com.cirruslink.mqtt.transmission.gateway.mqtt.handler",
       "config": {
         "serverName": "chariot_broker",
-        "topic": "icc26/site1/qc/analyzers/novaflex-01/result",
+        "topic": "icc26/site1/qc/analyzers/cell-analyzer-01/result",
         "qos": 1,
         "retained": false
       },
@@ -38,7 +38,7 @@
   },
   "transform": {
     "enabled": true,
-    "userCode": "\treturn opcua_event.build_novaflex_result(event.data)\n"
+    "userCode": "\treturn opcua_event.build_cell_analyzer_result(event.data)\n"
   },
   "transformEncoder": {
     "type": "ignition.string",

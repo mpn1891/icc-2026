@@ -120,19 +120,19 @@ intermediary. Pattern 2 — you can prove the valve was alive when it said nothi
 **03 — OPC UA → MQTT** — no dependencies. **Built, and written up in
 [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md), which supersedes this entry.**
 
-The demo instrument is `services/opcua-novaflex`: a Nova Biomedical BioProfile FLEX2. The
+The demo instrument is `services/opcua-cell-analyzer`: a cell analyzer. The
 vendor ships a licensed OPC UA server; we transcribed its real tag list. Address space is
-**Nova's**, flat `OPCSystemObjects` / `OPCSystemCommands`. Completion signal **none
+**the vendor's**, flat `OPCSystemObjects` / `OPCSystemCommands`. Completion signal **none
 vendor-side** — Ignition publishes off `HistoricalSampleResults/SampleTime`;
 `ICC26Extensions` remains in the address space but is not the MQTT trigger. Actions are
-**command bits only, no methods**. Ignition UDT `bioanalyzer`, 57 bound tags.
+**command bits only, no methods**. Ignition UDT `cell_analyzer`, 57 bound tags.
 
 This is what vendors actually ship, and it is the one we would have to integrate: a 2024
 vendor product with 104 writable bits and zero methods, because a SCADA tag write cannot
 invoke a method.
 
-Done: `result/sample_time` → Event Stream `03_opcua/novaflex-result` →
-`icc26/site1/qc/analyzers/novaflex-01/result`, `mechanism=opcua-event`. Verify: one message
+Done: `result/sample_time` → Event Stream `03_opcua/cell-analyzer-result` →
+`icc26/site1/qc/analyzers/cell-analyzer-01/result`, `mechanism=opcua-event`. Verify: one message
 per completed sample, never per-value, nothing on abort/fail/QC. Talk point:
 event-on-completion, keyed off the field the vendor actually ships.
 
@@ -140,7 +140,7 @@ Countess (`services/opcua-countess`) is **out of the demo** — do not finish it
 publish, and do not treat it as remaining Pattern 3 work.
 
 **Signal contributed to the spine:** viable cell density / viability reading — pattern 7 reads
-Nova's result for *when the sample was actually run* (`meta.correlation_id` = `sample_id`).
+the analyzer's result for *when the sample was actually run* (`meta.correlation_id` = `sample_id`).
 
 **GxP hook:** a qualified instrument, read by a platform, one-way — the change-control boundary
 is explicit: the instrument is untouched, the gateway does the work.
@@ -246,9 +246,9 @@ pass or fail). On that message it builds one composite document, `mechanism=aggr
 | Section | Source | What it answers |
 |---|---|---|
 | Sample actuation | pattern 1 event (`sample-valve-01`) | when material left the reactor |
-| VCD reading + assay result | pattern 3 Nova result + pattern 4 review | when the sample was run, and its disposition |
+| VCD reading + assay result | pattern 3 analyzer result + pattern 4 review | when the sample was run, and its disposition |
 | Batch operation and qualified window | pattern 5 `batch/event` at sample time | `operation` and `qualified_window` when the valve opened — `ORDER BY occurred_at DESC, id DESC`, see [`05-cdc-batch-event.md`](05-cdc-batch-event.md) |
-| Environmental excursion status | pattern 6 MET ONE, nearest reading to the Nova timestamp | `status` at (or nearest) the sample instant |
+| Environmental excursion status | pattern 6 MET ONE, nearest reading to the analyzer timestamp | `status` at (or nearest) the sample instant |
 
 The script derives two flags from those sections — `values.outside_qualified_window` (pattern
 5's `qualified_window` was `false` at the sample-open instant) and
@@ -286,7 +286,7 @@ so it is last of the seven, and it is still **the designated cut** if the schedu
 1. **04 pass/fail.** Small, and pattern 7 listens for that message. Confirmed unbuilt:
    `services/lims/app.py` `reject()` writes no outbox row, and the payload builder has no
    `disposition` key at all.
-2. **The sample id correlation.** ~~Ignition writes the valve's id into the Nova.~~ **Done
+2. **The sample id correlation.** ~~Ignition writes the valve's id into the analyzer.~~ **Done
    2026-08-26, and not this way.** The analyzer got its own sample-login screen on :8087 and **a
    person types the valve's id in.** No Ignition tag write, no `meta.correlation_id` on pattern 1
    — the id still travels as `values.sample_id`. The transcription is fallible on purpose and is
@@ -335,7 +335,7 @@ After the final risk segment (pattern 7's):
    through line states it. This is the one verification step the audience's payoff depends on.
 4. End-to-end: all seven mechanisms firing → one `mosquitto_sub -t 'icc26/#'` shows seven
    distinct `meta.mechanism` values; one sample's
-   valve → Nova → LIMS review → aggregate on the same `correlation_id`. Run once with
+   valve → analyzer → LIMS review → aggregate on the same `correlation_id`. Run once with
    networking disabled to prove offline viability.
 5. **A subscriber cannot tell how anything arrived.** Read the topic list to somebody who has not
    seen the build and ask them which patterns use CDC. That, not the old switch-over, is now how

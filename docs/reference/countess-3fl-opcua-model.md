@@ -13,7 +13,7 @@ file format definition"** (columns A–BS, 71 fields) of
   Appendix E is ambiguous or self-contradicting, that is called out in
   [Defects in the source table](#defects-in-the-source-table) rather than silently resolved.
 - Purpose: give the ICC-2026 demo a realistic, standards-shaped OPC UA server to simulate —
-  the same role `opcua-novaflex` plays for pattern 03. Ranges quoted as `EURange` come from
+  the same role `opcua-cell-analyzer` plays for pattern 03. Ranges quoted as `EURange` come from
   Appendix B (p. 85): concentration 1×10⁴–1×10⁷ cells/mL, cell diameter 4–60 µm.
 
 Structurally the model follows **OPC UA for Devices (OPC 10000-100, "DI")** for identification
@@ -575,7 +575,7 @@ Rules for the projection:
 Ignition side, per repo convention:
 
 1. OPC UA client connection to `opc.tcp://opcua-countess:4840` (create in UI, commit what
-   `git status` reveals — same as the `opcua-novaflex` connection).
+   `git status` reveals — same as the `opcua-cell-analyzer` connection).
 2. One OPC tag on `CountCompletedCounter`; a tag-change gateway event script reads the
    `LastResult` branch and assembles the payload.
 3. `system.cirruslink.transmission.publish("chariot_broker", topic, payload, 0, False)` —

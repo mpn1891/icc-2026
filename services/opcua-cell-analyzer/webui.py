@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The instrument's own sample-login touchscreen.
 
-Every bench analyzer has one. On a real FLEX2 an operator stands in front of it,
+Every bench analyzer has one. On a real instrument an operator stands in front of it,
 scans or types the sample id off the paperwork, and presses Run. That step is
 the reason this file exists: **the sample id is minted by the sample valve on
 BR-201 and gets into this instrument by a human retyping it.** Pattern 1's GxP
@@ -18,7 +18,7 @@ Two rules the page follows, and neither is negotiable:
   * **It goes through the vendor's own contract.** Run writes the sample metadata
     into `OPCSystemCommands/ESMScheduleAnalysis/SampleInformation/*` and then sets
     the `ESMScheduleAnalysis` bit -- the same nodes, in the same order, that
-    Ignition's `bioanalyzer` UDT drives from `command/sample_id` and
+    Ignition's `cell_analyzer` UDT drives from `command/sample_id` and
     `command/esm_schedule_analysis`. It does not call `_run_sample()` behind the
     address space's back. The whole of pattern 3's argument is that this
     instrument ships 104 writable bits and zero methods; a page that shortcuts
@@ -74,12 +74,12 @@ INFO_FIELDS = (
 class Console:
     """What the sample-login page can ask the instrument for, and do to it.
 
-    Holds the `Novaflex` and the event loop it lives on. Everything public here is
+    Holds the `CellAnalyzer` and the event loop it lives on. Everything public here is
     called from an HTTP thread and returns plain JSON-able data.
     """
 
-    def __init__(self, flex, loop: asyncio.AbstractEventLoop) -> None:
-        self.flex = flex
+    def __init__(self, analyzer, loop: asyncio.AbstractEventLoop) -> None:
+        self.analyzer = analyzer
         self.loop = loop
 
     # ---- plumbing
@@ -111,17 +111,17 @@ class Console:
         import app  # deferred: app imports this module at its own module level
 
         names = {code: name for name, code in app.UNIT_STATE.items()}
-        flex, cfg = self.flex, self.flex.cfg
-        leaves = flex.command_leaves
-        historical = flex.historical_branch.leaves if flex.historical_branch else {}
+        analyzer, cfg = self.analyzer, self.analyzer.cfg
+        leaves = analyzer.command_leaves
+        historical = analyzer.historical_branch.leaves if analyzer.historical_branch else {}
 
-        state_code = await self._read(flex.ext.get("State"), -1)
+        state_code = await self._read(analyzer.ext.get("State"), -1)
         last_time = await self._read(historical.get("SampleTime"))
         return {
             "analyzer_id": cfg.analyzer_id,
             "state": names.get(state_code, "Unknown"),
             "running": state_code == app.UNIT_STATE["Running"],
-            "sample_no": flex.sample_no,
+            "sample_no": analyzer.sample_no,
             # 0 means the instrument only runs when somebody presses Run, which is
             # what the demo wants: a free-running analyzer invents sample ids
             # nobody transcribed, and every one of them lands unmatched.
@@ -154,12 +154,12 @@ class Console:
     async def _run_sample(self, sample_id: str, payload: dict):
         import app
 
-        state = await self._read(self.flex.ext.get("State"), -1)
+        state = await self._read(self.analyzer.ext.get("State"), -1)
         if state == app.UNIT_STATE["Running"]:
             return False, "An analysis is already running."
 
         ts = app._now()
-        leaves = self.flex.command_leaves
+        leaves = self.analyzer.command_leaves
         # Arguments first, trigger last, exactly as the vendor's contract requires
         # and exactly as an Ignition tag write would have to. Nothing here is
         # atomic -- that is the contract, not an oversight in this page.
@@ -192,18 +192,18 @@ class Console:
         """
         import app
 
-        state = await self._read(self.flex.ext.get("State"), -1)
+        state = await self._read(self.analyzer.ext.get("State"), -1)
         if state == app.UNIT_STATE["Running"]:
             return False, "An analysis is already running."
         command = "ChemistryQcLevel" + level
-        await self.flex.command_leaves["%s/%s" % (command, command)].write(
+        await self.analyzer.command_leaves["%s/%s" % (command, command)].write(
             True, app._now())
         LOG.info("sample login: %s requested", command)
         return True, "%s started -- no sample result, and no sample counter." % command
 
 
 class _Handler(BaseHTTPRequestHandler):
-    server_version = "BioProfileFLEX2/1.0"
+    server_version = "CellAnalyzer/1.0"
     console: Console = None   # set on the server instance below
     page: bytes = b""
 

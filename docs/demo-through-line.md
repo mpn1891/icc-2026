@@ -80,8 +80,8 @@ in between. Silence becomes evidence, and so does a gap.
 
 ## Pattern 3 — OPC UA → MQTT Bridge / Event Streams
 
-**Demo asset:** Cell analyzer (VCD / viability) — the Nova Biomedical BioProfile FLEX2,
-addressed as `novaflex-01`
+**Demo asset:** Cell analyzer (VCD / viability) — the cell analyzer,
+addressed as `cell-analyzer-01`
 
 - Qualified instrument that cannot be touched; bridge sits at the gateway
 - The Countess is **out of the demo** as of 2026-08-25 — the "model we would design versus the
@@ -139,7 +139,7 @@ plainly and hand it to the risk speaker.
 
 **Demo asset:** Environmental monitoring system (Met One particle counter, simulated), with
 an HTTP API. It lives in the analyzer path — `icc26/site1/qc/analyzers/particle-counter-01/result`
-as of 2026-08-25, beside the Nova rather than beside the reactor
+as of 2026-08-25, beside the analyzer rather than beside the reactor
 
 - Poll on an interval, diff by record id or analysis time, emit
 - Each analysis carries `status` ∈ `normal | excursion` against a configured cleanroom limit
@@ -168,7 +168,7 @@ Triggered by pattern 4's review message; always publishes, whether or not either
 flag (`outside_qualified_window`, `environmental_excursion`) is `true`.
 
 **It needs a store, and that store does not exist yet.** Every one of those four fragments is a
-question about the past — when the valve opened, when the Nova ran, what phase was live at the
+question about the past — when the valve opened, when the analyzer ran, what phase was live at the
 sample-open instant, which particle count was nearest. A subscriber holding only the message
 that woke it up can answer none of them, so patterns 1, 3, 5 and 6 have to be *persisted*, not
 just published. Today only pattern 5's events land in a table, and that table is the CDC source
