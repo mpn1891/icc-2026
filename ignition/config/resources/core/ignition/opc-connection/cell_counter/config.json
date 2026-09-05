@@ -26,8 +26,8 @@
     },
     "configVersion": 2,
     "endpoint": {
-      "discoveryUrl": "opc.tcp://opcua-novaflex:4840/novaflex/",
-      "endpointUrl": "opc.tcp://opcua-novaflex:4840/novaflex/",
+      "discoveryUrl": "opc.tcp://opcua-countess:4840/countess/",
+      "endpointUrl": "opc.tcp://opcua-countess:4840/countess/",
       "hostOverride": "",
       "securityMode": "None",
       "securityPolicy": "None"

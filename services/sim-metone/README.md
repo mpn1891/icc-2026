@@ -5,7 +5,7 @@ touchscreen a real one has on its front.
 
 The API is **not ours**. It is transcribed from
 [`docs/reference/particle_counter_sim.md`](../../docs/reference/particle_counter_sim.md) and
-treated as a vendor surface, the same way `opcua-novaflex` treats the FLEX2's OPC manual.
+treated as a vendor surface, the same way `opcua-cell-analyzer` treats the analyzer's OPC manual.
 Nothing was added to it to make polling easier — see *What is deliberately missing*.
 
 ```
@@ -97,7 +97,7 @@ it carries exactly four things:
 
 | Control | Why it exists |
 |---|---|
-| **Start / Stop** | the operator starts the instrument. Nothing free-runs, for the same reason the Nova stopped free-running on 2026-08-26 |
+| **Start / Stop** | the operator starts the instrument. Nothing free-runs, for the same reason the analyzer stopped free-running on 2026-08-26 |
 | **Sample point** | free text, persisted. This is the location, and the operator owns it |
 | **Clean / dirty** | the excursion, as a physical gesture rather than a `curl` |
 | **Live readout** | the last analysis, its counts, seconds to the next. Proof the instrument runs whether or not anybody is looking |

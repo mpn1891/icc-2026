@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  The BioProfile FLEX2's sample-login screen.
+  The cell analyzer's sample-login screen.
 
   This is the instrument's own touchscreen, not a config page. The two valve
   pages (8085/8086) are about where a device sends its data; this one is about
@@ -14,7 +14,7 @@
   the same characters. Type them wrong and the demo shows you exactly what a
   plant looks like when the transcription is the join.
 
-  Skin: Nova Biomedical BioProfile FLEX2 operator GUI — light medical
+  Skin: a generic cell-culture analyzer operator GUI — light medical
   touchscreen, status bar, module chips, large analysis form. No external
   assets of any kind -- the demo has to run with networking disabled.
 -->
@@ -22,7 +22,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BioProfile FLEX2 — Sample Login</title>
+<title>Cell Analyzer — Sample Login</title>
 <style>
   :root {
     --navy: #0a3d62;
@@ -60,14 +60,14 @@
     padding: .55rem 1rem;
     flex-wrap: wrap;
   }
-  .nova-mark {
+  .brand-mark {
     font-weight: 800;
     letter-spacing: .04em;
     font-size: .95rem;
     padding-right: .85rem;
     border-right: 1px solid rgba(255,255,255,.25);
   }
-  .nova-mark span { display: block; font-size: .62rem; font-weight: 600; letter-spacing: .16em;
+  .brand-mark span { display: block; font-size: .62rem; font-weight: 600; letter-spacing: .16em;
                     text-transform: uppercase; opacity: .7; }
   .product { font-weight: 700; letter-spacing: .06em; }
   .status-bar .spacer { flex: 1; }
@@ -211,10 +211,10 @@
 <body>
 
 <div class="status-bar">
-  <div class="nova-mark">Nova Biomedical<span>cell culture analytics</span></div>
-  <div class="product">BioProfile FLEX2</div>
+  <div class="brand-mark">ICC26<span>cell culture analytics</span></div>
+  <div class="product">Cell Analyzer</div>
   <div class="spacer"></div>
-  <div class="modules" title="Module status — white/ready, red/unavailable, per the FLEX2 IFU">
+  <div class="modules" title="Module status — white/ready, red/unavailable, per the vendor manual">
     <span class="mod ready">Chem</span>
     <span class="mod ready">Gas</span>
     <span class="mod ready">CDV</span>

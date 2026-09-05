@@ -432,8 +432,8 @@ granted — **authorization knows nothing about air pressure** — and the sampl
 `failed-to-seat` with the page's position readout resting at 12 %. Restore supply; the next
 sample is `normal`. The telemetry had been reporting the sag for minutes.
 
-**8 — The sample id reaches the Nova, by hand.** Read `values.sample_id` off the granted scan,
-type it into the analyzer's sample-login screen on :8087, press Run. The FLEX2's result echoes
+**8 — The sample id reaches the analyzer, by hand.** Read `values.sample_id` off the granted scan,
+type it into the analyzer's sample-login screen on :8087, press Run. The analyzer's result echoes
 the same string on `HistoricalSampleResults/StartTags/SampleInformation/SampleID`, and the LIMS
 on :8000 appends the analytes to the entry that scan already opened.
 
@@ -447,7 +447,7 @@ on one screen, in about fifteen seconds.
 
 | # | Item | Status |
 |---|---|---|
-| 1 | **The valve's `sample_id` must reach the Nova.** | **closed 2026-08-26 — and not the way this row predicted.** No Ignition tag write. The analyzer got its own sample-login screen (`services/opcua-novaflex/webui.py`, port 8087) and **a person types the valve's id into it**, which is what a plant does and what makes the id fallible. Nothing in this pattern changed: the valve still mints on the grant and still publishes `values.sample_id` on `event/sample-complete`. The transcription is now this pattern's sharpest risk beat — *no transcription, no intermediary*, said in front of the intermediary. See [`../00-architecture.md` § *The sample id, and pattern 1 mints it*](../00-architecture.md) |
+| 1 | **The valve's `sample_id` must reach the analyzer.** | **closed 2026-08-26 — and not the way this row predicted.** No Ignition tag write. The analyzer got its own sample-login screen (`services/opcua-cell-analyzer/webui.py`, port 8087) and **a person types the valve's id into it**, which is what a plant does and what makes the id fallible. Nothing in this pattern changed: the valve still mints on the grant and still publishes `values.sample_id` on `event/sample-complete`. The transcription is now this pattern's sharpest risk beat — *no transcription, no intermediary*, said in front of the intermediary. See [`../00-architecture.md` § *The sample id, and pattern 1 mints it*](../00-architecture.md) |
 | 2 | **The contract above is ahead of the build** | **closed 2026-08-25 — landed.** All seven changes are in: the `event/<subtype>` split, `scan_time`, the `sample_start`/`sample_completion` renames, `cycle_result` with an air-supply fault path, telemetry re-pointed, `state` → `status` as a birth/will pair, and interlock + `training-expired` removed. `valve.py` and `webui.py` re-verified byte-for-byte identical across both containers. **Not re-measured against a gateway** — see item 8 |
 | 3 | **The Last Will is not the `state` document** | **closed 2026-08-25 by the `status` redesign.** The mismatch existed because `state` carried nine fields and the will carried four; `status` carries `state` + `note`, and the will carries exactly that. The dead-valve tag tree can no longer keep stale position/cycle-count next to `offline`, because that topic no longer has them. The frozen `ts` and the unparsed `note` stay — deliberate, demonstrated in verification 4 and 6 |
 | 4 | **Pattern 7 cannot look up a past valve event.** One message retained per topic, tag history off. Either 7 subscribes live and holds its own state, or history goes on for the two event branches | **narrowed 2026-08-26.** Pattern 4 now subscribes to `event/sample-complete`, stores it as a `lims.sample` row, and republishes `sample_start` / `cycle_result` / the badge holder on the released review message — so *this* pattern's contribution is persisted and reaches 07 without 07 storing anything. Still open for 5 and 6. Decide it once for those two before 07's spec — see [`../00-architecture.md`](../00-architecture.md) |

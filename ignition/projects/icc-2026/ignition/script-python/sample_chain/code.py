@@ -355,7 +355,7 @@ def build(document):
             "mechanism": MECHANISM,
             "ingest_ts": _iso(),
             # The sample id pattern 1 minted at the valve. It is the same string
-            # in the Nova result, the LIMS review and here, which is what lets
+            # in the analyzer result, the LIMS review and here, which is what lets
             # one sample be found under four mechanisms in one mosquitto_sub.
             "correlation_id": sample_id,
         },

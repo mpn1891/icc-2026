@@ -26,8 +26,8 @@
     },
     "configVersion": 2,
     "endpoint": {
-      "discoveryUrl": "opc.tcp://opcua-countess:4840/countess/",
-      "endpointUrl": "opc.tcp://opcua-countess:4840/countess/",
+      "discoveryUrl": "opc.tcp://opcua-cell-analyzer:4840/cell-analyzer/",
+      "endpointUrl": "opc.tcp://opcua-cell-analyzer:4840/cell-analyzer/",
       "hostOverride": "",
       "securityMode": "None",
       "securityPolicy": "None"

@@ -21,7 +21,7 @@ slide and because the asymmetries are the interesting part:
 | `ign-transmission` | Ignition MQTT Transmission — Sparkplug edge node + publisher for patterns 3–7 | The only account with broad publish rights |
 | `sample-valve-01` | Pattern 1 smart sample valve assembly, plain MQTT | Publish only, and only into `upstream` — see below |
 | `sample-valve-02` | Pattern 2 the same assembly, Sparkplug B | `spBv1.0/#` both ways since 2026-08-25 — the widest grant of any device account. See below |
-| `analyzer-bridge` | Pattern 3, reserved | Only if the Nova Flex demo ever publishes without routing through Ignition |
+| `analyzer-bridge` | Pattern 3, reserved | Only if the cell analyzer demo ever publishes without routing through Ignition |
 | `lims-bridge` | Pattern 4 LIMS | Subscribe-only, `icc26/site1/qc/analyzers/+/result`. Empty publish grant is the cycle-hazard lock |
 | `observer` | Read-only | Firehose view, `mosquitto_sub`, MQTT Explorer |
 

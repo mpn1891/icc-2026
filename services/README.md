@@ -7,8 +7,8 @@ backbone to attach these to.
 |---|---|---|
 | `sim-valve-mqtt/` | 1 — native MQTT pub/sub | **built and wired into compose.** Smart sample valve assembly on `BR-201`; config page on <http://localhost:8085>. **Ignition ingest verified 2026-08-17**: the Engine custom namespace auto-creates a JSON-shaped tag tree, and a null field creates no tag at all ([spec](../docs/plans/01-native-mqtt.md), [talk track](../docs/talk-tracks/01-native-mqtt.md)) |
 | `sim-valve-spb/` | 2 — Sparkplug B edge node | **built and wired into compose**, and it is the **same device** as `sim-valve-mqtt/`, not a different one (see below). Config page on <http://localhost:8086>. **Ignition ingest verified 2026-08-17**: MQTT Engine built all 19 typed tags with their engineering units straight from DBIRTH, with no configuration at all ([spec](../docs/plans/02-sparkplug-b.md), [talk track](../docs/talk-tracks/02-sparkplug-b.md)) |
-| `opcua-countess/` | 3 — OPC UA example, **out of the demo** | **server built and wired into compose**, and it stays there as the worked example. Simulated Countess 3 FL cell counter; address space per [`docs/reference/countess-3fl-opcua-model.md`](../docs/reference/countess-3fl-opcua-model.md). Ignition side: `opc-connection/cell_analyzer` and the `cell_analyzer` UDT type remain; the `countess-01` instance is deleted. **MQTT publish will not be wired** — dropped from the demo 2026-08-25, not deferred |
-| `opcua-novaflex/` | 3 — OPC UA → MQTT | **server built and wired into compose**, and since 2026-08-25 it is **pattern 3's only instrument** (see below). Simulated Nova BioProfile FLEX2; address space transcribed from the real vendor server per [`docs/reference/novaflex2-opcua-model.md`](../docs/reference/novaflex2-opcua-model.md). Ignition side: connection + `bioanalyzer` UDT + instance **verified bound — 57/57 tags monitored**. **MQTT publish built 2026-08-19, broker-verified 2026-08-20**: `result/sample_time` (vendor `HistoricalSampleResults/SampleTime`) → Event Stream `03_opcua/novaflex-result` → `icc26/site1/qc/analyzers/novaflex-01/result` with `meta.mechanism = "opcua-event"`. Does not use `ICC26Extensions`. **2026-08-26: gained its own sample-login screen on <http://localhost:8087> and stopped free-running** — the valve's sample id is typed in by a person, which is what joins pattern 1 to pattern 3 |
+| `opcua-countess/` | 3 — OPC UA example, **out of the demo** | **server built and wired into compose**, and it stays there as the worked example. Simulated Countess 3 FL cell counter; address space per [`docs/reference/countess-3fl-opcua-model.md`](../docs/reference/countess-3fl-opcua-model.md). Ignition side: `opc-connection/cell_counter` and the `cell_counter` UDT type remain; the `countess-01` instance is deleted. **MQTT publish will not be wired** — dropped from the demo 2026-08-25, not deferred |
+| `opcua-cell-analyzer/` | 3 — OPC UA → MQTT | **server built and wired into compose**, and since 2026-08-25 it is **pattern 3's only instrument** (see below). Simulated the vendor cell analyzer; address space transcribed from the real vendor server per [`docs/reference/novaflex2-opcua-model.md`](../docs/reference/novaflex2-opcua-model.md). Ignition side: connection + `cell_analyzer` UDT + instance **verified bound — 57/57 tags monitored**. **MQTT publish built 2026-08-19, broker-verified 2026-08-20**: `result/sample_time` (vendor `HistoricalSampleResults/SampleTime`) → Event Stream `03_opcua/cell-analyzer-result` → `icc26/site1/qc/analyzers/cell-analyzer-01/result` with `meta.mechanism = "opcua-event"`. Does not use `ICC26Extensions`. **2026-08-26: gained its own sample-login screen on <http://localhost:8087> and stopped free-running** — the valve's sample id is typed in by a person, which is what joins pattern 1 to pattern 3 |
 | `lims/` | 4 — approval webhook | **built and wired into compose.** Review screen on <http://localhost:8000>. Subscribes as `lims-bridge` (publish grant empty) to **two** topics: the valve's `event/sample-complete`, which **opens the sample entry**, and the analyzer result, which **appends the analytes to it**. Holds the finished record for human review and POSTs through a transactional outbox ([spec](../docs/plans/04-lims-webhook.md) § *Revised 2026-08-26*, [talk track](../docs/talk-tracks/04-lims-webhook.md) — **the talk track predates the rebuild**). **Remaining:** publish both outcomes with `disposition` pass/fail |
 | `sim-metone/` | 6 — poll | **built and wired into compose.** Simulated MET ONE particle counter serving **GraphQL over HTTPS on 8443** with JWT auth and cursor pagination, transcribed verbatim from [`docs/reference/particle_counter_sim.md`](../docs/reference/particle_counter_sim.md) and given nothing it does not document. Operator touchscreen on <http://localhost:8089> — Start/Stop, the sample point, clean/dirty room, live readout. **Nothing pushes**: Ignition's `metone_poll` walks the cursor on a gateway timer, writes `em.reading`, and relays through Event Stream `06_poll/metone-result` to `icc26/site1/qc/analyzers/particle-counter-01/result` with `meta.mechanism = "poll"`. `values.status` ∈ `normal | excursion` is computed **by the poll script** against `config/excursion_threshold` on the UDT — the instrument does not know what a cleanroom limit is. Broker-verified 2026-08-29 ([spec](../docs/plans/06-poll-metone.md), [service README](sim-metone/README.md)). **Remaining:** the gateway timer script itself, which is UI-first |
 
@@ -45,24 +45,24 @@ at the sample port against a local badge roster.
 ## Why pattern 3 built two analyzers, and demos one
 
 They were originally sketched as alternatives. They are not — they are a pair, and the reason
-only became clear once the FLEX2's vendor OPC manual was read. **Only the FLEX2 is in the demo
+only became clear once the analyzer's vendor OPC manual was read. **Only the analyzer is in the demo
 as of 2026-08-25**; the Countess stays in compose as the worked example, and the contrast below
 is now something said on stage rather than something shown running:
 
-| | `opcua-countess` | `opcua-novaflex` |
+| | `opcua-countess` | `opcua-cell-analyzer` |
 |---|---|---|
 | Vendor OPC server | **none** — the instrument writes CSV | **yes**, licensed, shipped on the Bridge PC |
-| Whose address space | ours, DI + LADS shaped | **Nova's**, two flat trees of string-id tags |
+| Whose address space | ours, DI + LADS shaped | **the vendor's**, two flat trees of string-id tags |
 | Completion signal | counter + events, designed in | **none.** `SampleResults` just changes |
 | Actions | a method *and* a command bit | **command bits only.** No methods at all |
 | Refusing a bad request | `Bad_InvalidState` from the method | nothing — the write returns `Good` regardless |
 
-The Countess is the model we wish vendors shipped. The FLEX2 is what they ship. That argument
+The Countess is the model we wish vendors shipped. The analyzer is what they ship. That argument
 is worth making, and it survives the cut — it just gets made in a sentence now. It settles §6.1
 of the Countess model doc, which claimed command bits are what actually ships because a SCADA tag
 cannot invoke a method. Here is a 2024 vendor product with 104 writable bits and zero methods.
 
-The FLEX2's missing trigger is why `opcua-novaflex` publishes an `ICC26Extensions` branch. It is
+The analyzer's missing trigger is why `opcua-cell-analyzer` publishes an `ICC26Extensions` branch. It is
 a separate top-level object with a `README` variable inside it saying it is not vendor, because
 a tag export taken from that simulator will outlive anyone's memory of which half was invented.
 

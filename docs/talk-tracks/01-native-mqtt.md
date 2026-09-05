@@ -118,7 +118,7 @@ Pattern 2's equivalent carries datatypes, engineering units, aliases and a spec-
 sequence number, and nobody had to agree any of it.
 
 **This valve mints the sample id**, because the sample begins when material leaves the reactor.
-It travels as `values.sample_id` and everything downstream carries it unchanged — the Nova
+It travels as `values.sample_id` and everything downstream carries it unchanged — the analyzer
 analyzer, the LIMS review, and pattern 7's composite document are all the same string. A denial
 carries `null`, because a denial belongs to no sample.
 

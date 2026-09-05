@@ -1,8 +1,8 @@
-# opcua-novaflex — pattern 3, the vendor half
+# opcua-cell-analyzer — pattern 3, the analyzer half
 
-A simulated **Nova Biomedical BioProfile FLEX2** bioanalyzer, served over OPC UA.
+A simulated **cell-culture analyzer**, served over OPC UA.
 
-Unlike `opcua-countess`, this address space is **not ours**. The FLEX2 ships a real, licensed
+Unlike `opcua-countess`, this address space is **not ours**. The analyzer ships a real, licensed
 OPC UA server on its Bridge PC, and this container reproduces what that server publishes, from
 Section 9 of the vendor's OPC Server Instructions for Use Manual (LPN 60644B, 2024-03). Read
 [`docs/reference/novaflex2-opcua-model.md`](../../docs/reference/novaflex2-opcua-model.md)
@@ -10,8 +10,8 @@ first — it carries the transcription, the provenance and the list of places th
 contradicts itself.
 
 ```
-opc.tcp://opcua-novaflex:4840/novaflex/     from inside the compose network (Ignition)
-opc.tcp://localhost:4841/novaflex/          from the host (UaExpert, probe scripts)
+opc.tcp://opcua-cell-analyzer:4840/cell-analyzer/     from inside the compose network (Ignition)
+opc.tcp://localhost:4841/cell-analyzer/          from the host (UaExpert, probe scripts)
 http://localhost:8087/                      the instrument's sample-login touchscreen
 ```
 
@@ -21,7 +21,7 @@ production integration should use it.
 
 ## Why this exists next to the Countess
 
-| | `opcua-countess` | `opcua-novaflex` |
+| | `opcua-countess` | `opcua-cell-analyzer` |
 |---|---|---|
 | Vendor OPC server | none — instrument writes CSV | **yes, this is its address space** |
 | Shape | DI + LADS, as OPC UA intends | two flat trees of string-id tags |
@@ -29,7 +29,7 @@ production integration should use it.
 | Actions | method *and* command bit | **command bits only, no methods** |
 | Refusal on a bad request | `Bad_InvalidState` from the method | nothing. The write returns Good either way |
 
-The Countess is the model we wish vendors shipped. The FLEX2 is what they ship. Pattern 3 is
+The Countess is the model we wish vendors shipped. The analyzer is what they ship. Pattern 3 is
 more convincing with both on stage than with either alone.
 
 ## The sample-login screen, and the transcription it exists to perform
@@ -42,14 +42,14 @@ than about topics:
 > or scans it into this one. Everything downstream — the analyzer result, the LIMS entry it
 > appends to, the released document — turns on those characters matching.
 
-An Ignition tag write into `bioanalyzer/command/sample_id` would do the same job and could not
+An Ignition tag write into `cell_analyzer/command/sample_id` would do the same job and could not
 be typed wrong. **That is why it is not what we built.** Pattern 1's GxP claim is *the record
 originates at the point of action; no transcription, no intermediary*, and this screen is the
 intermediary. Type it wrong on stage and the LIMS shows the cost on one screen: an entry sitting
 open with no analysis, and an analysis parked with no entry.
 
 Run **writes tags and sets a bit** — `ESMScheduleAnalysis/SampleInformation/*`, then
-`ESMScheduleAnalysis` — the same nodes in the same order that Ignition's `bioanalyzer` UDT
+`ESMScheduleAnalysis` — the same nodes in the same order that Ignition's `cell_analyzer` UDT
 drives. It does not reach into `_run_sample()`. A page that shortcuts the vendor contract stops
 demonstrating it.
 
@@ -70,16 +70,15 @@ Subscribe to **one** vendor node — `HistoricalSampleResults/SampleTime`. The s
 it last, after every other historical leaf, so a tag-change is a settled result:
 
 ```
-nsu=http://icc26.demo/UA/NovaflexII/;s=OPCSystemObjects->HistoricalSampleResults->SampleTime
+nsu=http://icc26.demo/UA/CellAnalyzer/;s=OPCSystemObjects->HistoricalSampleResults->SampleTime
 ```
 
-Ignition: tag-change on `novaflex-01/result/sample_time` → Event Stream `03_opcua/novaflex-result`
-→ Transmission to `icc26/site1/qc/analyzers/novaflex-01/result`.
+Ignition: tag-change on `cell-analyzer-01/result/sample_time` → Event Stream `03_opcua/cell-analyzer-result`
+→ Transmission to `icc26/site1/qc/analyzers/cell-analyzer-01/result`.
 
-The UDT instance, the topic, `uns_path`, the Event Stream handler topic, and
-`03-seed.sql`'s equipment id are all `novaflex-01`. This directory, the compose service and
-the Event Stream *name* keep `novaflex` because they name the simulator, not a second
-instrument id.
+The UDT type is `cell_analyzer`. The instance, the topic, `uns_path`, the Event Stream handler
+topic and `03-seed.sql`'s equipment id are all `cell-analyzer-01`, and this directory, the compose
+service and the Event Stream *name* match. Renamed from `novaflex` on 2026-09-05.
 
 `ICC26Extensions` is still in the address space (counter, state, ResultJson) so the missing
 vendor trigger is visible on a browse. The MQTT path does not read it.
@@ -93,7 +92,7 @@ write instant — so a set of reads is provably one sample.
 
 ## Triggering an analysis
 
-**Nothing was invented for this.** The FLEX2's own command tags are the trigger. Write the
+**Nothing was invented for this.** The analyzer's own command tags are the trigger. Write the
 metadata, then write the bit:
 
 ```
@@ -114,7 +113,7 @@ Three things about this that are the vendor's design, not ours, and are worth sa
   happens is nothing. A method could have answered `Bad_InvalidState`.
 - **`DueTime` blank or in the past means "now"** — and an unwritten `DateTime` tag is 1970.
 
-The server clears the bit as soon as it accepts, making it a one-shot. Whether a real FLEX2 does
+The server clears the bit as soon as it accepts, making it a one-shot. Whether a real instrument does
 that is undocumented; set `COMMAND_AUTO_CLEAR=false` to find out the hard way.
 
 ## Configuration
@@ -122,9 +121,9 @@ that is undocumented; set `COMMAND_AUTO_CLEAR=false` to find out the hard way.
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPCUA_BIND_HOST` / `OPCUA_PORT` | `0.0.0.0` / `4840` | |
-| `OPCUA_ENDPOINT_PATH` | `/novaflex/` | |
+| `OPCUA_ENDPOINT_PATH` | `/cell-analyzer/` | |
 | `NODE_SEPARATOR` | `->` | Separator inside every string NodeId. See model doc § 1.1 — the manual is genuinely ambiguous here |
-| `ANALYZER_ID` / `LOCATION` | `FLEX2-01` / `Site 1 / QC Lab` | `Settings->AnalyzerID` and `->Location` |
+| `ANALYZER_ID` / `LOCATION` | `CELL-ANALYZER-01` / `Site 1 / QC Lab` | `Settings->AnalyzerID` and `->Location` |
 | `SOFTWARE_VERSION` / `SERIAL_NUMBER` | `4.3.1` / `FX2-2026-0119` | |
 | `GAS_INSTALLED` / `CHEM_INSTALLED` / `CDV_INSTALLED` | `true` | Absent module → its results stay `Bad_NoData` |
 | `OSMO_INSTALLED` | **`false`** | Deliberate. Keeps absent-vs-zero live on stage |
@@ -147,16 +146,16 @@ that is undocumented; set `COMMAND_AUTO_CLEAR=false` to find out the hard way.
 | `LOG_LEVEL` / `ASYNCUA_LOG_LEVEL` | `INFO` / `WARNING` | asyncua logs every publish request at INFO |
 
 **Not configurable:** how long an analysis takes — `RUN_DURATION_S` in `app.py`, fixed at 8 s
-(QC 5 s). A real FLEX2 running the full panel takes several minutes.
+(QC 5 s). A real instrument running the full panel takes several minutes.
 
 ## Deviations from the vendor
 
 §12 of the model doc has the full table. The four that change what a client sees:
 
-| Real FLEX2 | Here | Why |
+| Real analyzer | Here | Why |
 |---|---|---|
 | `ns=3` tags, `ns=2` folders | one namespace | the manual publishes neither namespace URI |
-| Port 59888, path `/NovaBiomedical` | 4840, `/novaflex/` | compose convention |
+| Port 59888, vendor-specific path | 4840, `/cell-analyzer/` | compose convention |
 | No counter, no state, no events, no result document | `ICC26Extensions` | there is otherwise nothing to drive a publish from |
 | `Units` as String tags, no `EUInformation` | **unchanged** | adding engineering-unit properties would make this simulator lie about the product |
 
@@ -176,21 +175,21 @@ Two asyncua notes, both load-bearing and both non-obvious — same as the Counte
 ## Verifying it
 
 ```bash
-docker compose up -d --build opcua-novaflex
-docker compose logs -f opcua-novaflex
+docker compose up -d --build opcua-cell-analyzer
+docker compose logs -f opcua-cell-analyzer
 ```
 
 Within `FIRST_SAMPLE_DELAY_S`:
 
 ```
 watching 27 command bits
-serving opc.tcp://0.0.0.0:4840/novaflex/ (namespace http://icc26.demo/UA/NovaflexII/, ns=2, separator '->')
+serving opc.tcp://0.0.0.0:4840/cell-analyzer/ (namespace http://icc26.demo/UA/CellAnalyzer/, ns=2, separator '->')
 modules: gas yes, chem yes, cdv yes, osmo NO -- 141 sample fields, 102 QC fields
 analysis 1 (Manual) running for 8.0s
 analysis 1 complete: 0.4 x10^6/mL viable, all sensors good -- counter=1
 ```
 
-Then point a client at `opc.tcp://localhost:4841/novaflex/`. What to look at, in order:
+Then point a client at `opc.tcp://localhost:4841/cell-analyzer/`. What to look at, in order:
 
 1. **The vendor's own acceptance test** (manual §6): subscribe to
    `OPCSystemObjects->CoreHeartbeat->UpTime` and `->DateTime->DateTime` and watch them tick.
@@ -211,9 +210,9 @@ this: 26 assertions, all green, 911 nodes across the three trees.
 
 ## Ignition side
 
-1. **OPC UA client connection** `bioanalyzer` → `opc.tcp://opcua-novaflex:4840/novaflex/`, no
+1. **OPC UA client connection** `cell_analyzer` → `opc.tcp://opcua-cell-analyzer:4840/cell-analyzer/`, no
    security, anonymous. **Done**, and authored as files rather than through the UI —
-   `opc-connection/bioanalyzer/` is a copy of `cell_analyzer/` with the two endpoint URLs
+   `opc-connection/cell_analyzer/` is a copy of `cell_counter/` with the two endpoint URLs
    changed, a fresh `uuid`, and `lastModificationSignature` **removed** from `resource.json`.
    The gateway accepts it and picks it up on `python tasks.py scan`; no restart needed.
 
@@ -221,28 +220,28 @@ this: 26 assertions, all green, 911 nodes across the three trees.
    copyable because the only per-connection secret, `keyStoreAliasPassword`, is Embedded
    ciphertext valid for the whole gateway. Drop the signature rather than trying to forge it —
    the resource genuinely was modified externally, and the gateway is fine being told so.
-2. **`bioanalyzer` UDT + `novaflex-01` instance** — written as files, see below.
+2. **`cell_analyzer` UDT + `cell-analyzer-01` instance** — written as files, see below.
 3. **MQTT publish** — tag-change on `result/sample_time` (vendor `HistoricalSampleResults/SampleTime`)
-   hands the result folder to Event Stream `03_opcua/novaflex-result`. Transform
-   `opcua_event.build_novaflex_result` reads the historical UDT siblings and Transmission
-   publishes to `icc26/site1/qc/analyzers/novaflex-01/result`, `meta.mechanism = "opcua-event"`.
+   hands the result folder to Event Stream `03_opcua/cell-analyzer-result`. Transform
+   `opcua_event.build_cell_analyzer_result` reads the historical UDT siblings and Transmission
+   publishes to `icc26/site1/qc/analyzers/cell-analyzer-01/result`, `meta.mechanism = "opcua-event"`.
    Does not use `ICC26Extensions`.
 
 ### The UDT
 
-`bioanalyzer` (in `tag-type-definition/default/udts.json`), instantiated as `novaflex-01` at
-`[default]icc26/site1/qc/analyzers/novaflex-01`.
+`cell_analyzer` (in `tag-type-definition/default/udts.json`), instantiated as `cell-analyzer-01` at
+`[default]icc26/site1/qc/analyzers/cell-analyzer-01`.
 
-A **second type**, not a widened `cell_analyzer`: the frame is identical but the measurements are
+A **second type**, not a widened `cell_counter`: the frame is identical but the measurements are
 completely different, and two honest types beat one type with half its members permanently Bad.
 Factor only if a third analyzer appears.
 
 | Parameter | Default | Purpose |
 |---|---|---|
-| `device_id` | `FLEX2-01` | **Not used in a single binding.** The FLEX2 puts no device identity in its NodeIds — every path starts at `OPCSystemObjects`, so one server serves exactly one analyzer. Kept because the publish script needs a `source.id` |
-| `namespace_uri` | `http://icc26.demo/UA/NovaflexII/` | Declared once on the type |
-| `node_sep` | `->` | Matches `NODE_SEPARATOR` on the container. If a real FLEX2 uses dots, change it in **two** places and nothing else |
-| `opc_server` | `bioanalyzer` | The gateway's OPC UA connection name |
+| `device_id` | `CELL-ANALYZER-01` | **Not used in a single binding.** The analyzer puts no device identity in its NodeIds — every path starts at `OPCSystemObjects`, so one server serves exactly one analyzer. Kept because the publish script needs a `source.id` |
+| `namespace_uri` | `http://icc26.demo/UA/CellAnalyzer/` | Declared once on the type |
+| `node_sep` | `->` | Matches `NODE_SEPARATOR` on the container. If a real instrument uses dots, change it in **two** places and nothing else |
+| `opc_server` | `cell_analyzer` | The gateway's OPC UA connection name |
 | `uns_path` | *(none — set per instance)* | Where this instance publishes |
 
 `node_sep` as a parameter is the point: the one genuine unknown in the whole model is confined to
@@ -269,9 +268,9 @@ write `true` to `command/esm_schedule_analysis`.
 Both produce `Error_Configuration` on every tag and **neither logs anything** gateway-side:
 
 - **Address by namespace URI, not index** — `nsu={namespace_uri};s=<node>`. Doubly true here: the
-  FLEX2 manual itself shows the index moving between server versions.
+  analyzer manual itself shows the index moving between server versions.
 - **A property containing a `{parameter}` must be an object, not a string:**
   `{"bindType": "parameter", "binding": "..."}`. A plain string is taken literally.
 
-Diagnose by setting `NOVAFLEX_ASYNCUA_LOG_LEVEL=INFO` and grepping the container log for
+Diagnose by setting `CELL_ANALYZER_ASYNCUA_LOG_LEVEL=INFO` and grepping the container log for
 `create monitored items` — a tag that bound names its node there, a tag that faulted is absent.

@@ -1,22 +1,22 @@
 [
   {
-    "name": "novaflex-01",
+    "name": "cell-analyzer-01",
     "parameters": {
       "device_id": {
         "dataType": "String",
-        "value": "FLEX2-01"
+        "value": "CELL-ANALYZER-01"
       },
       "opc_server": {
         "dataType": "String",
-        "value": "bioanalyzer"
+        "value": "cell_analyzer"
       },
       "uns_path": {
         "dataType": "String",
-        "value": "site1/qc/analyzers/novaflex-01"
+        "value": "site1/qc/analyzers/cell-analyzer-01"
       }
     },
     "tagType": "UdtInstance",
-    "typeId": "bioanalyzer"
+    "typeId": "cell_analyzer"
   },
   {
     "name": "particle-counter-01",

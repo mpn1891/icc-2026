@@ -50,7 +50,7 @@ Six things here are load-bearing, and easy to flatten into "a webhook demo":
     record the correction. Results matching no entry park as unmatched, visible,
     and are reattached by an analyst -- never absorbed silently.
 
-House style from services/opcua-novaflex/app.py: `_env` helpers, a Config class,
+House style from services/opcua-cell-analyzer/app.py: `_env` helpers, a Config class,
 docstrings that say why. FastAPI in the main thread, paho's network loop on its
 own (`loop_start()`), the outbox drainer on a third.
 """
@@ -92,7 +92,7 @@ ANALYTES = [
     ("osmolality", "osmo", "mOsm/kg"),
 ]
 
-# In-process specs for the review grid. Demo values, chosen so a healthy FLEX2
+# In-process specs for the review grid. Demo values, chosen so a healthy analyzer
 # sample lands in-spec and the OOS chip is reserved for a real excursion.
 TEST_CATALOG = {
     "glucose": {"code": "CHEM-GLUC", "name": "Glucose", "lo": 1.0, "hi": 8.0, "uom": "g/L"},
@@ -1370,7 +1370,7 @@ def _no_results_html(sample: dict) -> str:
     return (
         '<td class="await-cell" colspan="6">'
         "Sample drawn and logged. Awaiting analyser result — the sample id has to "
-        "be entered on the FLEX2 before it runs.</td>"
+        "be entered on the analyzer before it runs.</td>"
     )
 
 
@@ -1379,7 +1379,7 @@ def _pending_html(pending: list[dict], analyst: str) -> str:
         return (
             '<p class="empty">No samples are open. '
             "An entry appears here the moment the sample valve reports a completed "
-            "cycle, and the FLEX2 results are appended to it when the analysis "
+            "cycle, and the analyzer results are appended to it when the analysis "
             "finishes.</p>"
         )
     body = []
@@ -1407,7 +1407,7 @@ def _pending_html(pending: list[dict], analyst: str) -> str:
                         _esc(sample["sample_id"]),
                         _esc(sample["batch_id"] or "batch not assigned"),
                         _esc(_fmt_display_ts(sample["collected_at"])),
-                        "FLEX2" if results else "no analyser",
+                        "analyzer" if results else "no analyser",
                         _collection_html(sample),
                     )
                 )
@@ -1483,7 +1483,7 @@ def _actions_html(sample: dict, analyst: str, reviewable: bool, span: int) -> st
 
 
 def _unmatched_html(unmatched: list[dict], pending: list[dict], analyst: str) -> str:
-    """Results the FLEX2 reported against an id no entry carries.
+    """Results the analyzer reported against an id no entry carries.
 
     On stage this is a mistyped sample id. The valve's entry is sitting in the
     queue above with no results; this analysis is sitting here with no entry, and
@@ -1540,7 +1540,7 @@ def _unmatched_html(unmatched: list[dict], pending: list[dict], analyst: str) ->
         "</tr></thead><tbody>%s</tbody></table>"
         '<p class="meaning">The id the instrument reported is kept exactly as received. '
         "Attaching records which sample the analysis belongs to and who decided that — "
-        "it does not overwrite what the FLEX2 said.</p>" % "".join(rows)
+        "it does not overwrite what the analyzer said.</p>" % "".join(rows)
     )
 
 

@@ -192,7 +192,7 @@ class Instrument:
 
         Ignition never calls this -- `startSampling`, `stopSampling` and
         `clearSamples` are a vendor control surface we deliberately do not
-        touch, the same change-control boundary pattern 3 keeps with the Nova's
+        touch, the same change-control boundary pattern 3 keeps with the analyzer's
         104 writable bits.
         """
         dropped = len(self.samples)

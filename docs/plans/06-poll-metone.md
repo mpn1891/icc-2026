@@ -58,7 +58,7 @@ Taken before writing, so no section below re-argues them.
 
 | | Decision |
 |---|---|
-| The API | **Vendor-faithful.** `particle_counter_sim.md` is treated as a transcribed vendor surface, like [`../reference/novaflex2-opcua-model.md`](../reference/novaflex2-opcua-model.md) is for the Nova. We build the simulator from it and **add nothing to it** |
+| The API | **Vendor-faithful.** `particle_counter_sim.md` is treated as a transcribed vendor surface, like [`../reference/novaflex2-opcua-model.md`](../reference/novaflex2-opcua-model.md) is for the analyzer. We build the simulator from it and **add nothing to it** |
 | Excursion | Computed **by the poll script at ingest**, on **raw channel counts** against a configured threshold — not normalised to /m³ |
 | Forcing one | An **operator touchscreen on `:8089`**, styled as the instrument's own panel |
 | Store | **`em.reading` in `icc26`**, written by the poll script, shaped to match `bes.batch_event`'s lookup |
@@ -142,7 +142,7 @@ surface is the vendor's, and the awkwardness stays on our side of the boundary.
 
 `startSampling`, `stopSampling` and `clearSamples` stay in the schema and **Ignition never calls
 any of them.** The vendor shipped a control surface we deliberately do not touch — the same
-change-control boundary pattern 3 makes with the Nova's 104 writable bits.
+change-control boundary pattern 3 makes with the analyzer's 104 writable bits.
 
 ## The instrument — `services/sim-metone`
 
@@ -197,7 +197,7 @@ A vendor README that lies about its own quickstart is a bug in the transcription
 ```
 
 Both host ports are free: Chariot holds 8883/8444/8090/8081, Ignition 8088/8043, Debezium 8083,
-the valves 8085/8086, the Nova 8087.
+the valves 8085/8086, the analyzer 8087.
 
 **The healthcheck probes the panel, not the GraphQL endpoint**, because the API's certificate is
 self-signed and generated at container start — probing it would mean shipping a `curl -k` into
@@ -208,12 +208,12 @@ pattern is not liveness at all but *is the buffer non-empty*, and that one lives
 ### The touchscreen on `:8089`
 
 Every demo surface in this stack is somebody's real product screen — the two valve config pages,
-the Nova's sample login, the LIMS review. This is the instrument's own panel, and it carries
+the analyzer's sample login, the LIMS review. This is the instrument's own panel, and it carries
 exactly four things:
 
 | Control | Why it exists |
 |---|---|
-| **Start / Stop sampling** | The operator starts the instrument. Nothing free-runs, for the same reason the Nova stopped free-running on 2026-08-26 |
+| **Start / Stop sampling** | The operator starts the instrument. Nothing free-runs, for the same reason the analyzer stopped free-running on 2026-08-26 |
 | **Sample point** | Free text, defaults from `DEVICE_NAME`, persisted to `/config`. This is the location, and the operator owns it |
 | **Room condition: clean / dirty** | The excursion. A physical gesture on stage rather than a `curl` |
 | **Live readout** | Last analysis, its counts, seconds to the next one. Proves the instrument is running independently of whether Ignition is looking |
@@ -284,7 +284,7 @@ in between.
 | UDT type `particle_counter` | `tag-type-definition/default/udts.json` | **built** — files + `tasks.py scan`, no restart |
 | UDT instance `particle-counter-01` | `tag-definition/default/icc26/site1/qc/analyzers/udts.json` | **built** — files + `scan`. No parameters: nothing here is OPC-bound, so there is nothing to substitute |
 | Script module `metone_poll` | `ignition/script-python/metone_poll/code.py` | **built** — files + `scan` |
-| Event Stream `06_poll/metone-result` | `com.inductiveautomation.eventstream/event-streams/06_poll/metone-result/` | **built** — copied `03_opcua/novaflex-result` and changed the topic, the transform and the filter, exactly as predicted |
+| Event Stream `06_poll/metone-result` | `com.inductiveautomation.eventstream/event-streams/06_poll/metone-result/` | **built** — copied `03_opcua/cell-analyzer-result` and changed the topic, the transform and the filter, exactly as predicted |
 | **Gateway timer script** `06-poll` | `ignition/timer/06-poll/` | **built** — created empty in the Gateway UI to learn the schema, then given its body and its 30 s cadence as files + `scan`. § *The timer* |
 | `ICC26` datasource | already exists, built for pattern 5 | — |
 
@@ -592,7 +592,7 @@ Full envelope, `mechanism=poll`.
 two differing by tens of seconds, visible in every message on `mosquitto_sub`, is the detection
 gap on the wire without anybody having to explain it.
 
-**This pattern carries the full envelope, and pattern 3 does not** — the Nova publishes `ts` and
+**This pattern carries the full envelope, and pattern 3 does not** — the analyzer publishes `ts` and
 `values` only ([`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md) § 9). That is
 not an inconsistency to tidy: pattern 3 relays the instrument's own document, while pattern 6's
 document **contains fields the instrument never produced** — `status` and `location` are ours.
@@ -604,7 +604,7 @@ id, and pattern 7 finds its reading by time, not by key
 
 ## Event Stream
 
-Copy `03_opcua/novaflex-result` and change four things: the topic, the transform, the filter,
+Copy `03_opcua/cell-analyzer-result` and change four things: the topic, the transform, the filter,
 and the name. The `ignition.gatewayEvent` source and the Transmission handler are unchanged.
 
 ```json

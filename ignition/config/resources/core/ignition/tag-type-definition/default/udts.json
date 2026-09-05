@@ -1,14 +1,14 @@
 [
   {
-    "name": "bioanalyzer",
+    "name": "cell_analyzer",
     "parameters": {
       "device_id": {
         "dataType": "String",
-        "value": "FLEX2-01"
+        "value": "CELL-ANALYZER-01"
       },
       "namespace_uri": {
         "dataType": "String",
-        "value": "http://icc26.demo/UA/NovaflexII/"
+        "value": "http://icc26.demo/UA/CellAnalyzer/"
       },
       "node_sep": {
         "dataType": "String",
@@ -16,7 +16,7 @@
       },
       "opc_server": {
         "dataType": "String",
-        "value": "bioanalyzer"
+        "value": "cell_analyzer"
       },
       "uns_path": {
         "dataType": "String",
@@ -74,7 +74,7 @@
           },
           {
             "dataType": "Boolean",
-            "documentation": "Write true to run an analysis. This is the VENDOR\u0027s own trigger, not something added for the demo - the FLEX2 exposes no OPC UA methods at all, only writable bits. Set the sample metadata tags below FIRST: nothing here is atomic and the instrument reads them at the instant the bit goes true. There is also no refusal path - write it while an analysis is running and all that happens is nothing.",
+            "documentation": "Write true to run an analysis. This is the VENDOR\u0027s own trigger, not something added for the demo - the analyzer exposes no OPC UA methods at all, only writable bits. Set the sample metadata tags below FIRST: nothing here is atomic and the instrument reads them at the instant the bit goes true. There is also no refusal path - write it while an analysis is running and all that happens is nothing.",
             "name": "esm_schedule_analysis",
             "opcItemPath": {
               "bindType": "parameter",
@@ -351,7 +351,7 @@
               },
               {
                 "dataType": "Int4",
-                "documentation": "How many images the density result was actually computed from - the closest thing the FLEX2 publishes to a confidence figure.",
+                "documentation": "How many images the density result was actually computed from - the closest thing the analyzer publishes to a confidence figure.",
                 "name": "good_image_count",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -782,11 +782,11 @@
           },
           {
             "dataType": "DateTime",
-            "documentation": "THE trigger for the MQTT publish. Vendor HistoricalSampleResults/SampleTime, written last by the simulator after every other historical leaf. A valueChanged script hands the result folder to event stream 03_opcua/novaflex-result, which reads the sibling historical tags and publishes via Transmission. Do not point this at ICC26Extensions.",
+            "documentation": "THE trigger for the MQTT publish. Vendor HistoricalSampleResults/SampleTime, written last by the simulator after every other historical leaf. A valueChanged script hands the result folder to event stream 03_opcua/cell-analyzer-result, which reads the sibling historical tags and publishes via Transmission. Do not point this at ICC26Extensions.",
             "eventScripts": [
               {
                 "eventid": "valueChanged",
-                "script": "\t# Pattern 3: one MQTT publish per HistoricalSampleResults SampleTime change.\n\t# Vendor field, not ICC26Extensions. The event stream reads the historical siblings.\n\tif initialChange:\n\t\treturn\n\tif currentValue is None or currentValue.value is None:\n\t\treturn\n\ttry:\n\t\tif not currentValue.quality.isGood():\n\t\t\treturn\n\texcept:\n\t\treturn\n\tbase \u003d tagPath.rsplit(\"/\", 1)[0]\n\tsystem.eventstream.publishEvent(\"icc-2026\", \"03_opcua/novaflex-result\", str(base), False)\n"
+                "script": "\t# Pattern 3: one MQTT publish per HistoricalSampleResults SampleTime change.\n\t# Vendor field, not ICC26Extensions. The event stream reads the historical siblings.\n\tif initialChange:\n\t\treturn\n\tif currentValue is None or currentValue.value is None:\n\t\treturn\n\ttry:\n\t\tif not currentValue.quality.isGood():\n\t\t\treturn\n\texcept:\n\t\treturn\n\tbase \u003d tagPath.rsplit(\"/\", 1)[0]\n\tsystem.eventstream.publishEvent(\"icc-2026\", \"03_opcua/cell-analyzer-result\", str(base), False)\n"
               }
             ],
             "name": "sample_time",
@@ -848,7 +848,7 @@
       },
       {
         "dataType": "Int8",
-        "documentation": "Demo extension, not the MQTT trigger. The real FLEX2 OPC server has no completion counter at all - SampleResults just changes underneath you. Pattern 3 publishes off result/sample_time (vendor HistoricalSampleResults/SampleTime). This node still increments last in ICC26Extensions so the gap is visible in the address space. A QC run and a failed analysis both leave this untouched. UInt32 on the wire, so Int8 here.",
+        "documentation": "Demo extension, not the MQTT trigger. The real instrument OPC server has no completion counter at all - SampleResults just changes underneath you. Pattern 3 publishes off result/sample_time (vendor HistoricalSampleResults/SampleTime). This node still increments last in ICC26Extensions so the gap is visible in the address space. A QC run and a failed analysis both leave this untouched. UInt32 on the wire, so Int8 here.",
         "name": "sample_complete_counter",
         "opcItemPath": {
           "bindType": "parameter",
@@ -892,7 +892,7 @@
       },
       {
         "dataType": "String",
-        "documentation": "Vendor liveness tag. Section 6 of the FLEX2 OPC manual tells you to subscribe to this and to the analyzer clock to confirm the server is updating at all - it is the vendor\u0027s own acceptance test, so it is worth having as a tag.",
+        "documentation": "Vendor liveness tag. Section 6 of the analyzer OPC manual tells you to subscribe to this and to the analyzer clock to confirm the server is updating at all - it is the vendor\u0027s own acceptance test, so it is worth having as a tag.",
         "name": "uptime",
         "opcItemPath": {
           "bindType": "parameter",
@@ -988,7 +988,7 @@
     ]
   },
   {
-    "name": "cell_analyzer",
+    "name": "cell_counter",
     "parameters": {
       "device_id": {
         "dataType": "String",
@@ -1000,7 +1000,7 @@
       },
       "opc_server": {
         "dataType": "String",
-        "value": "cell_analyzer"
+        "value": "cell_counter"
       },
       "uns_path": {
         "dataType": "String",

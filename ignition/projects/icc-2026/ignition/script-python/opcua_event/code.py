@@ -1,6 +1,6 @@
 """Pattern 3 -- assemble an analyzer result document from Ignition tags.
 
-Nova publishes off HistoricalSampleResults/SampleTime, a vendor field. The tag script on
+The analyzer publishes off HistoricalSampleResults/SampleTime, a vendor field. The tag script on
 that DateTime hands this module the result-folder path; we read the historical UDT siblings
 already bound and return one JSON document. Nothing under ICC26Extensions is read.
 
@@ -83,17 +83,17 @@ def _value(qv):
     return value
 
 
-def build_novaflex_result(result_folder):
+def build_cell_analyzer_result(result_folder):
     """Read HistoricalSampleResults tags under result_folder and return the result JSON.
 
     result_folder is the Ignition path of the UDT result folder, e.g.
-    [default]icc26/site1/qc/analyzers/novaflex-01/result -- the tag script strips
+    [default]icc26/site1/qc/analyzers/cell-analyzer-01/result -- the tag script strips
     /sample_time before handing it over. Returns None if SampleTime itself is empty
     so the MQTT handler does not publish a hollow document.
     """
     logger = system.util.getLogger(LOGGER_NAME)
     if not result_folder:
-        logger.warn("novaflex result skipped: no result folder path")
+        logger.warn("cell analyzer result skipped: no result folder path")
         return None
 
     paths = [result_folder + "/" + name for name in _FIELDS]
@@ -102,7 +102,7 @@ def build_novaflex_result(result_folder):
 
     sample_time = _value(by_name["sample_time"])
     if sample_time is None:
-        logger.warn("novaflex result skipped: SampleTime is not Good")
+        logger.warn("cell analyzer result skipped: SampleTime is not Good")
         return None
 
     document = {
