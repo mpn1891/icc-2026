@@ -570,7 +570,7 @@ services:
     networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Pattern 6 — a simulated MET ONE particle counter, GraphQL over HTTPS
+  # Pattern 6 — a simulated particle counter, GraphQL over HTTPS
   #
   # Nothing pushes. The instrument does not know Ignition exists; Ignition finds
   # out on a 30 s timer and walks a cursor. The honest consequence is a
@@ -582,40 +582,40 @@ services:
   # cursor reset. The awkwardness stays on our side, which is the same rule
   # pattern 3 keeps with the analyzer's vendor address space.
   #
-  # Spec:  docs/plans/06-poll-metone.md
+  # Spec:  docs/plans/06-poll-particle-counter.md
   # ───────────────────────────────────────────────────────────────────────────
-  sim-metone:
-    build: ./services/sim-metone
-    container_name: icc26-sim-metone
+  sim-particle-counter:
+    build: ./services/sim-particle-counter
+    container_name: icc26-sim-particle-counter
     restart: unless-stopped
     environment:
       # The sim says the site's name for itself, so nothing downstream has to
       # translate a serial number into a topic segment.
-      DEVICE_ID: ${METONE_DEVICE_ID:-particle-counter-01}
+      DEVICE_ID: ${PARTICLE_COUNTER_DEVICE_ID:-particle-counter-01}
       # Default sample point; the operator overrides it on :8089. The vendor
       # record has no location field, so this IS the location — see the spec.
-      DEVICE_NAME: ${METONE_DEVICE_NAME:-USP Suite A - BR-201 sample port}
+      DEVICE_NAME: ${PARTICLE_COUNTER_DEVICE_NAME:-USP Suite A - BR-201 sample port}
       # The vendor default is 60. Ten seconds is ours, and visibly ours: it is
       # a cadence an audience can watch. Every raw-count threshold in the system
       # means something only while this is 10 — 28.3 LPM for 10 s is 4.717 L.
-      DURATION: ${METONE_DURATION:-10}
-      CHANNELS: ${METONE_CHANNELS:-0.3,0.5,1,3,5,10}
+      DURATION: ${PARTICLE_COUNTER_DURATION:-10}
+      CHANNELS: ${PARTICLE_COUNTER_CHANNELS:-0.3,0.5,1,3,5,10}
       # Zero, not the vendor's 50. Nothing exists until somebody presses Start
       # on the touchscreen. Seeding history would put readings on the backbone
       # that nobody in the room saw the instrument take; the cost is that "press
       # Start" is a pre-show step that can be forgotten, which the panel's idle
       # banner and tasks.py health both guard.
-      SEED_SAMPLES: ${METONE_SEED_SAMPLES:-0}
-      LOG_LEVEL: ${METONE_LOG_LEVEL:-INFO}
+      SEED_SAMPLES: ${PARTICLE_COUNTER_SEED_SAMPLES:-0}
+      LOG_LEVEL: ${PARTICLE_COUNTER_LOG_LEVEL:-INFO}
       TZ: ${TZ:-America/Chicago}
     ports:
-      - "${METONE_API_PORT:-8443}:8443"
-      - "${METONE_PANEL_PORT:-8089}:8089"
+      - "${PARTICLE_COUNTER_API_PORT:-8443}:8443"
+      - "${PARTICLE_COUNTER_PANEL_PORT:-8089}:8089"
     volumes:
       # Sample point + room condition + whether a run was going. NOT the sample
       # buffer: it regenerates from sequence number 1 on every restart, which is
       # what makes the stale-cursor failure demo work.
-      - metone-config:/config
+      - particle-counter-config:/config
     # The panel is plain HTTP and is the cheap liveness probe. The GraphQL
     # endpoint is HTTPS with a self-signed cert generated at container start,
     # so probing it would mean shipping a curl -k into the image for no gain.
@@ -647,8 +647,8 @@ volumes:
   debezium-data:
   # Pattern 6's operator settings: the sample point, the room condition, and
   # whether a run was going. The sample buffer is deliberately NOT in here --
-  # see the sim-metone service comment.
-  metone-config:
+  # see the sim-particle-counter service comment.
+  particle-counter-config:
 
 networks:
   icc26:

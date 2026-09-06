@@ -20,7 +20,7 @@ the room condition and whether a run was going.
 
 **The simulator does not know what a cleanroom limit is.** It has a clean
 distribution and a dirty one, and no notion of a threshold. The excursion rule
-is Ignition's, lives once on the UDT, and is applied by ``metone_poll`` at
+is Ignition's, lives once on the UDT, and is applied by ``particle_counter_poll`` at
 ingest. See docs/00-architecture.md § *Derived flags travel with the fact that
 produced them*.
 """

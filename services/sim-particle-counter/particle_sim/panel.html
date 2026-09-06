@@ -18,10 +18,10 @@
 
   The instrument does not know what a cleanroom limit is and this screen must
   never imply that it does. There is no "EXCURSION" light here -- the threshold
-  is Ignition's rule, lives once on the UDT, and is applied by metone_poll at
+  is Ignition's rule, lives once on the UDT, and is applied by particle_counter_poll at
   ingest. What this screen shows is counts.
 
-  Skin: a MET ONE-style portable particle counter -- dark instrument case, light
+  Skin: a portable particle counter -- dark instrument case, light
   data panel, large numerals, physical-looking keys. No external assets of any
   kind; the demo has to run with networking disabled (docs/00-architecture.md).
 -->
@@ -226,8 +226,8 @@
 <div class="instrument">
 
   <div class="case-top">
-    <div class="mark">MET ONE<span>Particle Counter</span></div>
-    <div class="model">3400+ / ISO 21501-4</div>
+    <div class="mark">ICC26<span>particle counter</span></div>
+    <div class="model">ISO 21501-4</div>
     <div class="spacer"></div>
     <div class="serial" id="serial">&mdash;</div>
     <div class="lamp" id="lamp"><i></i> Sampling</div>

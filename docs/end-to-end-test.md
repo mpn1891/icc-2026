@@ -30,7 +30,7 @@ All green is the bar. Three lines carry the whole pre-flight:
 | Line | What it has to say |
 |---|---|
 | `chariot   MQTT listener RUNNING on :1883 (trial NNN min)` | **The trial is two hours.** Under ~20 min, restart the broker now rather than halfway through the walk |
-| `sim-metone SAMPLING, N record(s) buffered` | Anything else means press **Start** on <http://localhost:8089>. `SEED_SAMPLES: 0` — nothing free-runs |
+| `sim-particle-counter SAMPLING, N record(s) buffered` | Anything else means press **Start** on <http://localhost:8089>. `SEED_SAMPLES: 0` — nothing free-runs |
 | `em.reading  last stored N s ago` | Under 180 s. If it warns `STALLED`, do step 1 |
 
 **Two failures this check cannot see.** It reads the store, not the wire, so a lapsed trial leaves
@@ -38,7 +38,7 @@ it green while nothing publishes. And it asks whether the instrument is sampling
 it was sampling an hour ago. On 2026-08-30 both were true at once and every check stayed green for
 15.5 hours.
 
-## 1. Clear the MET ONE cursor, if it is stale
+## 1. Clear the particle counter cursor, if it is stale
 
 Gateway UI at <http://localhost:8088> → Tag Explorer → clear this one tag:
 
@@ -63,7 +63,7 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 `icc26/#`, not the composite topic alone. If the composite never lands, the only way to know which
 hop went quiet is to have been watching all of them.
 
-Within 30 s you should see a **burst of three** MET ONE results rather than one every 10 s — the
+Within 30 s you should see a **burst of three** particle counter results rather than one every 10 s — the
 poll batches three analyses and the Event Stream debounces them.
 
 ## 3. Put `br-201` in `GROWTH`
@@ -129,7 +129,7 @@ If you rejected in step 6 instead of approving, you get a message now: `violatio
 
 ## 8. Make a deviation and read it
 
-Press **Dirty** on the MET ONE panel (<http://localhost:8089>) and wait about 30 s for a fresh
+Press **Dirty** on the particle counter panel (<http://localhost:8089>) and wait about 30 s for a fresh
 reading to land — dirty draws measure 3346–4350 counts against a threshold of 1660. Then repeat
 steps 4–6 with a new sample.
 

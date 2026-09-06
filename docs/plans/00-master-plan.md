@@ -215,11 +215,11 @@ Verify: set `batch_id`, click `manual_advance` → rows in `bes.batch_event` wit
 `qualified_window` correct → messages on `batch/event` within ~1 s. Stop Debezium, keep clicking,
 show the gap — then restart it and watch the missed changes arrive.
 
-**06 — Poll of a MET ONE environmental analyzer** — decided 2026-08-23, refined here to carry
+**06 — Poll of a particle counter** — decided 2026-08-23, refined here to carry
 the excursion flag pattern 7 needs.
 
-A simulated Hach MET ONE particle counter inside the analyzer tag path, speaking an **HTTP API** (not
-Modbus). New service `services/sim-metone`. The exact routes and record shape are **TBD** —
+A simulated particle counter inside the analyzer tag path, speaking an **HTTP API** (not
+Modbus). New service `services/sim-particle-counter`. The exact routes and record shape are **TBD** —
 vendor API docs will be dropped in; until then treat it as "a pull API that returns completed
 particle-count analysis events with a timestamp and channel counts," watermarked on record id
 or analysis time.
@@ -231,7 +231,7 @@ status" — it must exist on the wire, not just be inferable from raw counts, so
 key off it directly.
 
 An Ignition gateway timer polls that API. On a new analysis, the script submits the payload to
-an Event Stream (`06_poll/metone-result`), which publishes through Transmission to
+an Event Stream (`06_poll/particle-counter-result`), which publishes through Transmission to
 `icc26/site1/qc/analyzers/particle-counter-01/result` with `mechanism=poll`. Same relay
 shape as pattern 3; the acquisition is the poll.
 
@@ -254,12 +254,12 @@ pass or fail). On that message it builds one composite document, `mechanism=aggr
 | Sample actuation | pattern 1 event (`sample-valve-01`) | when material left the reactor |
 | VCD reading + assay result | pattern 3 analyzer result + pattern 4 review | when the sample was run, and its disposition |
 | Batch operation and qualified window | pattern 5 `batch/event` at sample time | `operation` and `qualified_window` when the valve opened — `ORDER BY occurred_at DESC, id DESC`, see [`05-cdc-batch-event.md`](05-cdc-batch-event.md) |
-| Environmental excursion status | pattern 6 MET ONE, nearest reading to the analyzer timestamp | `status` at (or nearest) the sample instant |
+| Environmental excursion status | pattern 6 particle counter, nearest reading to the analyzer timestamp | `status` at (or nearest) the sample instant |
 
 The script derives two flags from those sections — `values.outside_qualified_window` (pattern
 5's `qualified_window` was `false` at the sample-open instant) and
 `values.environmental_excursion` (pattern 6's nearest reading was `status = excursion`). **Always
-publish**, whatever the flags say: a dirty or missing MET ONE reading is a finding in the
+publish**, whatever the flags say: a dirty or missing particle counter reading is a finding in the
 document, not a refusal. When both flags are `true`, the payload *is* the through line's
 composite event.
 
@@ -278,8 +278,8 @@ alone. Patterns 1–6 are about acquisition; pattern 7 is about meaning.
 **GxP hook:** derived data with disposition consequence — the heaviest item on the list, and the
 right one to end on.
 
-Verify: badge the valve during `GROWTH` with a clean MET ONE reading → aggregate publishes with
-both flags `false`. Then badge it during `CIP`/`HARVEST`, or with a forced MET ONE excursion (or
+Verify: badge the valve during `GROWTH` with a clean particle counter reading → aggregate publishes with
+both flags `false`. Then badge it during `CIP`/`HARVEST`, or with a forced particle counter excursion (or
 both) → aggregate publishes with the relevant flag(s) `true`, reproducing the composite event
 above on demand for rehearsal.
 
@@ -307,7 +307,7 @@ so it is last of the seven, and it is still **the designated cut** if the schedu
    UI-first gateway settings nobody can do from a file: the `ICC26` JDBC datasource (read the
    `pg_db` look-alike trap in [`../00-architecture.md` § *Postgres*](../00-architecture.md)
    first) and the **Gateway Scripting Project**, without which the tag event script cannot
-   resolve `bes_batch`. 06 is the MET ONE simulator + poll script + Event Stream; it
+   resolve `bes_batch`. 06 is the particle counter simulator + poll script + Event Stream; it
    waits on vendor API notes, so stub the routes if they have not arrived — the excursion flag
    and its limit config are ours, not the vendor's, and need not wait on somebody else's PDF.
 4. **Decide pattern 7's event store.** New on 2026-08-25, **narrowed 2026-08-26 to patterns 5
@@ -334,7 +334,7 @@ After the final risk segment (pattern 7's):
 1. Per pattern: the spec's copy-pasteable check (trigger + `mosquitto_sub` + expected envelope).
 2. **Per pattern, the failure too.** A webhook whose delivery is lost without an outbox; a
    batch engine that keeps cycling while Debezium is down; a poll that stalls and misses an
-   analysis; an aggregate that still publishes when the nearest MET ONE is missing.
+   analysis; an aggregate that still publishes when the nearest particle counter is missing.
    A mechanism shown only working is a mechanism nobody can judge.
 3. **The composite event itself.** Force `outside_qualified_window` and `environmental_excursion`
    both `true` in one rehearsal run and confirm the aggregate payload reads exactly as the

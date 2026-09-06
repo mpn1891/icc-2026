@@ -1357,30 +1357,30 @@ def task_health():
     # SAMPLING with a healthy buffer, which is this branch's OK. The store check
     # below is what separates them, and it is the one that matters: on
     # 2026-08-30 the cursor went stale and this check reported OK for 15 hours.
-    metone_port = env_value(env, "METONE_PANEL_PORT", "8089")
-    status, body = http("http://localhost:%s/api/state" % metone_port, timeout=8)
-    metone_sampling = False
-    metone_buffered = 0
+    panel_port = env_value(env, "PARTICLE_COUNTER_PANEL_PORT", "8089")
+    status, body = http("http://localhost:%s/api/state" % panel_port, timeout=8)
+    sim_sampling = False
+    sim_buffered = 0
     if status and 200 <= status < 300:
         try:
             state = json.loads(body)
         except Exception:
             state = {}
-        metone_sampling = bool(state.get("running"))
-        metone_buffered = state.get("buffer_count") or 0
+        sim_sampling = bool(state.get("running"))
+        sim_buffered = state.get("buffer_count") or 0
         if state.get("buffer_count"):
-            ok("sim-metone %s, %s record(s) buffered, room %s"
+            ok("sim-particle-counter %s, %s record(s) buffered, room %s"
                % ("SAMPLING" if state.get("running") else "STOPPED",
                   state.get("buffer_count"), state.get("room")))
         elif state.get("running"):
-            warn("sim-metone running but the buffer is empty - the first "
+            warn("sim-particle-counter running but the buffer is empty - the first "
                  "analysis lands after %ss" % state.get("duration_s"))
         else:
-            warn("sim-metone IDLE with an empty buffer - press Start on :%s, or "
-                 "pattern 6 has nothing to poll" % metone_port)
+            warn("sim-particle-counter IDLE with an empty buffer - press Start on :%s, or "
+                 "pattern 6 has nothing to poll" % panel_port)
     else:
-        warn("sim-metone not responding on :%s - pattern 6's topic will be silent"
-             % metone_port)
+        warn("sim-particle-counter not responding on :%s - pattern 6's topic will be silent"
+             % panel_port)
 
     # Pattern 6, half two: the store. Ask whether anything is LANDING, which is
     # the only question that distinguishes a working poll from a green one.
@@ -1407,19 +1407,19 @@ def task_health():
         warn("em.reading  empty - pattern 6 has never stored a reading")
     elif float(lag) <= 180:
         ok("em.reading  last stored %s ago" % _human_age(float(lag)))
-    elif metone_sampling and metone_buffered:
+    elif sim_sampling and sim_buffered:
         # The stale-cursor trap, and the buffer depth is what names it: the
         # instrument is sampling and its backlog is growing, so the poll is
         # asking for records "after" a bookmark past the end and being told,
         # correctly, that there are none. Every other check stays green.
-        warn("em.reading  STALLED - last stored %s ago while sim-metone is "
+        warn("em.reading  STALLED - last stored %s ago while sim-particle-counter is "
              "SAMPLING with %s buffered. Stale cursor: clear"
-             % (_human_age(float(lag)), metone_buffered))
+             % (_human_age(float(lag)), sim_buffered))
         warn("            [default]icc26/site1/qc/analyzers/particle-counter-01"
              "/state/cursor")
     else:
         warn("em.reading  STALLED - last stored %s ago and the instrument is "
-             "not sampling; press Start on :%s" % (_human_age(float(lag)), metone_port))
+             "not sampling; press Start on :%s" % (_human_age(float(lag)), panel_port))
 
     print("")
     if healthy:

@@ -38,7 +38,7 @@
   },
   "transform": {
     "enabled": true,
-    "userCode": "\treturn metone_poll.build_document(event.data)\n"
+    "userCode": "\treturn particle_counter_poll.build_document(event.data)\n"
   },
   "transformEncoder": {
     "type": "ignition.string",

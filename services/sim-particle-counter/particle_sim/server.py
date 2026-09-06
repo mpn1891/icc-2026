@@ -14,9 +14,9 @@ version of that sentence is more useful on stage than a truststore ceremony
 nobody would repeat.
 
 **A missing or expired token is an HTTP 401 before the schema is ever reached.**
-`_AuthGate` is the whole reason `metone_poll` can re-authenticate on 401 instead
-of tracking token expiry. `authenticate` is the one operation that gets through
-without one.
+`_AuthGate` is the whole reason `particle_counter_poll` can re-authenticate on
+401 instead of tracking token expiry. `authenticate` is the one operation that
+gets through without one.
 """
 
 from __future__ import annotations
@@ -151,7 +151,7 @@ class _AuthGate:
                 LOG.info("401 %s: %s", scope.get("path"), exc)
                 return await _send_json(send, 401, {"errors": [
                     {"message": str(exc), "extensions": {"code": "UNAUTHENTICATED"}}]})
-            scope["metone_claims"] = claims
+            scope["particle_counter_claims"] = claims
 
         await self.app(scope, replay, send)
 
@@ -261,7 +261,7 @@ def build_graphql_app(cfg, instrument):
         return {
             "config": cfg,
             "instrument": instrument,
-            "claims": request.scope.get("metone_claims") or {},
+            "claims": request.scope.get("particle_counter_claims") or {},
         }
 
     app = GraphQL(
@@ -288,7 +288,8 @@ async def serve(cfg) -> None:
     instrument = Instrument(cfg)
 
     cert_path, key_path = make_self_signed_cert(
-        cfg.cert_dir, ["sim-metone", "icc26-sim-metone", "localhost"])
+        cfg.cert_dir,
+        ["sim-particle-counter", "icc26-sim-particle-counter", "localhost"])
 
     with open(PANEL_FILE, "rb") as handle:
         page = handle.read()

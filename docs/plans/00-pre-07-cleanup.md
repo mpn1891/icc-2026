@@ -18,7 +18,7 @@
 |---|---|
 | **Goal** | Everything 07 stands on is correct, and every decision 07's spec cannot be written without is made |
 | **Touches** | `docker-compose.yml`, `services/lims/app.py`, `docs/plans/*`, possibly `compose/postgres/`, one new talk track each for 03/05/06 |
-| **Does not touch** | `metone_poll`, `bes_batch`, `bes_cdc`, the UDTs, the simulators. Patterns 1, 2, 3 and 6 are finished and this branch has no business in them |
+| **Does not touch** | `particle_counter_poll`, `bes_batch`, `bes_cdc`, the UDTs, the simulators. Patterns 1, 2, 3 and 6 are finished and this branch has no business in them |
 | **Blocked by** | Nothing |
 | **Unblocks** | `docs/plans/07-*.md`, and after it pattern 7 itself |
 
@@ -158,12 +158,12 @@ re-run them rather than inventing new ones.
 **Ten seconds of looking decides the shape of the whole pattern, so look before designing.**
 
 Open the Designer, Event Streams, New, and read the **source** dropdown. Both existing streams
-(`03_opcua/cell-analyzer-result`, `06_poll/metone-result`) use `ignition.gatewayEvent`, which fires
+(`03_opcua/cell-analyzer-result`, `06_poll/particle-counter-result`) use `ignition.gatewayEvent`, which fires
 from script. 07 needs the opposite: something that fires when a message *arrives* on
 `icc26/site1/qc/lims/sample-result`.
 
 **If MQTT Engine registers an Event Stream source type, take it and stop reading.** 07 becomes a
-copy of `06_poll/metone-result` with the source swapped, a transform calling
+copy of `06_poll/particle-counter-result` with the source swapped, a transform calling
 `sample_chain.build(event.data)`, and the same Transmission handler on a new topic.
 
 *This could not be settled from the `.modl` files.* `MQTT-Engine-signed.modl` does ship an
@@ -188,7 +188,7 @@ If there is no such source, three routes, ranked:
   **array**. How Engine renders a JSON array into tags is unknown here. `numbersAsFloats` and
   *"a null field creates no tag at all"* both apply as well.
 - Firing on one leaf leaves you holding a tag path, and 07 must then reassemble the document from
-  sibling tags — **exactly the reassembly problem [`06-poll-metone.md`](06-poll-metone.md) § *The
+  sibling tags — **exactly the reassembly problem [`06-poll-particle-counter.md`](06-poll-particle-counter.md) § *The
   UDT* rejected** when it chose SQL over tag history, for the same reason: the alignment is wrong
   precisely at a boundary.
 
@@ -261,7 +261,7 @@ forces the call.** Three candidates:
   consumer — the thing 05 avoided by writing the flag at insert time.
 - **07 reports `operation: null` with a reason** — *"no operation running: the batch had ended"* —
   which fits the *always publish, a gap is a finding* rule
-  [`00-master-plan.md`](00-master-plan.md) already states for the MET ONE section.
+  [`00-master-plan.md`](00-master-plan.md) already states for the particle counter section.
   *(That rule was superseded on 2026-09-06 — 07 now publishes only a deviation. The reasoning
   below still holds: the knowledge belongs in the producer, not the consumer.)*
 
@@ -380,10 +380,10 @@ Settled — 07's spec should not re-argue any of it:
   5, both computed at ingest by the pattern that produced the fact.
 - No new tables, no ACL change, no new datasource.
 
-Still 07's own — [`06-poll-metone.md`](06-poll-metone.md) § *What pattern 7 gets from this* hands
+Still 07's own — [`06-poll-particle-counter.md`](06-poll-particle-counter.md) § *What pattern 7 gets from this* hands
 both over deliberately:
 
-- **How stale is too stale** for the nearest MET ONE reading. The timer now bounds this: with the
+- **How stale is too stale** for the nearest particle counter reading. The timer now bounds this: with the
   counter sampling, the nearest reading is **≤ 27.2 s old** (pattern 6 CP7). So the tolerance only
   bites when nobody pressed Start — the pre-show failure `tasks.py health` already names.
 - **Nearest before, or nearest either side.** A reading 3 s *after* the valve opened is arguably

@@ -24,7 +24,7 @@ fact onto the wire, and every one of them was somebody else's problem to solve. 
 the first thing in this stack that reads.**
 
 **Demo.** Approve one clean sample. **Nothing is published** — and that is the point. Press
-**Dirty** on the MET ONE panel, draw and approve again: one message lands on
+**Dirty** on the particle counter panel, draw and approve again: one message lands on
 `icc26/site1/qc/deviation`, and `values.violations` says what was wrong. Read it out loud.
 
 **Risk.** Every number in that document was computed by the pattern that produced it, and 07
@@ -38,7 +38,7 @@ can prove it — because when a lookup finds nothing, the document says so inste
 **1. Nothing in this pattern is clever, and that is the whole claim.** 07 does no arithmetic. It
 holds no process knowledge. It computes no flags. `qualified_window` was decided by `bes_batch`
 at the moment the operator advanced the reactor — its `QUALIFIED` tuple is the only copy of the
-batch protocol in the stack. `status` was decided by `metone_poll` against
+batch protocol in the stack. `status` was decided by `particle_counter_poll` against
 `config/excursion_threshold`, the only copy of the cleanroom limit. **07's only job is to be the
 thing that asks.** If it ever tested `operation == "GROWTH"` itself, the stack would hold two
 copies of a rule, and two copies of a rule drift.
@@ -71,7 +71,7 @@ key.** 07 carries it into the composite so a reader can see the association, and
 That is a real plant, told the truth about: the association exists, and it lives in a text field
 somebody typed.
 
-**4. A gap is a finding, not a silence.** The MET ONE rule is *nearest reading either side of the
+**4. A gap is a finding, not a silence.** The particle counter rule is *nearest reading either side of the
 sample, no tolerance, age always reported*. A reading three seconds **after** the valve closed is
 better evidence than one twenty-five seconds before, so the search is not restricted to the past.
 And there is no cutoff at which 07 refuses to answer — it reports the nearest reading, reports
@@ -226,7 +226,7 @@ away from its sample instant and reported it: `age_s: 786110.5`, `nearest_side: 
 refused, nothing was silently substituted, and no reader could mistake that for evidence. That is
 "no tolerance, age always reported" doing its job.
 
-> **What a stopped MET ONE actually looks like.** *Nearest either side* means the environment
+> **What a stopped particle counter actually looks like.** *Nearest either side* means the environment
 > block goes `null` only when `em.reading` holds **no row at all** for the device. Stop the
 > simulator and 07 keeps answering with the last reading it has, and `age_s` grows — which is the
 > finding, in a field, rather than a gap. Measured: sim stopped, sample drawn two minutes later,
@@ -272,7 +272,7 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 | Read it out loud | — | `ts` vs `ingest_ts`, `as_of` vs `ts`, `age_s`. Three gaps, no arithmetic |
 | A rejection is a disposition | Reject instead | Publishes on its own, `violations[0].code` = `failed_review`. Nothing downstream infers a rejection from silence |
 | Outside the window | Advance past HARVEST in Tag Explorer, badge again, approve | `operation: "IDLE"`, `qualified_window: false`, **and nothing empty** |
-| A gap is a finding | `docker stop icc26-sim-metone`, wait, approve again | `age_s` climbs past the 27 s the poll normally guarantees — a stale reading, not a silence, so this alone is not yet a deviation |
+| A gap is a finding | `docker stop icc26-sim-particle-counter`, wait, approve again | `age_s` climbs past the 27 s the poll normally guarantees — a stale reading, not a silence, so this alone is not yet a deviation |
 | Nothing says how it arrived | Scroll the watcher | Three topics, three `meta.mechanism` values, one sample |
 
 **Put `br-201` back in `GROWTH` before you demo.** It is parked there on `B-20260830-02` on
@@ -288,4 +288,4 @@ looks exactly like a bug in the pattern.
 
 | Date | Change |
 |---|---|
-| 2026-08-30 | Written as the closing step of pattern 7's build, per the two-document convention. Every number in it was measured on the running stack the same evening — the 41 s provenance gap, the 22 / 67 ms join, the IDLE tie-break against rows 33/34, and the two probes that exercise the null-with-reason path. The stopped-MET ONE beat is corrected against the spec's checkpoint wording: *nearest either side* makes the environment block `null` only on an empty table, so a stopped simulator shows a growing `age_s`, not a silence. |
+| 2026-08-30 | Written as the closing step of pattern 7's build, per the two-document convention. Every number in it was measured on the running stack the same evening — the 41 s provenance gap, the 22 / 67 ms join, the IDLE tie-break against rows 33/34, and the two probes that exercise the null-with-reason path. The stopped particle counter beat is corrected against the spec's checkpoint wording: *nearest either side* makes the environment block `null` only on an empty table, so a stopped simulator shows a growing `age_s`, not a silence. |

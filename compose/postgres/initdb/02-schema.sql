@@ -189,11 +189,12 @@ CREATE INDEX ix_batch_event_batch  ON bes.batch_event (batch_id, occurred_at);
 CREATE INDEX ix_batch_event_lookup ON bes.batch_event (equipment_id, occurred_at DESC, id DESC);
 
 -- ── em: environmental monitoring readings ────────────────────────────────────
--- Pattern 6's store, written by the Ignition poll script (`metone_poll`) as it
--- publishes -- so what pattern 7 reads is the same record the backbone saw,
--- including `status`, which is OURS and not the instrument's. The MET ONE
--- reports counts; the cleanroom limit is Ignition's rule and lives in exactly
--- one place, `config/excursion_threshold` on the particle_counter UDT.
+-- Pattern 6's store, written by the Ignition poll script
+-- (`particle_counter_poll`) as it publishes -- so what pattern 7 reads is the
+-- same record the backbone saw, including `status`, which is OURS and not the
+-- instrument's. The particle counter reports counts; the cleanroom limit is
+-- Ignition's rule and lives in exactly one place, `config/excursion_threshold`
+-- on the particle_counter UDT.
 -- docs/00-architecture.md § Derived flags travel with the fact that produced them.
 --
 -- Deliberately the same lookup shape as bes.batch_event, so pattern 7 has one
@@ -234,10 +235,11 @@ CREATE TABLE em.reading (
     environment     jsonb,                     -- flow / temperature / humidity averages
     occurred_at     timestamptz NOT NULL,      -- completedAt, the instrument's clock
     ingested_at     timestamptz NOT NULL DEFAULT now(),
-    -- The dedupe guard, enforced. `metone_poll` also skips anything at or below
-    -- its last_sequence watermark, but a restarted gateway replaying a page must
-    -- not be able to double-insert. An insert that affects no rows is how the
-    -- poll knows not to publish the analysis a second time.
+    -- The dedupe guard, enforced. `particle_counter_poll` also skips anything
+    -- at or below its last_sequence watermark, but a restarted gateway
+    -- replaying a page must not be able to double-insert. An insert that
+    -- affects no rows is how the poll knows not to publish the analysis a
+    -- second time.
     UNIQUE (device_id, analysis_id)
 );
 
