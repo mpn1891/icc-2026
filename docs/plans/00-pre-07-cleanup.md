@@ -262,6 +262,8 @@ forces the call.** Three candidates:
 - **07 reports `operation: null` with a reason** — *"no operation running: the batch had ended"* —
   which fits the *always publish, a gap is a finding* rule
   [`00-master-plan.md`](00-master-plan.md) already states for the MET ONE section.
+  *(That rule was superseded on 2026-09-06 — 07 now publishes only a deviation. The reasoning
+  below still holds: the knowledge belongs in the producer, not the consumer.)*
 
 **Recommendation: the third, implemented with the second.** A sample drawn after the batch ended
 is a genuinely interesting finding, and flattening it into `HARVEST` hides it.

@@ -1,8 +1,9 @@
 """Pattern 7 -- the composite. The first thing in this stack that READS.
 
 Six acquisition mechanisms publish. This one subscribes to one of them, asks two
-questions of what two of the others already stored, and puts the answer on the
-wire as a single document. **07's only job is to be the thing that asks.**
+questions of what two of the others already stored, and -- **only when something
+is wrong** -- puts the answer on the wire as a single deviation event.
+**07's only job is to be the thing that asks.**
 
 **Nothing here is clever, and that is the design.** This module does no
 arithmetic, holds no process knowledge and computes no flags.
@@ -26,10 +27,24 @@ likely to be got wrong, so it is stated here as well as at each query:
     is carried into the composite so a reader can see the association. It is
     **not** a join key and nothing here parses it.
 
-**Always publish.** A lookup that finds nothing produces a `null` block and a
-`_reason` beside it -- never a missing key, never a silent default. A gap is a
-finding, and 07 still speaks. docs/plans/00-master-plan.md states this rule for
-the MET ONE section; it applies to both lookups equally.
+**Publish only a deviation.** Until 2026-09-06 this module published one
+composite per review, always. It now publishes only when the sample violated
+something, and says what -- `values.violations`, a list that is never empty on a
+message that exists. A clean sample produces no message at all, so silence on
+`icc26/site1/qc/deviation` is the compliant case and every message on it is a
+finding. The composite is still assembled in full and still carries both blocks
+and both reasons, because a deviation document that omitted the context a
+reviewer needs would be a worse record than none.
+
+**The gate reads flags; it computes nothing.** This is what keeps the rule above
+compatible with the rule below. `status` came from `metone_poll` against
+`config/excursion_threshold` and `disposition` from the analyst in the LIMS. 07
+tests those two flags for a value it does not own, and holds no threshold, no
+spec and no batch protocol of its own. See `_violations`.
+
+**A lookup that finds nothing still produces a `null` block and a `_reason`
+beside it** -- never a missing key, never a silent default. What changed is only
+whether the document is published, not its shape.
 
 **The MET ONE rule is nearest either side, no tolerance.** A reading three
 seconds *after* the valve closed is better evidence than one twenty-five seconds
@@ -38,6 +53,16 @@ which 07 refuses to answer. It reports the nearest reading and always reports
 its age, and lets the reader judge -- which makes `age_s` load-bearing, so it
 sits at the top of the block. A forty-minute-old reading must not be able to
 read as current. Pattern 6's timer bounds the normal case to <= 27.2 s.
+
+**Suppression happens in the FILTER, not the transform, and that is not a
+style choice.** Measured 2026-09-06: a transform returning `None` does not
+suppress anything -- `transformEncoder` is `ignition.string`, so the handler
+published the literal four-byte string `None` onto the topic. The Event Stream
+filter is the only stage that can stop a message, so the gate is
+`sample_chain.is_deviation(event.data)` there and `build()` is reached only for
+samples already known to be deviations. Both entry points run the same two
+lookups; at demo volume four queries per review is not worth a shared cache,
+and a stateless pair cannot race the way a memo between two stages could.
 
 **07 publishes nothing itself.** It returns a document; Event Stream
 `07_chain/lims-review` hands that to the Transmission handler. Same shape as
@@ -291,10 +316,151 @@ def _environment(instant):
     }, None
 
 
+# -- the deviation rule -------------------------------------------------------
+
+# The two flags that make a sample a deviation, and the only two 07 reads.
+# Neither is computed here: `metone_poll` set `status` against
+# config/excursion_threshold, and an analyst set `disposition` in the LIMS. 07
+# compares each against a constant whose meaning it does not own, which is the
+# whole difference between reading a flag and holding a second copy of a rule.
+# docs/00-architecture.md, "Derived flags travel with the fact that produced
+# them".
+EXCURSION_STATUS = "excursion"
+FAILED_DISPOSITION = "fail"
+
+# `qualified_window` is deliberately NOT a trigger. `bes_batch.QUALIFIED` is
+# ("GROWTH",) out of five operations, so gating on it would fire on most samples
+# and a topic where the deviation is the normal case tells a reader nothing. It
+# stays in `batch_context` where a reviewer can see it, and it is reported, not
+# acted on. docs/plans/07-sample-chain.md decision 9.
+
+
+def _violations(values, environment, environment_reason):
+    """What is wrong with this sample. A list, empty when nothing is.
+
+    Each entry names its own evidence: `code` is what a subscriber routes on,
+    `detail` is prose for whoever reads the deviation, and `source` names the
+    field the flag came off so nobody has to guess which module owns the rule.
+    Order is fixed -- environment first, review second -- so two deviations of
+    the same kind compare cleanly.
+    """
+    found = []
+
+    if environment is None:
+        # Only reachable on an empty `em.reading` for this device -- NOT on a
+        # stopped simulator. Nearest-either-side means a stalled sim returns a
+        # stale reading with a large `age_s`, not nothing (07's spec, § As
+        # built, CP6). Rare, and a sample whose room cannot be evidenced at all
+        # is not one anybody can release.
+        found.append({
+            "code": "environment_unverifiable",
+            "detail": environment_reason or "no environmental reading available",
+            "source": "em.reading",
+        })
+    elif str(environment.get("status")) == EXCURSION_STATUS:
+        found.append({
+            "code": "environmental_excursion",
+            "detail": ("particle counter reported %s, %ss %s the sample"
+                       % (EXCURSION_STATUS, str(environment.get("age_s")),
+                          str(environment.get("nearest_side")))),
+            "source": "em.reading.status",
+        })
+
+    if str(values.get("disposition")).strip().lower() == FAILED_DISPOSITION:
+        found.append({
+            "code": "failed_review",
+            "detail": ("analyst %s recorded disposition %s"
+                       % (str(values.get("analyst") or "unknown"),
+                          FAILED_DISPOSITION)),
+            "source": "lims.sample.disposition",
+        })
+
+    return found
+
+
+# -- the two Event Stream entry points ----------------------------------------
+
+def _as_document(data, logger):
+    """The review message as a dict, or None if it is not usable."""
+    if data is None:
+        return None
+    if not isinstance(data, dict):
+        try:
+            data = system.util.jsonDecode(str(data))
+        except Exception:
+            logger.warnf("event data was neither a dict nor JSON: %s",
+                         str(data)[:200])
+            return None
+    if not isinstance(data, dict):
+        logger.warnf("event data decoded to %s, not an object",
+                     type(data).__name__)
+        return None
+    return data
+
+
+def _assess(data, logger):
+    """Both lookups plus the verdict. Returns a dict, or None if unusable.
+
+    Shared by `is_deviation` and `build` so the filter and the transform cannot
+    reach different conclusions about the same message from different code.
+    """
+    document = _as_document(data, logger)
+    if document is None:
+        return None
+
+    values = document.get("values") or {}
+    sample_id = values.get("sample_id")
+    if not sample_id:
+        # Nothing to correlate, nothing to look up, and nothing a GxP record
+        # could be attached to afterwards. There is no composite to build.
+        logger.warn("review message carried no sample_id; no composite built")
+        return None
+
+    equipment_id = values.get("equipment_id")
+    instant, instant_iso = _sample_instant(values)
+    batch_context, batch_reason = _batch_context(equipment_id, instant)
+    environment, environment_reason = _environment(instant)
+
+    return {
+        "document": document,
+        "values": values,
+        "sample_id": sample_id,
+        "equipment_id": equipment_id,
+        "instant_iso": instant_iso,
+        "batch_context": batch_context,
+        "batch_reason": batch_reason,
+        "environment": environment,
+        "environment_reason": environment_reason,
+        "violations": _violations(values, environment, environment_reason),
+    }
+
+
+def is_deviation(data):
+    """The gate, called from the Event Stream **filter**. True publishes.
+
+    A filter is the only stage that can stop a message -- see the module
+    docstring -- so the decision lives here and `build()` never has to represent
+    "nothing to say" as a return value the encoder would happily stringify.
+    """
+    logger = system.util.getLogger(LOGGER_NAME)
+    assessment = _assess(data, logger)
+    if assessment is None:
+        return False
+    if not assessment["violations"]:
+        logger.infof("%s is clean; no deviation published",
+                     str(assessment["sample_id"]))
+        return False
+    return True
+
+
 # -- the Event Stream transform -----------------------------------------------
 
 def build(document):
-    """The composite, from one pattern-4 review message. Returns a JSON string.
+    """A deviation, from one pattern-4 review message. Returns a JSON string.
+
+    Only ever called for a message `is_deviation` already passed, so it always
+    has something to say. It must never return None: the encoder would publish
+    the string "None" onto the topic. See the module docstring.
 
     Called from `07_chain/lims-review`'s transform with what the MQTT Engine
     source read off `icc26/site1/qc/lims/sample-result`. The source encoder is
@@ -316,33 +482,27 @@ def build(document):
     """
     logger = system.util.getLogger(LOGGER_NAME)
 
-    if document is None:
-        return None
-    if not isinstance(document, dict):
-        try:
-            document = system.util.jsonDecode(str(document))
-        except Exception:
-            logger.warnf("event data was neither a dict nor JSON: %s",
-                         str(document)[:200])
-            return None
-    if not isinstance(document, dict):
-        logger.warnf("event data decoded to %s, not an object",
-                     type(document).__name__)
-        return None
+    assessment = _assess(document, logger)
+    if assessment is None:
+        # Unreachable in normal operation: `is_deviation` returned False on this
+        # same message and the filter already stopped it. Guarded anyway,
+        # because returning None here would publish the STRING "None" -- the
+        # 2026-09-06 finding in the module docstring, and the whole reason the
+        # gate lives in the filter. An empty string publishes an empty message,
+        # which is at least not a lie.
+        logger.warn("build() reached with an unusable message; publishing nothing")
+        return ""
 
-    values = document.get("values") or {}
-    sample_id = values.get("sample_id")
-    if not sample_id:
-        # Nothing to correlate, nothing to look up, and nothing a GxP record
-        # could be attached to afterwards. There is no composite to build.
-        logger.warn("review message carried no sample_id; no composite built")
-        return None
-
-    equipment_id = values.get("equipment_id")
-    instant, instant_iso = _sample_instant(values)
-
-    batch_context, batch_reason = _batch_context(equipment_id, instant)
-    environment, environment_reason = _environment(instant)
+    document = assessment["document"]
+    values = assessment["values"]
+    sample_id = assessment["sample_id"]
+    equipment_id = assessment["equipment_id"]
+    instant_iso = assessment["instant_iso"]
+    batch_context = assessment["batch_context"]
+    batch_reason = assessment["batch_reason"]
+    environment = assessment["environment"]
+    environment_reason = assessment["environment_reason"]
+    violations = assessment["violations"]
 
     # Batch identity comes off the batch_event row, not the review message.
     batch_id = batch_context.pop("batch_id") if batch_context else None
@@ -360,6 +520,10 @@ def build(document):
             "correlation_id": sample_id,
         },
         "values": {
+            # Why this message exists. Never empty -- a clean sample returns
+            # above and produces no message at all.
+            "violations": violations,
+
             "sample_id": sample_id,
             "equipment_id": equipment_id,
             "equipment_identifier": _equipment_identifier(equipment_id),
@@ -383,11 +547,10 @@ def build(document):
         },
     }
 
-    logger.infof("composite for %s: %s, %s, batch %s, environment %s",
+    logger.infof("deviation for %s: %s -- %s, batch %s, environment %s",
                  str(sample_id),
+                 ", ".join([v["code"] for v in violations]),
                  str(values.get("disposition")),
-                 str(batch_context.get("operation")) if batch_context
-                 else "no batch context",
                  str(batch_id),
                  "%s at %ss" % (environment.get("status"),
                                 environment.get("age_s"))

@@ -117,12 +117,28 @@ exactly like a broken join.
 Find **your** `sample_id` and approve that one. Reject works too and is worth doing once: same
 document, `disposition: "fail"`, not silence.
 
-## 7. Read the composite
+## 7. Nothing is published — and that is the pass
 
-One message lands on `icc26/site1/qc/sample-chain`. It passes if all of these hold:
+**Since 2026-09-06 pattern 7 speaks only on a deviation.** A clean sample produces no message at
+all, so the watcher stays quiet on `icc26/site1/qc/deviation` and the gateway logs
+`... is clean; no deviation published`. If a message appears here, something really was wrong —
+read it with the table in step 8.
+
+If you rejected in step 6 instead of approving, you get a message now: `violations[0].code` is
+`failed_review`.
+
+## 8. Make a deviation and read it
+
+Press **Dirty** on the MET ONE panel (<http://localhost:8089>) and wait about 30 s for a fresh
+reading to land — dirty draws measure 3346–4350 counts against a threshold of 1660. Then repeat
+steps 4–6 with a new sample.
+
+One message lands on `icc26/site1/qc/deviation`. It passes if all of these hold:
 
 | Field | Expected | Why it matters |
 |---|---|---|
+| `values.violations[0].code` | `environmental_excursion` | Why the message exists at all |
+| `values.violations[0].source` | `em.reading.status` | Names the module that owns the rule — 07 computed nothing |
 | `meta.correlation_id` | your `sample_id` | The chain held onto the right sample |
 | `meta.mechanism` | `aggregate` | Pattern 7's own mechanism tag |
 | `values.batch_id` | today's, e.g. `B-20260831-01` | Not `null` — the `bes.batch_event` lookup hit |
@@ -138,13 +154,17 @@ One message lands on `icc26/site1/qc/sample-chain`. It passes if all of these ho
 | `values.equipment_identifier` | `br-201` | A tag read off the UDT — `null` if unreadable, never fatal |
 | `seq` | non-zero | The review's outbox delivery id |
 
+**Press Clean again when you are done**, or every subsequent sample deviates.
+
 **Read the three gaps out loud, because they are the argument:** `ts` against `meta.ingest_ts` is the
 human in the loop, `batch_context.as_of` against `ts` is how far into the operation the sample was
 drawn, and `age_s` is how close the room reading was. No arithmetic on stage.
 
 ### Known good — the 2026-08-31 walk
 
-Trimmed from `S-20260831-0103`, which passed every row above:
+Trimmed from `S-20260831-0103`, which passed every row above. **It predates the 2026-09-06
+deviation change**, so it carries no `values.violations` and was published on the old
+`icc26/site1/qc/sample-chain`; every other field is unchanged:
 
 ```json
 {"meta":{"ingest_ts":"2026-08-31T15:41:13.184Z","correlation_id":"S-20260831-0103",

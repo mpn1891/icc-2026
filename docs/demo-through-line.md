@@ -164,8 +164,10 @@ Combines:
 | Batch timer (BES stand-in) | 5 | Batch phase and qualified window |
 | EM system | 6 | Environmental excursion status |
 
-Triggered by pattern 4's review message; always publishes, whether or not either derived
-flag (`outside_qualified_window`, `environmental_excursion`) is `true`.
+Triggered by pattern 4's review message, and **published only when the sample violated
+something** — an environmental excursion or a failed review. A clean sample produces no message
+at all, so silence on `icc26/site1/qc/deviation` is the compliant case and every message on it
+is a finding. Changed 2026-09-06; until then it published one composite per review.
 
 **It needs a store, and that store does not exist yet.** Every one of those four fragments is a
 question about the past — when the valve opened, when the analyzer ran, what phase was live at the

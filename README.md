@@ -250,6 +250,8 @@ icc26/{site}/{area}/{line-or-cell}/{device}/{message_type}
 
 Each pattern publishes to its **own** topic. The mechanism lives in the payload's
 `meta.mechanism` field, never in the address. Pattern 7 is the join: it listens for the
-LIMS review and publishes one sample-chain document.
+LIMS review and — **only when the sample violated something** — publishes one deviation
+document naming what. A clean sample publishes nothing, so silence on
+`icc26/site1/qc/deviation` is the compliant case.
 
 Full namespace and payload envelope in [`docs/00-architecture.md`](docs/00-architecture.md#topic-namespace).

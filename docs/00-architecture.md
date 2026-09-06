@@ -148,7 +148,7 @@ icc26/site1/qc/analyzers/cell-analyzer-01/result            # 3  analyzer result
 icc26/site1/qc/lims/sample-result                      # 4  review: analyst + pass/fail
 icc26/site1/upstream/br-201/batch/event                # 5  CDC of bes.batch_event
 icc26/site1/qc/analyzers/particle-counter-01/result    # 6  MET ONE analysis
-icc26/site1/upstream/br-201/sample-chain/event         # 7  aggregate (provisional)
+icc26/site1/qc/deviation                               # 7  aggregate; ONLY when something was violated
 
 spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|NDEATH}/SAMPLE-VALVE-02             # 2 — spec-mandated
 spBv1.0/ICC26-Site1-UPSTREAM/{DBIRTH|DDATA|DDEATH}/SAMPLE-VALVE-02/SV-202 # 2 — spec-mandated
@@ -1090,6 +1090,14 @@ rather than in one pattern's spec because pattern 7 will want all five.
   raises `TypeError: publishEvent(): 3rd arg can't be coerced to String`. Pass
   `system.util.jsonEncode(...)` and have the Event Stream transform decode it. Pattern 3 never
   hit this because it passes a tag path.
+- **An Event Stream transform returning `None` does NOT suppress the message — it publishes the
+  string `"None"`.** Measured 2026-09-06 on `07_chain/lims-review`: the transform returned
+  Python `None`, `transformEncoder` (`ignition.string`) stringified it, and a four-byte `None`
+  landed on the topic. An empty string publishes an empty message. **The filter is the only
+  stage that can stop a message**, so any "publish only sometimes" rule belongs in
+  `filter.userCode`, not in the transform. Pattern 7's deviation gate is
+  `sample_chain.is_deviation(event.data)` for exactly this reason; pattern 6 never hit it
+  because it suppresses by not calling `publishEvent` at all.
 - **A WebDev python resource executes ONLY its handler function.** Module-level constants and
   helpers in the same file are not in scope when the handler runs — the first call raises
   `NameError: global name '_helper' is not defined`, and an unresolved *module-level* name can
