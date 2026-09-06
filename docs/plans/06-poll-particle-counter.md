@@ -3,8 +3,7 @@
 > **Supersedes the pattern-6 entry in [`00-master-plan.md`](00-master-plan.md) entirely.**
 > Written 2026-08-29 from [`../reference/particle_counter_sim.md`](../reference/particle_counter_sim.md)
 > — the vendor API — plus the eight decisions taken that day, recorded in *Decisions* below.
-> Talk track (`../talk-tracks/06-poll.md`) is written as the closing step, once this is
-> broker-verified.
+> Talk track: [`../talk-tracks/06-poll.md`](../talk-tracks/06-poll.md), written 2026-09-06.
 >
 > ## Built and verified 2026-08-29 — timer included, and it runs hands-off
 >
@@ -794,9 +793,10 @@ unspecified store left in its way.
    `meta`, pattern 2 has no envelope, and pattern 3 as built publishes `ts` + `values` only. So
    the real count is four — 4, 5, 6 and 7. Recorded here because pattern 6 is the one that made
    it countable; fixing the claim belongs in the master plan, not in this spec.
-6. **Talk track.** `../talk-tracks/06-poll.md`, written once this is broker-verified. It now is,
-   so this is unblocked — and the closing beat writes itself: the stale cursor, recovered live by
-   clearing one tag.
+6. ~~**Talk track.**~~ **Written 2026-09-06**, [`../talk-tracks/06-poll.md`](../talk-tracks/06-poll.md),
+   and it ends where this item predicted: the stale cursor, recovered live by clearing one tag.
+   It carries the 2026-08-31 numbers as well as this build's — the 414-record drain and the
+   15.5-hour blackout are what turned a predicted failure demo into a measured one.
 7. **New 2026-08-29: the watermark depends on a provider-wide setting nothing local declares.**
    `tag-provider/default/config.json`'s `"valuePersistence": "Database"` is what makes
    `state/cursor` survive a restart. Nothing in the UDT says so, so somebody changing that
