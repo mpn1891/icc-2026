@@ -1,6 +1,6 @@
-# sim-metone — pattern 6, the instrument that never pushes
+# sim-particle-counter — pattern 6, the instrument that never pushes
 
-A simulated **MET ONE particle counter** serving a GraphQL API over HTTPS, plus the operator
+A simulated **particle counter** serving a GraphQL API over HTTPS, plus the operator
 touchscreen a real one has on its front.
 
 The API is **not ours**. It is transcribed from
@@ -9,12 +9,12 @@ treated as a vendor surface, the same way `opcua-cell-analyzer` treats the analy
 Nothing was added to it to make polling easier — see *What is deliberately missing*.
 
 ```
-https://sim-metone:8443/graphql     from inside the compose network (Ignition)
+https://sim-particle-counter:8443/graphql     from inside the compose network (Ignition)
 https://localhost:8443/graphql      from the host (probe scripts, curl -k)
 http://localhost:8089/              the instrument's operator touchscreen
 ```
 
-Build spec: [`docs/plans/06-poll-metone.md`](../../docs/plans/06-poll-metone.md).
+Build spec: [`docs/plans/06-poll-particle-counter.md`](../../docs/plans/06-poll-particle-counter.md).
 
 ## The claim this container exists to make
 
@@ -77,7 +77,7 @@ condition, and whether a run was going.
 | Not added | What it would have made easy | What happens instead |
 |---|---|---|
 | `since_id` / `since_time` | a one-call poll with no state | Ignition walks the cursor and keeps the watermark in tags |
-| an excursion `status` on the record | the flag would arrive with the data | `metone_poll` computes it at ingest |
+| an excursion `status` on the record | the flag would arrive with the data | `particle_counter_poll` computes it at ingest |
 | a `location` field | the room would be the instrument's own fact | the operator sets it; it rides in `deviceName` |
 | a cursor reset | the stale-cursor trap would not exist | the trap stays |
 
@@ -153,7 +153,7 @@ minutes at 10 s), `FLOW_RATE_LPM`, `DIRTY_MULTIPLIER`, `TOKEN_TTL_S`, `JWT_SECRE
 ## TLS
 
 **Self-signed, generated at container start**, not at build — a rebuilt image must not ship a
-fixed private key to everyone who ever pulled it. SANs: `sim-metone`, `icc26-sim-metone`,
+fixed private key to everyone who ever pulled it. SANs: `sim-particle-counter`, `icc26-sim-particle-counter`,
 `localhost`, `127.0.0.1`.
 
 Ignition trusts it with `system.net.httpClient(bypass_cert_validation=True)` rather than by

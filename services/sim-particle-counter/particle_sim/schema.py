@@ -11,9 +11,9 @@ costs us something on our side of the boundary rather than theirs:
 
   * no `since_id` / `since_time` on `getSamples`  -> we walk the cursor and keep
     the watermark in Ignition tags
-  * no excursion `status` on the record           -> `metone_poll` computes it
-    (the record's own `status` is the *run* status, "COMPLETED" -- the vendor's
-    field, not ours)
+  * no excursion `status` on the record           -> `particle_counter_poll`
+    computes it (the record's own `status` is the *run* status, "COMPLETED" --
+    the vendor's field, not ours)
   * no `location` field                           -> the operator's sample point
     rides in `deviceName`
   * no "give me everything since the restart"     -> the stale-cursor trap stays,

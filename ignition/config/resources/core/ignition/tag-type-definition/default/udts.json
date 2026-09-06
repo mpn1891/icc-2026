@@ -1730,7 +1730,7 @@
           },
           {
             "dataType": "Int8",
-            "documentation": "Raw particle count in the 0.5 um and larger channel above which metone_poll writes status\u003d\u0027excursion\u0027. 1660 counts in the 4.717 L a 10 s sample draws at 28.3 LPM, which is 352,000 particles per cubic metre -- ISO 14644-1 Class 7, EU GMP Grade C at rest. **Chosen for DURATION\u003d10.** Change the sample duration and this number silently means something else, with nothing in the system to catch it. That is the price of thresholding raw counts, and it is why the volume it was chosen for is written down here. Measured against the simulator on 2026-08-29: clean room 113-137 counts, dirty room 3346-4350, so the limit sits an order of magnitude clear of both. It applies to the 0.5 um channel ONLY. One raw-count number cannot also threshold the 5.0 um channel, whose ISO 7 limit is 2,930 per cubic metre -- about 14 counts at this volume, two orders of magnitude away. The 5 um count is published and stored so a consumer can see it; it is not compared here, because a second threshold would be a second copy of the cleanroom spec. THIS TAG IS THE ONLY COPY OF THE RULE.",
+            "documentation": "Raw particle count in the 0.5 um and larger channel above which particle_counter_poll writes status\u003d\u0027excursion\u0027. 1660 counts in the 4.717 L a 10 s sample draws at 28.3 LPM, which is 352,000 particles per cubic metre -- ISO 14644-1 Class 7, EU GMP Grade C at rest. **Chosen for DURATION\u003d10.** Change the sample duration and this number silently means something else, with nothing in the system to catch it. That is the price of thresholding raw counts, and it is why the volume it was chosen for is written down here. Measured against the simulator on 2026-08-29: clean room 113-137 counts, dirty room 3346-4350, so the limit sits an order of magnitude clear of both. It applies to the 0.5 um channel ONLY. One raw-count number cannot also threshold the 5.0 um channel, whose ISO 7 limit is 2,930 per cubic metre -- about 14 counts at this volume, two orders of magnitude away. The 5 um count is published and stored so a consumer can see it; it is not compared here, because a second threshold would be a second copy of the cleanroom spec. THIS TAG IS THE ONLY COPY OF THE RULE.",
             "name": "excursion_threshold",
             "tagType": "AtomicTag",
             "value": 1660,
@@ -1738,7 +1738,7 @@
           },
           {
             "dataType": "Boolean",
-            "documentation": "The stall demo. Uncheck it and metone_poll returns immediately: the instrument keeps sampling on its own clock and the backbone goes silent, with nothing failing and nothing alarming. Re-enable it and the cursor walk drains the whole backlog in one burst -- hasMore, visible on the wire.",
+            "documentation": "The stall demo. Uncheck it and particle_counter_poll returns immediately: the instrument keeps sampling on its own clock and the backbone goes silent, with nothing failing and nothing alarming. Re-enable it and the cursor walk drains the whole backlog in one burst -- hasMore, visible on the wire.",
             "name": "enabled",
             "tagType": "AtomicTag",
             "value": true,
@@ -1766,7 +1766,7 @@
           },
           {
             "dataType": "String",
-            "documentation": "normal | excursion. THE FLAG. Computed by metone_poll at ingest from current/ch_0_5 against config/excursion_threshold, stored in em.reading.status and published as values.status. The instrument does not produce it and must never be asked to: the cleanroom limit is Ignition\u0027s rule and has exactly one home. Pattern 7 reads this flag and does no arithmetic of its own -- docs/00-architecture.md, \u0027Derived flags travel with the fact that produced them\u0027.",
+            "documentation": "normal | excursion. THE FLAG. Computed by particle_counter_poll at ingest from current/ch_0_5 against config/excursion_threshold, stored in em.reading.status and published as values.status. The instrument does not produce it and must never be asked to: the cleanroom limit is Ignition\u0027s rule and has exactly one home. Pattern 7 reads this flag and does no arithmetic of its own -- docs/00-architecture.md, \u0027Derived flags travel with the fact that produced them\u0027.",
             "name": "status",
             "tagType": "AtomicTag",
             "valueSource": "memory"

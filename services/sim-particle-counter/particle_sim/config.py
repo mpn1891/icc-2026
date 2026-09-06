@@ -80,7 +80,7 @@ class Config:
     jwt_secret: str = "particle-sim-secret"
     # Five minutes on purpose. The poll re-authenticates on 401 rather than
     # tracking expiry, and a token that never expires makes that path dead code
-    # that fails in a year. See docs/plans/06-poll-metone.md § Auth.
+    # that fails in a year. See docs/plans/06-poll-particle-counter.md § Auth.
     token_ttl_s: int = 300
     log_level: str = "INFO"
 
@@ -129,7 +129,7 @@ def from_args(argv=None) -> Config:
     cfg = from_env()
     parser = argparse.ArgumentParser(
         prog="particle_sim",
-        description="MET ONE particle counter API simulator (GraphQL over HTTPS)")
+        description="particle counter API simulator (GraphQL over HTTPS)")
     parser.add_argument("--port", type=int, default=cfg.port)
     parser.add_argument("--panel-port", type=int, default=cfg.panel_port)
     parser.add_argument("--device-id", default=cfg.device_id)

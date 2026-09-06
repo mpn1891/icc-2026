@@ -16,8 +16,8 @@ PostgreSQL 17, all under `docker compose`, all version controlled.
 | 3 | OPC UA → MQTT | Cell analyzer (`cell-analyzer-01`); Ignition publishes on sample-complete. Sample id typed in on the instrument's own screen (:8087) | built |
 | 4 | Webhook / Push API | LIMS opens the sample entry from the valve event, appends the analyzer result, POSTs the reviewed record to Ignition; remaining: pass/fail on both outcomes | built, pass/fail open |
 | 5 | CDC / log tailing | Click a boolean in Tag Explorer → `bes.batch_event` → Debezium → MQTT. The writer holds no broker credentials | built |
-| 6 | Poll / diff | MET ONE HTTP API in `qc/analyzers`, Ignition poll → Event Stream | planned |
-| 7 | Scripted aggregation | LIMS-review listener joins valve, analyzer, batch phase, nearest MET ONE | planned |
+| 6 | Poll / diff | Particle counter HTTP API in `qc/analyzers`, Ignition poll → Event Stream | planned |
+| 7 | Scripted aggregation | LIMS-review listener joins valve, analyzer, batch phase, nearest particle counter | planned |
 
 **Patterns 1 and 2 are one device in two firmwares**, which is the point of running both: a
 badge-operated sample valve on `BR-201` speaking plain MQTT, and the identical assembly on

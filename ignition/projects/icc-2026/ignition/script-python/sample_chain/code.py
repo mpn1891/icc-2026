@@ -8,8 +8,9 @@ is wrong** -- puts the answer on the wire as a single deviation event.
 **Nothing here is clever, and that is the design.** This module does no
 arithmetic, holds no process knowledge and computes no flags.
 `qualified_window` was computed by `bes_batch` at insert time -- its `QUALIFIED`
-tuple is the only copy of the batch protocol -- and `status` by `metone_poll`
-against `config/excursion_threshold`, the only copy of the cleanroom limit. Both
+tuple is the only copy of the batch protocol -- and `status` by
+`particle_counter_poll` against `config/excursion_threshold`, the only copy of
+the cleanroom limit. Both
 travel with the fact that produced them (docs/00-architecture.md, "Derived flags
 travel with the fact that produced them"). If this module ever tests
 `operation == "GROWTH"` or compares a particle count to a number, the stack has
@@ -37,7 +38,7 @@ and both reasons, because a deviation document that omitted the context a
 reviewer needs would be a worse record than none.
 
 **The gate reads flags; it computes nothing.** This is what keeps the rule above
-compatible with the rule below. `status` came from `metone_poll` against
+compatible with the rule below. `status` came from `particle_counter_poll` against
 `config/excursion_threshold` and `disposition` from the analyst in the LIMS. 07
 tests those two flags for a value it does not own, and holds no threshold, no
 spec and no batch protocol of its own. See `_violations`.
@@ -46,7 +47,7 @@ spec and no batch protocol of its own. See `_violations`.
 beside it** -- never a missing key, never a silent default. What changed is only
 whether the document is published, not its shape.
 
-**The MET ONE rule is nearest either side, no tolerance.** A reading three
+**The particle counter rule is nearest either side, no tolerance.** A reading three
 seconds *after* the valve closed is better evidence than one twenty-five seconds
 before, so the search is not restricted to the past, and there is no cutoff at
 which 07 refuses to answer. It reports the nearest reading and always reports
@@ -290,9 +291,9 @@ def _environment(instant):
     rows = system.db.runPrepQuery(_EM_QUERY, [EM_DEVICE_ID, instant],
                                   database=DATASOURCE)
     if not rows:
-        # The MET ONE simulator is stopped, or nobody pressed Start. This is the
-        # case that matters on stage: the block is null, the reason says why,
-        # and the composite publishes anyway.
+        # The particle counter simulator is stopped, or nobody pressed Start.
+        # This is the case that matters on stage: the block is null, the reason
+        # says why, and the composite publishes anyway.
         return None, "no em.reading row for device %s" % EM_DEVICE_ID
 
     row = rows[0]
@@ -307,7 +308,7 @@ def _environment(instant):
         "device_id": EM_DEVICE_ID,
         # Prose, not a join key. See the module docstring.
         "location": row[4],
-        # OURS, not the instrument's -- `metone_poll` set it against
+        # OURS, not the instrument's -- `particle_counter_poll` set it against
         # config/excursion_threshold. Read, never recomputed.
         "status": row[0],
         "occurred_at": _iso(occurred_at),
@@ -319,7 +320,7 @@ def _environment(instant):
 # -- the deviation rule -------------------------------------------------------
 
 # The two flags that make a sample a deviation, and the only two 07 reads.
-# Neither is computed here: `metone_poll` set `status` against
+# Neither is computed here: `particle_counter_poll` set `status` against
 # config/excursion_threshold, and an analyst set `disposition` in the LIMS. 07
 # compares each against a constant whose meaning it does not own, which is the
 # whole difference between reading a flag and holding a second copy of a rule.

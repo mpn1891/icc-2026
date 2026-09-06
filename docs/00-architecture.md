@@ -47,7 +47,7 @@ Everything else publishes through Ignition. Pattern 7 is not a new inbound trans
 | `sim-valve-spb` | 8086 (config page) | pattern 2 |
 | `lims` | 8000 (review screen) | pattern 4 — built; pass/fail remaining |
 | `debezium` | 8083 | pattern 5 — built 2026-08-26 |
-| `sim-metone` | 8443 (GraphQL API), 8089 (operator panel) | pattern 6 — built 2026-08-29 |
+| `sim-particle-counter` | 8443 (GraphQL API), 8089 (operator panel) | pattern 6 — built 2026-08-29 |
 
 `lims` is built: see [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md) and
 [`talk-tracks/04-lims-webhook.md`](talk-tracks/04-lims-webhook.md). Odoo, the AMS stub, the DCS OPC server and a
@@ -124,7 +124,7 @@ backbone" a claim resting on one consumer. Say it that way rather than implying 
 
 The three retired HTTP/SQL surfaces (`GET /results?since_id=N`, a Debezium-tailed insert into
 `lims.sample_result`, and a query against the LIMS for an aggregation script) are retired, not
-pending. Pattern 5 now tails `bes.batch_event`. Pattern 6 polls a MET ONE HTTP API. Pattern 7
+pending. Pattern 5 now tails `bes.batch_event`. Pattern 6 polls a particle counter HTTP API. Pattern 7
 joins MQTT topics.
 
 ---
@@ -147,7 +147,7 @@ icc26/site1/upstream/br-201/sample-valve-01/telemetry  # 1  air supply / enclosu
 icc26/site1/qc/analyzers/cell-analyzer-01/result            # 3  analyzer result
 icc26/site1/qc/lims/sample-result                      # 4  review: analyst + pass/fail
 icc26/site1/upstream/br-201/batch/event                # 5  CDC of bes.batch_event
-icc26/site1/qc/analyzers/particle-counter-01/result    # 6  MET ONE analysis
+icc26/site1/qc/analyzers/particle-counter-01/result    # 6  particle count analysis
 icc26/site1/qc/deviation                               # 7  aggregate; ONLY when something was violated
 
 spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|NDEATH}/SAMPLE-VALVE-02             # 2 — spec-mandated
@@ -194,10 +194,10 @@ one document; it does not address a device. `cmd`, `response` and `ack` stay in 
 no user.
 
 Pattern 7's topic above is still **provisional** — a topic is settled when its spec is
-written, and 07 has none. Pattern 6's is settled: `docs/plans/06-poll-metone.md` was written on
+written, and 07 has none. Pattern 6's is settled: `docs/plans/06-poll-particle-counter.md` was written on
 2026-08-29 and broker-verified the same day. `downstream` and `utilities` still have no user.
 
-**Pattern 6 moved from `upstream/br-201` to `qc/analyzers` on 2026-08-25.** The MET ONE now sits
+**Pattern 6 moved from `upstream/br-201` to `qc/analyzers` on 2026-08-25.** The particle counter now sits
 in the analyzer path beside the analyzer rather than beside the reactor. It is an *instrument that
 runs analyses*, which is what the `qc/analyzers` cell holds, and putting it there keeps the
 Ignition tag path and the MQTT topic identical — every other pattern has that property and a
@@ -283,14 +283,14 @@ the mechanism. A subscriber reading the topic list still cannot tell which patte
 
 ### Sources as of 2026-08-23
 
-A second re-source, after 2026-08-19's Odoo / Modbus MET ONE / vibration-AMS-DCS plan. Patterns
+A second re-source, after 2026-08-19's Odoo / Modbus particle counter / vibration-AMS-DCS plan. Patterns
 1–3 did not move. Pattern 4 stayed the LIMS webhook and gained a pass/fail disposition.
 
 | # | Mechanism | Source now | What it publishes |
 |---|---|---|---|
 | 4 | `webhook` | LIMS review (already built) | `analyst` + `disposition` pass/fail |
 | 5 | `cdc` | Ignition timer → `bes.batch_event` → Debezium | reactor operation cycle |
-| 6 | `poll` | MET ONE HTTP API in `qc/analyzers`, Ignition poll → Event Stream | particle-count analysis |
+| 6 | `poll` | Particle counter HTTP API in `qc/analyzers`, Ignition poll → Event Stream | particle-count analysis |
 | 7 | `aggregate` | MQTT listener on the LIMS review | sample chain: valve, analyzer, batch, env |
 
 Pattern 5 is an application we own. Say that on stage: the textbook CDC case is an app you
@@ -357,7 +357,7 @@ New with the 2026-08-25 revision, and it is the one item that grew rather than s
 
 Pattern 7 fires on the pattern-4 LIMS review and then has to answer four questions **about the
 past**: when the valve opened, when the analyzer ran, what phase was running at the sample-open
-instant, and what the nearest MET ONE reading said. A subscriber holding only the message that
+instant, and what the nearest particle counter reading said. A subscriber holding only the message that
 woke it up cannot answer any of them. So **patterns 1, 3, 5 and 6 need their events persisted,
 not just published** — today only pattern 5's events land in a table, and that table is the CDC
 *source*, not a history the aggregator can query.
@@ -377,7 +377,7 @@ re-derived by the consumer.**
 | Field | On | Set by | Meaning |
 |---|---|---|---|
 | `values.qualified_window` | pattern 5 `batch/event` | `bes_batch`, at insert time, into `bes.batch_event.payload` | sampling is qualified in the interval **beginning** at `occurred_at` — the protocol qualifies `GROWTH` only |
-| `values.status` | pattern 6 `…/result` | the MET ONE simulator, or the poll script at ingest | `normal` or `excursion` against a configured cleanroom limit |
+| `values.status` | pattern 6 `…/result` | the particle counter simulator, or the poll script at ingest | `normal` or `excursion` against a configured cleanroom limit |
 | `values.outside_qualified_window`, `values.environmental_excursion` | pattern 7 aggregate | the aggregation script, from the two above | the composite event's two claims |
 
 **Why the flag and not the raw value.** Pattern 5 is the only component that knows which

@@ -137,7 +137,7 @@ plainly and hand it to the risk speaker.
 
 ## Pattern 6 — API Poll and Diff
 
-**Demo asset:** Environmental monitoring system (Met One particle counter, simulated), with
+**Demo asset:** Environmental monitoring system (particle counter, simulated), with
 an HTTP API. It lives in the analyzer path — `icc26/site1/qc/analyzers/particle-counter-01/result`
 as of 2026-08-25, beside the analyzer rather than beside the reactor
 
@@ -200,7 +200,7 @@ After the final risk segment:
 - **Per-segment closing lines.** Only the overall closing beat above is written. Seven still needed.
 - **Presenter assignments** — who owns intro / demo / risk per pattern, and per demo *block* now
   that 1–4 and 5–7 are grouped.
-- **Demo asset availability** — pattern 6's MET ONE simulator is the long pole; vendor API notes
+- **Demo asset availability** — pattern 6's particle counter simulator is the long pole; vendor API notes
   are still TBD, and the excursion flag and its limit config are ours to build regardless.
 - **Pattern 7's event store** — see above. Unspecified, and 07 cannot be specified without it.
 - **Event Streams weighting** — patterns 3, 6 and 7 all use the Event Stream → Transmission relay

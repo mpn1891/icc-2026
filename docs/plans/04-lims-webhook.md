@@ -69,7 +69,7 @@ Pattern 4 now performs the valve↔analyzer half of the join pattern 7 exists to
 deliberately, and it is a trade rather than a loss: the released review message carries
 `values.collection.sample_start`, which is **the instant both of pattern 7's derived flags are
 evaluated at**. Two of the four sources its unspecified event store had to persist are no longer
-its problem. Pattern 7 still joins batch phase (05) and the nearest MET ONE (06), which is where
+its problem. Pattern 7 still joins batch phase (05) and the nearest particle counter (06), which is where
 both flags actually come from.
 
 ### Schema

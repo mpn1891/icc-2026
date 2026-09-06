@@ -1,4 +1,4 @@
-"""Pattern 6 -- poll a MET ONE particle counter, store the reading, publish it.
+"""Pattern 6 -- poll a particle counter, store the reading, publish it.
 
 **Nothing pushes.** The instrument does not know this gateway exists. It samples
 on its own clock, holds results in a rolling buffer, and the `06-poll` gateway
@@ -50,13 +50,13 @@ Jython 2.7: no f-strings, no type hints, integer division is floor division.
 from java.text import SimpleDateFormat
 from java.util import Date, TimeZone
 
-LOGGER_NAME = "metone_poll"
+LOGGER_NAME = "particle_counter_poll"
 
 # The instrument. HTTPS with a self-signed certificate generated at container
 # start; `bypass_cert_validation` is measured-correct on 8.3.8 and the gateway
 # logs a warning every time, which is the right amount of noise for a trade this
 # size. Right for a simulator on a private compose network, wrong in a plant.
-ENDPOINT = "https://sim-metone:8443/graphql"
+ENDPOINT = "https://sim-particle-counter:8443/graphql"
 USERNAME = "admin"
 PASSWORD = "password"
 HTTP_TIMEOUT_MS = 10000
@@ -67,7 +67,7 @@ HTTP_TIMEOUT_MS = 10000
 DATASOURCE = "ICC26"
 
 PROJECT = "icc-2026"
-STREAM = "06_poll/metone-result"
+STREAM = "06_poll/particle-counter-result"
 
 # The tag path mirrors the topic exactly, which is why pattern 6 moved into
 # qc/analyzers on 2026-08-25. The device id is the last segment, taken from the
@@ -335,7 +335,7 @@ def _write_current(base, record):
 def build_document(record):
     """The full envelope, built here rather than in Event Stream user code.
 
-    Called from `06_poll/metone-result`'s transform with what `poll()` published,
+    Called from `06_poll/particle-counter-result`'s transform with what `poll()` published,
     which is a JSON **string**: `system.eventstream.publishEvent` coerces its
     data argument to String and raises TypeError on a dict (measured
     2026-08-29 -- the spec predicted a dict would travel). A dict is still

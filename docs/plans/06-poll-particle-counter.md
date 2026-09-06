@@ -1,4 +1,4 @@
-# 06 — Poll of a MET ONE particle counter
+# 06 — Poll of a particle counter
 
 > **Supersedes the pattern-6 entry in [`00-master-plan.md`](00-master-plan.md) entirely.**
 > Written 2026-08-29 from [`../reference/particle_counter_sim.md`](../reference/particle_counter_sim.md)
@@ -47,10 +47,10 @@
 | **Mechanism** | `poll` |
 | **Signal contributed to the spine** | environmental excursion status at (or nearest to) the sample instant |
 | **Topic** | `icc26/site1/qc/analyzers/particle-counter-01/result` — QoS 1, **retain false** |
-| **Instrument** | `services/sim-metone` — GraphQL over HTTPS `:8443`, JWT auth; operator touchscreen on `:8089` |
-| **Acquisition** | Ignition **gateway timer**, 30 s, → `metone_poll.poll()` |
+| **Instrument** | `services/sim-particle-counter` — GraphQL over HTTPS `:8443`, JWT auth; operator touchscreen on `:8089` |
+| **Acquisition** | Ignition **gateway timer**, 30 s, → `particle_counter_poll.poll()` |
 | **Store** | `em.reading` in the `icc26` database, through the `ICC26` JDBC datasource as user `icc26` |
-| **Publish** | Event Stream `06_poll/metone-result` → Transmission as `ign-transmission` |
+| **Publish** | Event Stream `06_poll/particle-counter-result` → Transmission as `ign-transmission` |
 
 ## Decisions, 2026-08-29
 
@@ -144,12 +144,12 @@ surface is the vendor's, and the awkwardness stays on our side of the boundary.
 any of them.** The vendor shipped a control surface we deliberately do not touch — the same
 change-control boundary pattern 3 makes with the analyzer's 104 writable bits.
 
-## The instrument — `services/sim-metone`
+## The instrument — `services/sim-particle-counter`
 
 New service. Python, schema-first GraphQL, self-signed TLS, and a touchscreen.
 
 ```
-services/sim-metone/
+services/sim-particle-counter/
   particle_sim/
     __init__.py
     __main__.py        # CLI entry point: python -m particle_sim --port 8443
@@ -174,22 +174,22 @@ A vendor README that lies about its own quickstart is a bug in the transcription
 ### Compose
 
 ```yaml
-  sim-metone:
-    build: ./services/sim-metone
-    container_name: icc26-sim-metone
+  sim-particle-counter:
+    build: ./services/sim-particle-counter
+    container_name: icc26-sim-particle-counter
     restart: unless-stopped
     environment:
-      DEVICE_ID: ${METONE_DEVICE_ID:-particle-counter-01}
-      DEVICE_NAME: ${METONE_DEVICE_NAME:-USP Suite A - BR-201 sample port}
-      DURATION: ${METONE_DURATION:-10}   # vendor default is 60; 10 is ours, and visibly ours
-      CHANNELS: ${METONE_CHANNELS:-0.3,0.5,1,3,5,10}
-      SEED_SAMPLES: ${METONE_SEED_SAMPLES:-0}   # nothing exists until somebody presses Start
-      LOG_LEVEL: ${METONE_LOG_LEVEL:-INFO}
+      DEVICE_ID: ${PARTICLE_COUNTER_DEVICE_ID:-particle-counter-01}
+      DEVICE_NAME: ${PARTICLE_COUNTER_DEVICE_NAME:-USP Suite A - BR-201 sample port}
+      DURATION: ${PARTICLE_COUNTER_DURATION:-10}   # vendor default is 60; 10 is ours, and visibly ours
+      CHANNELS: ${PARTICLE_COUNTER_CHANNELS:-0.3,0.5,1,3,5,10}
+      SEED_SAMPLES: ${PARTICLE_COUNTER_SEED_SAMPLES:-0}   # nothing exists until somebody presses Start
+      LOG_LEVEL: ${PARTICLE_COUNTER_LOG_LEVEL:-INFO}
     ports:
-      - "${METONE_API_PORT:-8443}:8443"
-      - "${METONE_PANEL_PORT:-8089}:8089"
+      - "${PARTICLE_COUNTER_API_PORT:-8443}:8443"
+      - "${PARTICLE_COUNTER_PANEL_PORT:-8089}:8089"
     volumes:
-      - metone-config:/config            # sample point + room + run state survive a restart
+      - particle-counter-config:/config            # sample point + room + run state survive a restart
     healthcheck:                         # the PANEL, not the API
       test: ["CMD", "python", "-c",
              "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8089/healthz', timeout=3)"]
@@ -283,8 +283,8 @@ in between.
 |---|---|---|
 | UDT type `particle_counter` | `tag-type-definition/default/udts.json` | **built** — files + `tasks.py scan`, no restart |
 | UDT instance `particle-counter-01` | `tag-definition/default/icc26/site1/qc/analyzers/udts.json` | **built** — files + `scan`. No parameters: nothing here is OPC-bound, so there is nothing to substitute |
-| Script module `metone_poll` | `ignition/script-python/metone_poll/code.py` | **built** — files + `scan` |
-| Event Stream `06_poll/metone-result` | `com.inductiveautomation.eventstream/event-streams/06_poll/metone-result/` | **built** — copied `03_opcua/cell-analyzer-result` and changed the topic, the transform and the filter, exactly as predicted |
+| Script module `particle_counter_poll` | `ignition/script-python/particle_counter_poll/code.py` | **built** — files + `scan` |
+| Event Stream `06_poll/particle-counter-result` | `com.inductiveautomation.eventstream/event-streams/06_poll/particle-counter-result/` | **built** — copied `03_opcua/cell-analyzer-result` and changed the topic, the transform and the filter, exactly as predicted |
 | **Gateway timer script** `06-poll` | `ignition/timer/06-poll/` | **built** — created empty in the Gateway UI to learn the schema, then given its body and its 30 s cadence as files + `scan`. § *The timer* |
 | `ICC26` datasource | already exists, built for pattern 5 | — |
 
@@ -323,7 +323,7 @@ particle_counter/
 ```
 
 **Channel tag names are uniform: `ch_0_3 ch_0_5 ch_1_0 ch_3_0 ch_5_0 ch_10_0`.** The listing
-above originally trailed off at `ch_10`; `metone_poll` derives the name from the channel size
+above originally trailed off at `ch_10`; `particle_counter_poll` derives the name from the channel size
 (`"%.1f" % size`, dot replaced with underscore), so a rule that produces `ch_1_0` has to produce
 `ch_10_0` as well.
 
@@ -361,7 +361,7 @@ same reasoning already written on Debezium's `debezium-data` volume in `docker-c
 ### The poll, step by step
 
 ```
-metone_poll.poll()                      # gateway timer, config/poll_interval_s
+particle_counter_poll.poll()                      # gateway timer, config/poll_interval_s
   if not config/enabled: return         # the stall demo
   cursor = read(state/cursor)
   last_sequence = read(state/last_sequence) if cursor else 0    # see below
@@ -373,7 +373,7 @@ metone_poll.poll()                      # gateway timer, config/poll_interval_s
           record = _build(sample)                  # + status, + location
           rows = _store(record)                    # INSERT ... ON CONFLICT DO NOTHING
           if rows:                                 # 0 = already stored, so already published
-              publishEvent("icc-2026", "06_poll/metone-result",
+              publishEvent("icc-2026", "06_poll/particle-counter-result",
                            jsonEncode(record), False)
               write(current/*)
           last_sequence = sample.sequenceNumber
@@ -446,7 +446,7 @@ Four things this ordering decides, deliberately:
 
 ```
 ignition/projects/icc-2026/ignition/timer/06-poll/
-  handleTimerEvent.py     def handleTimerEvent(): metone_poll.poll()
+  handleTimerEvent.py     def handleTimerEvent(): particle_counter_poll.poll()
   resource.json           scope G, delay 30000, fixedDelay true, sharedThread true, enabled true
 ```
 
@@ -474,7 +474,7 @@ spacing from there. Nothing is lost, because the cursor is a watermark and not a
 knowing only so a 48 s gap in the log after a `scan` is not mistaken for a fault.
 
 **The timer is thin on purpose.** Everything — the cursor walk, the dedupe floor, the excursion
-flag, store-before-publish — lives in `metone_poll`, and there is no `try` in the handler because
+flag, store-before-publish — lives in `particle_counter_poll`, and there is no `try` in the handler because
 `poll()` catches its own failures into `state/last_error`. A reader who opens the timer looking
 for the pattern should find one line and a pointer.
 
@@ -497,7 +497,7 @@ the live-apply for an existing volume is a new
 ```sql
 CREATE SCHEMA IF NOT EXISTS em AUTHORIZATION icc26;
 
--- Pattern 6's store. Written by the Ignition poll script (`metone_poll`) as it
+-- Pattern 6's store. Written by the Ignition poll script (`particle_counter_poll`) as it
 -- publishes, so what pattern 7 reads is the same record the backbone saw --
 -- including `status`, which is OURS and not the instrument's.
 --
@@ -613,7 +613,7 @@ and the name. The `ignition.gatewayEvent` source and the Transmission handler ar
                 "topic": "icc26/site1/qc/analyzers/particle-counter-01/result",
                 "qos": 1, "retained": false } }],
   "filter":    { "enabled": true, "userCode": "\treturn bool(event.data)\n" },
-  "transform": { "enabled": true, "userCode": "\treturn metone_poll.build_document(event.data)\n" }
+  "transform": { "enabled": true, "userCode": "\treturn particle_counter_poll.build_document(event.data)\n" }
 ```
 
 **Corrected: the poll passes a JSON string, not a dict.** This section originally said it "passes
@@ -665,10 +665,10 @@ the gateway timer, which went in that evening.
 | CP | Check | Result |
 |---|---|---|
 | **0** | `system.net.httpClient` POSTs GraphQL to an HTTPS endpoint with a self-signed cert and a bearer header, from gateway scope | **Pass, and the spec's guess was right.** `bypass_cert_validation=True` is the correct keyword on 8.3.8 (`bypassCertValidation` also accepted; `trust_all_certificates` raises `TypeError` naming the argument, so a wrong guess fails loudly). `authenticate` → 200, `getSamples` with a bearer header → 200 with `hasMore` honoured, junk token → **401**. `response.getJson()` decodes to Jython dicts with `long` integers. The gateway logs the insecure-bypass warning on every request. Measured from a WebDev resource, which is gateway-scoped like a timer; the transport question is answered, the timer question is CP1 |
-| **1** | A gateway timer script resolves the `metone_poll` project module | **Pass, first try, with no import and no qualification.** `def handleTimerEvent(): metone_poll.poll()` at `scope: "G"`; 24 s after `tasks.py scan` the gateway logged *"particle-counter-01: 500 analysis(es) published, watermark 604, 10 page(s)"* from the `metone_poll` logger. **Gateway Scripting Project** = `icc-2026` is the whole of what makes it resolve. Incidental finding: the resource applied with `lastModificationSignature` **deleted**, and the gateway did not write it back — the signature is a UI artefact, not something `scan` enforces |
-| **2** | The cursor walk: `hasMore true` drains, an empty page returns the same cursor, a restarted sim reproduces the stale-cursor silence | **Pass, all three.** 80 records at `limit=50` drained over 2 pages; an empty page returned the identical cursor; after `docker restart icc26-sim-metone` the poll returned **0 published, `state/last_error` empty, nothing on the wire** — working perfectly and blind. Clearing **only** `state/cursor` recovered it |
+| **1** | A gateway timer script resolves the `particle_counter_poll` project module | **Pass, first try, with no import and no qualification.** `def handleTimerEvent(): particle_counter_poll.poll()` at `scope: "G"`; 24 s after `tasks.py scan` the gateway logged *"particle-counter-01: 500 analysis(es) published, watermark 604, 10 page(s)"* from the `particle_counter_poll` logger. **Gateway Scripting Project** = `icc-2026` is the whole of what makes it resolve. Incidental finding: the resource applied with `lastModificationSignature` **deleted**, and the gateway did not write it back — the signature is a UI artefact, not something `scan` enforces |
+| **2** | The cursor walk: `hasMore true` drains, an empty page returns the same cursor, a restarted sim reproduces the stale-cursor silence | **Pass, all three.** 80 records at `limit=50` drained over 2 pages; an empty page returned the identical cursor; after `docker restart icc26-sim-particle-counter` the poll returned **0 published, `state/last_error` empty, nothing on the wire** — working perfectly and blind. Clearing **only** `state/cursor` recovered it |
 | **3** | Memory tag value persistence survives `docker restart icc26-ignition` | **Pass — and it is a tag-*provider* setting, not a per-tag one.** Every tag in the UDT came back with its value and Good quality across the restart, watermark included. Nothing needs setting per tag; `tag-provider/default/config.json` already carries `"valuePersistence": "Database"`. The design holds, but it rests on a provider-wide default that nothing in the UDT files declares |
-| **4** | JWT expiry → 401 → re-auth → the poll continues without a gap | **Pass.** 315 s after the previous poll (TTL 300 s) the cached token was rejected, `metone_poll` logged *"token expired; re-authenticating"*, and the same poll published all **32** analyses that had accumulated. No gap, no lost record — and incidentally the stall demo, unplanned |
+| **4** | JWT expiry → 401 → re-auth → the poll continues without a gap | **Pass.** 315 s after the previous poll (TTL 300 s) the cached token was rejected, `particle_counter_poll` logged *"token expired; re-authenticating"*, and the same poll published all **32** analyses that had accumulated. No gap, no lost record — and incidentally the stall demo, unplanned |
 | **5** | One analysis → one `em.reading` row → one MQTT message. Never two, never zero | **Pass, by hand and again on the timer.** 96 analyses over the build session → 96 rows → 96 messages on `mosquitto_sub`, no duplicate `analysis_id`. Re-run against the timer once the trial was restarted: sequences 703–711 gave **9 rows and 9 messages**, and 21 captured messages across five polls were strictly ascending with no duplicate. Zero happens exactly once, deliberately: an insert that affects no rows suppresses the publish |
 | **6** | `status` polarity | **Pass, both directions.** Dirty → sequence 84 published `excursion` at 3926 counts; clean → 87 published `normal` at 118. The flip is immediate rather than gradual because the simulator generates counts at completion instead of integrating over the sampling window — a simplification worth knowing before somebody reads meaning into a clean boundary |
 | **7** | `occurred_at` vs `ingested_at` lag matches the configured cadence | **Pass, and tighter than the ≤ ~40 s the claim needs.** Against the real 30 s timer the lag is a **7.2 / 17.2 / 27.2 s sawtooth**, three analyses per poll, repeating exactly — the 10 s sample duration stacked three-deep under one 30 s poll. **Steady-state maximum 27.2 s**, so the stage sentence *"on the backbone within 40 seconds of the air being dirty, worst case"* is true with room to spare. Poll starts were 30.03 / 30.04 / 30.04 s apart, the drift being the poll's own runtime under `fixedDelay`. The first poll after a 10-hour gap is the other end of the same measurement: it drained the sim's whole 500-record buffer over 10 pages in ~4.4 s, oldest record lagging **9.6 hours**, and the next poll still started 30 s after that one *finished* |
@@ -684,7 +684,7 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
   mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/qc/analyzers/particle-counter-01/result' -v
 ```
 
-0. `python tasks.py health` — the `sim-metone` line reports SAMPLING and a non-zero buffer.
+0. `python tasks.py health` — the `sim-particle-counter` line reports SAMPLING and a non-zero buffer.
    That check exists because `SEED_SAMPLES: 0` makes "press Start" a pre-show step that can be
    forgotten, and a forgotten Start looks exactly like the stale-cursor failure from the outside.
 1. Open <http://localhost:8089>, set the sample point, press **Start**. Analyses begin every
@@ -717,7 +717,7 @@ key) were found in minutes rather than being confused with an API that might als
   which does nothing (§ *The timer*). The instrument keeps sampling and the backbone goes quiet.
   Ask what happened between polls, then re-enable and watch the backlog arrive in one burst —
   the walk draining `hasMore`, visible on the wire.
-- **The silent stale cursor.** `docker restart icc26-sim-metone`. The buffer regenerates from
+- **The silent stale cursor.** `docker restart icc26-sim-particle-counter`. The buffer regenerates from
   id 1, the stored bookmark still points past the end, and **the poll runs perfectly while
   publishing nothing.** Every health check green. Clear `state/cursor` in Tag Explorer and it
   recovers. This is the one to end the segment on: a monitoring system that is up, connected,
@@ -768,10 +768,10 @@ unspecified store left in its way.
    is item 9 below.
 
    Driving it by hand from the Designer script console still works and is still the fastest way
-   to test a change to `metone_poll` without waiting 30 s:
+   to test a change to `particle_counter_poll` without waiting 30 s:
 
    ```python
-   metone_poll.poll()      # returns the number of analyses published
+   particle_counter_poll.poll()      # returns the number of analyses published
    ```
 
    That is *Designer* scope, so it proves the poll and not the timer. The build's temporary
@@ -802,7 +802,7 @@ unspecified store left in its way.
    `state/cursor` survive a restart. Nothing in the UDT says so, so somebody changing that
    provider setting for an unrelated reason breaks pattern 6 with no local sign of why. Recorded
    rather than fixed: 8.3 offers no per-tag override to pin it with.
-8. **New 2026-08-29: `metone_poll` is single-instrument by constant.** `BASE` and `DEVICE_ID`
+8. **New 2026-08-29: `particle_counter_poll` is single-instrument by constant.** `BASE` and `DEVICE_ID`
    come from one module-level tag path, and `poll()` takes it as a default argument. A second
    counter means a second timer call with a different path, which works, but the module has not
    been exercised that way. The Event Stream topic is likewise a literal, not built from the
@@ -842,8 +842,8 @@ unspecified store left in its way.
 
 | Date | |
 |---|---|
-| 2026-08-23 | Pattern 6 re-sourced: a MET ONE HTTP API in `qc/analyzers`, not Modbus. Excursion flag added to the design |
+| 2026-08-23 | Pattern 6 re-sourced: a particle counter HTTP API in `qc/analyzers`, not Modbus. Excursion flag added to the design |
 | 2026-08-25 | Moved from `upstream/br-201` to `qc/analyzers`, so tag path and topic stay identical |
 | 2026-08-29 | Vendor API arrived as [`../reference/particle_counter_sim.md`](../reference/particle_counter_sim.md). Eight decisions taken and this spec written. **Nothing built** |
-| 2026-08-29 | **Built and broker-verified, same day, everything but the timer.** `services/sim-metone` (GraphQL over HTTPS + the :8089 touchscreen), the `em` schema and `migrate-07`, the `particle_counter` UDT and instance, `metone_poll`, and Event Stream `06_poll/metone-result`. 96 analyses → 96 `em.reading` rows → 96 messages on `icc26/site1/qc/analyzers/particle-counter-01/result`, `status` correct on both polarities, the stale-cursor trap reproduced twice and recovered by clearing one tag, and a real token expiry drove a re-auth mid-poll. `tasks.py health` gained the buffer check the spec asked for. **Three predictions in this document were wrong** — `publishEvent` refuses a dict, value persistence is a provider setting, and `sequence_number` is not a usable dedupe key — and all three are corrected inline above rather than quietly. The one predicted to cost an afternoon, `httpClient` against a self-signed cert, cost nothing. Four durable Ignition 8.3.8 facts went to [`../00-architecture.md`](../00-architecture.md) instead of here, because 07 will want them |
+| 2026-08-29 | **Built and broker-verified, same day, everything but the timer.** `services/sim-particle-counter` (GraphQL over HTTPS + the :8089 touchscreen), the `em` schema and `migrate-07`, the `particle_counter` UDT and instance, `particle_counter_poll`, and Event Stream `06_poll/particle-counter-result`. 96 analyses → 96 `em.reading` rows → 96 messages on `icc26/site1/qc/analyzers/particle-counter-01/result`, `status` correct on both polarities, the stale-cursor trap reproduced twice and recovered by clearing one tag, and a real token expiry drove a re-auth mid-poll. `tasks.py health` gained the buffer check the spec asked for. **Three predictions in this document were wrong** — `publishEvent` refuses a dict, value persistence is a provider setting, and `sequence_number` is not a usable dedupe key — and all three are corrected inline above rather than quietly. The one predicted to cost an afternoon, `httpClient` against a self-signed cert, cost nothing. Four durable Ignition 8.3.8 facts went to [`../00-architecture.md`](../00-architecture.md) instead of here, because 07 will want them |
 | 2026-08-29 | **The gateway timer, and pattern 6 goes hands-off.** `ignition/timer/06-poll/` — schema learned from an empty resource created in the Gateway UI, then body and cadence written as files and applied with `scan`, `lastModificationSignature` deleted and not written back. First poll drained a 10-hour, 500-record backlog over 10 pages; steady state is 3 analyses per 30 s with a 7.2 / 17.2 / 27.2 s lag sawtooth. **CP1 and CP7 close, so all ten checkpoints are closed.** Found while closing them: `config/poll_interval_s` is decorative and cannot be made otherwise (open item 9), so the stall demo moved to `config/enabled` and three files that claimed the tag drives the cadence were corrected. The MQTT hop was re-observed after the trial was restarted, and it measured something the hand-driven run could not: **the three analyses of a poll do not leave the broker together.** The Event Stream's leading-edge 250 ms debounce puts the first on the wire in ~8 ms and the other two ~260 ms later, order preserved, newest last — five consecutive polls, identical every time. § *Event Stream* |

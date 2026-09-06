@@ -1,4 +1,4 @@
-# Pattern 6 — a simulated MET ONE particle counter, GraphQL over HTTPS.
+# Pattern 6 — a simulated particle counter, GraphQL over HTTPS.
 #
 # Transcribed from docs/reference/particle_counter_sim.md and treated as a
 # vendor surface: the schema gets nothing added to it. The operator touchscreen
@@ -6,7 +6,7 @@
 #
 # ariadne + uvicorn + PyJWT + cryptography, all wheels, so nothing compiles here
 # — every wheel not built is one fewer thing to go wrong on a conference
-# network. See docs/plans/06-poll-metone.md.
+# network. See docs/plans/06-poll-particle-counter.md.
 
 FROM python:3.12-slim
 
@@ -27,10 +27,10 @@ COPY particle_sim ./particle_sim
 # /tmp/particle-sim is where the self-signed certificate is written at START,
 # not at build: a rebuilt image must not ship a fixed private key to everyone
 # who ever pulled it.
-RUN useradd --create-home --uid 10005 metone \
+RUN useradd --create-home --uid 10005 particle-counter \
     && mkdir -p /config /tmp/particle-sim \
-    && chown -R metone:metone /app /config /tmp/particle-sim
-USER metone
+    && chown -R particle-counter:particle-counter /app /config /tmp/particle-sim
+USER particle-counter
 
 EXPOSE 8443 8089
 

@@ -12,7 +12,7 @@
 |---|---|
 | **Goal** | One composite record per reviewed sample, assembled from what the other patterns already published, on the backbone |
 | **Touches** | one new script module `sample_chain`, one new event stream `07_chain/lims-review`, `docs/plans/*` |
-| **Does not touch** | `metone_poll`, `bes_batch`, `bes_cdc`, `lims_webhook`, the UDTs, the simulators, the schema. **07 adds no tables, no ACL change, no new datasource** |
+| **Does not touch** | `particle_counter_poll`, `bes_batch`, `bes_cdc`, `lims_webhook`, the UDTs, the simulators, the schema. **07 adds no tables, no ACL change, no new datasource** |
 | **Blocked by** | Nothing. Every prerequisite is built, committed and verified |
 | **Unblocks** | The last talk track, and the demo's closing argument |
 
@@ -125,9 +125,9 @@ Explorer and is not, and that is the trap.
 
 Not unused, as the old plan assumed. It is bound to the `pg-historian` historian provider **and**
 to `System/Gateway/StoreAndForward/pg_db/Pipelines/TagHistory`. Deleting it breaks both. Scripts
-still must not select it — `bes_batch` and `metone_poll` both carry the warning comment already.
+still must not select it — `bes_batch` and `particle_counter_poll` both carry the warning comment already.
 
-### 7. The MET ONE rule: nearest either side, no tolerance
+### 7. The particle counter rule: nearest either side, no tolerance
 
 Chosen 2026-08-30 over a before-only lookup and over a 60-second cutoff.
 
@@ -146,7 +146,7 @@ shows readings landing every 10 s.
 > **Corrected 2026-08-31.** This paragraph used to end *"a large age only happens when nobody
 > pressed Start — the pre-show failure `tasks.py health` already names."* Both halves were wrong.
 > A **stale cursor** produces a large age too, with the instrument sampling happily, and that is
-> what actually happened: the CP6 verification restarted `icc26-sim-metone` on 2026-08-30 and left
+> what actually happened: the CP6 verification restarted `icc26-sim-particle-counter` on 2026-08-30 and left
 > the cursor past the end, so `em.reading` froze for 15.5 hours while every check stayed green.
 > `health` did not name it — it read the simulator's buffer and never asked whether anything was
 > landing. **It does now**, on `max(ingested_at)`, and it prints the cursor tag to clear.
@@ -164,7 +164,7 @@ subscribed to:
 icc26/site1/qc/lims/sample-result        qos 1
 ```
 
-**Structurally this is a copy of [`06_poll/metone-result`](../../ignition/projects/icc-2026/com.inductiveautomation.eventstream/event-streams/06_poll/metone-result/config.json)
+**Structurally this is a copy of [`06_poll/particle-counter-result`](../../ignition/projects/icc-2026/com.inductiveautomation.eventstream/event-streams/06_poll/particle-counter-result/config.json)
 with the source swapped.** That file is the template — take its `handlers`, `batch`, `filter`,
 `transformEncoder` and `onError` blocks as they are, and change three things: the source type,
 the handler's `topic`, and the transform's one line.
@@ -288,7 +288,7 @@ unchanged. Both run the same two lookups — four queries per review at demo vol
 cheaper than a cache shared between two stages that could race.
 
 The gate reads two flags and computes nothing, which is what keeps this compatible with
-decision 1: `em.reading.status` came from `metone_poll` against `config/excursion_threshold`,
+decision 1: `em.reading.status` came from `particle_counter_poll` against `config/excursion_threshold`,
 and `disposition` from the analyst in the LIMS. `qualified_window` is deliberately **not** a
 trigger — `QUALIFIED` is `("GROWTH",)` of five operations, so gating on it would make the
 deviation the normal case; it stays in the document as context.
@@ -304,7 +304,7 @@ cannot be evidenced is not one anybody can release.
 
 1. **`sample_chain` script module**, gateway-scoped, `DATASOURCE = "ICC26"`. Jython 2.7 — no
    f-strings, no type hints. Copy the header conventions from
-   [`metone_poll`](../../ignition/projects/icc-2026/ignition/script-python/metone_poll/code.py),
+   [`particle_counter_poll`](../../ignition/projects/icc-2026/ignition/script-python/particle_counter_poll/code.py),
    including its datasource warning comment.
    - `build(document)` → dict. Takes the review message, returns the composite.
    - Two private lookups, one per query above. Each returns `(block, reason)`.
@@ -315,7 +315,7 @@ cannot be evidenced is not one anybody can release.
 2. **The event stream**, per the config above.
 3. **Verify on the wire**, not in the database. Subscribe as `observer` on
    `icc26/site1/qc/deviation`, then approve a sample in the LIMS review screen: a clean one
-   publishes **nothing**. Press **Dirty** on the MET ONE panel (<http://localhost:8089>), wait
+   publishes **nothing**. Press **Dirty** on the particle counter panel (<http://localhost:8089>), wait
    for a fresh reading, draw and approve again — that one publishes.
 4. **The talk track**, `docs/talk-tracks/07-sample-chain.md`. The repo's two-document convention
    makes this the closing step, not an optional extra.
@@ -352,7 +352,7 @@ Four facts worth keeping, all read off the 5.0.4 jars and then confirmed running
 | source `type` | `com.cirruslink.mqtt.engine.gateway.mqtt.source` (Sparkplug's is `…gateway.sparkplug.source`) |
 | source `config` | exactly `topic` and `qos`. Defaults `EventStreams/#` and `0` |
 | what the transform is handed | the MQTT payload as a **`byte[]`** — `EngineCallback` builds `EventPayload.builder(mqttMessage.getPayload())` with the topic as metadata |
-| so `sourceEncoder` | `ignition.string` / UTF-8, unchanged from the template. `StringEncoder` takes `byte[]` and returns a String, so `build()` receives text and decodes it exactly as `metone_poll.build_document` does |
+| so `sourceEncoder` | `ignition.string` / UTF-8, unchanged from the template. `StringEncoder` takes `byte[]` and returns a String, so `build()` receives text and decodes it exactly as `particle_counter_poll.build_document` does |
 
 **The subscription does not disturb MQTT Engine's tag ingest.** Engine's custom namespace is
 `icc26/site1/upstream/br-201/sample-valve-01/#` only, so the review topic was never in it; the
@@ -404,7 +404,7 @@ composites went out unretained, and neither id is in `lims.sample`, `bes.batch_e
 | **3** | `batch_context.operation` is `GROWTH` and `qualified_window` is `true` for a sample drawn now | **closed** 08-30 — same message, `B-20260830-02`, `as_of` 22:55:37.922Z |
 | **4** | Advance past HARVEST, draw again: operation reads `IDLE`, `qualified_window` false, and **nothing is empty** | **closed** 08-30, **by a different route** — the reactor was *not* advanced, because the stack is parked in GROWTH on purpose. Probed instead with a sample instant inside the real IDLE window rows 34→35 already hold: `operation: "IDLE"`, `qualified_window: false`, `event_type: "batch_end"`, `batch_id: "B-20260830-01"`, no empty value anywhere. That instant also lands after rows 33 and 34, which **share** `22:50:19.034Z` — so this closes the `id DESC` tie-break too |
 | **5** | `environment.age_s` is present and under 30 s with the counter sampling | **closed** 08-30 — **2.5 s** on both live approvals with the counter sampling (`S-20260830-0085`, `S-20260830-0084`), and 1.4 s on the CP4 probe |
-| **6** | Stop the MET ONE sim, draw again: the block is `null` with a reason, and the message still publishes | **closed** 08-30, **and the wording was wrong** — see below |
+| **6** | Stop the particle counter sim, draw again: the block is `null` with a reason, and the message still publishes | **closed** 08-30, **and the wording was wrong** — see below |
 | **7** | A **rejected** sample produces a composite with `disposition: "fail"` | **closed** 08-30 — `S-20260830-0084`, rejected, composite published with `disposition: "fail"` |
 | **8** | `docs/talk-tracks/07-sample-chain.md` exists | **closed** 08-30 |
 
@@ -417,7 +417,7 @@ CP4 and CP6 are the two that matter most on stage: **a gap is a finding, and 07 
 **only when `em.reading` holds no row at all for `particle-counter-01`** — which on any database
 that has run for ten minutes it never does. Stopping the simulator does not produce a silence; it
 produces a stale reading with a growing `age_s`, which is the finding, in a field. Measured:
-`icc26-sim-metone` stopped at 23:39:11Z, `S-20260830-0087` drawn at 23:40:55Z and approved four
+`icc26-sim-particle-counter` stopped at 23:39:11Z, `S-20260830-0087` drawn at 23:40:55Z and approved four
 minutes later, composite published unchanged with **`age_s: 122.6`, `nearest_side: "before"`** —
 against the 27.2 s pattern 6's timer normally guarantees.
 
@@ -476,5 +476,5 @@ on stage and be surprised by.
 | Date | |
 |---|---|
 | 2026-08-30 | Spec written, from [`00-pre-07-cleanup.md`](00-pre-07-cleanup.md)'s four closed checkpoints and seven decisions |
-| 2026-08-30 | **Built and broker-verified the same evening. All eight checkpoints closed.** `sample_chain` + Event Stream `07_chain/lims-review`, applied with `scan` — no restart, no Designer, and nothing outside the two new resources changed. Route 0 held and the gateway said so in its own log; the source's type id, config keys and `byte[]` payload are recorded in § *As built* along with five document shapes the spec left open. Two real approvals (`S-20260830-0085` pass, `S-20260830-0084` fail) and two transient probes closed the eight. **One correction to this file:** CP6's wording contradicts decision 7 — nearest-either-side means the environment block is `null` only on an empty `em.reading`, so a stopped MET ONE shows a growing `age_s`, not a silence. Both halves of what CP6 was for are closed anyway. One new open item: the source's re-subscribe behaviour across a broker drop |
+| 2026-08-30 | **Built and broker-verified the same evening. All eight checkpoints closed.** `sample_chain` + Event Stream `07_chain/lims-review`, applied with `scan` — no restart, no Designer, and nothing outside the two new resources changed. Route 0 held and the gateway said so in its own log; the source's type id, config keys and `byte[]` payload are recorded in § *As built* along with five document shapes the spec left open. Two real approvals (`S-20260830-0085` pass, `S-20260830-0084` fail) and two transient probes closed the eight. **One correction to this file:** CP6's wording contradicts decision 7 — nearest-either-side means the environment block is `null` only on an empty `em.reading`, so a stopped particle counter shows a growing `age_s`, not a silence. Both halves of what CP6 was for are closed anyway. One new open item: the source's re-subscribe behaviour across a broker drop |
 | 2026-09-06 | **Reversed to publish only a deviation, and broker-verified the same afternoon.** Topic moved `icc26/site1/qc/sample-chain` → `icc26/site1/qc/deviation`; `values.violations` names what was wrong and is never empty on a message that exists. Triggers are `em.reading.status == "excursion"` and `disposition == "fail"`, both read as flags their owning modules already set — 07 still computes nothing. `qualified_window` is reported but deliberately not a trigger. **One Ignition finding cost the first implementation:** a transform returning `None` does **not** suppress a message, it publishes the four-byte string `None`, because `transformEncoder` is `ignition.string` — watched live on the topic. The filter is the only stage that can stop a message, so the gate moved to `filter.userCode` → `sample_chain.is_deviation(event.data)` and the fact went to [`../00-architecture.md`](../00-architecture.md). Verified on the real gesture, no fixtures: **Dirty** at :8089 → 163 counts → 3482/4303/4218, badge `B-1042` → `S-20260906-0006` → **approved**, and it deviated anyway on `environmental_excursion`, `age_s` 2.4 `after`, `GROWTH`, `qualified_window: true`, `disposition: pass` — a sample that passed every analytical spec and still failed the room. **Clean** → `S-20260906-0008` → silence, `... is clean; no deviation published` in the gateway log. A rejection published `failed_review` on its own. Applied with `scan` — no restart, no Designer |
