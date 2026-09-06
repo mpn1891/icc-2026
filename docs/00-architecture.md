@@ -7,9 +7,14 @@ add it here rather than in a status note.
 
 - What is built and what is not: [`plans/00-status.md`](plans/00-status.md).
 - What is still to be built, and in what order: [`plans/00-master-plan.md`](plans/00-master-plan.md).
-- Talk tracks, as they are written: [`talk-tracks/01-native-mqtt.md`](talk-tracks/01-native-mqtt.md),
-  [`talk-tracks/02-sparkplug-b.md`](talk-tracks/02-sparkplug-b.md),
-  [`talk-tracks/04-lims-webhook.md`](talk-tracks/04-lims-webhook.md).
+- Talk tracks — **all seven exist as of 2026-09-06**:
+  [`01-native-mqtt`](talk-tracks/01-native-mqtt.md),
+  [`02-sparkplug-b`](talk-tracks/02-sparkplug-b.md),
+  [`03-opcua-analyzer`](talk-tracks/03-opcua-analyzer.md),
+  [`04-lims-webhook`](talk-tracks/04-lims-webhook.md),
+  [`05-cdc`](talk-tracks/05-cdc.md),
+  [`06-poll`](talk-tracks/06-poll.md),
+  [`07-sample-chain`](talk-tracks/07-sample-chain.md).
 
 ---
 
