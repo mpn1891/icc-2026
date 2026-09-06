@@ -23,11 +23,13 @@
 fact onto the wire, and every one of them was somebody else's problem to solve. **Pattern 7 is
 the first thing in this stack that reads.**
 
-**Demo.** Approve one sample in the LIMS review screen. One message lands on
-`icc26/site1/qc/sample-chain`. Read it out loud.
+**Demo.** Approve one clean sample. **Nothing is published** — and that is the point. Press
+**Dirty** on the MET ONE panel, draw and approve again: one message lands on
+`icc26/site1/qc/deviation`, and `values.violations` says what was wrong. Read it out loud.
 
 **Risk.** Every number in that document was computed by the pattern that produced it, and 07
 can prove it — because when a lookup finds nothing, the document says so instead of guessing.
+07 decides *whether* to speak; it never decides what is out of spec.
 
 **Close.** *(the through line's closing argument — see the master plan)*
 
@@ -77,7 +79,10 @@ its age, and lets the reader judge. Which makes `age_s` load-bearing, so it sits
 of the block: a forty-minute-old count must not be able to read as current.
 
 When a lookup genuinely finds nothing, the block is `null` and a `_reason` sits beside it —
-never a missing key, never a silent default. **The composite always publishes.**
+never a missing key, never a silent default. **What 07 will not do is publish a clean sample.**
+Since 2026-09-06 it speaks only on a deviation, so a quiet topic is the compliant state — and an
+`environment` block that is null is itself a finding, because a sample whose room cannot be
+evidenced cannot be released.
 
 **5. Seven patterns, and a subscriber still cannot tell how any of it arrived.** One
 `mosquitto_sub` shows the same `sample_id` under `opcua-event`, `webhook` and `aggregate`, on
@@ -103,7 +108,7 @@ genuine backbone subscriber, not a database job wearing a hat.
                                          │
                                     Transmission
                                          ▼
-                     icc26/site1/qc/sample-chain   (mechanism: aggregate)
+                     icc26/site1/qc/deviation      (mechanism: aggregate)
                                   QoS 1, retained false
 ```
 
@@ -262,11 +267,12 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 
 | Beat | Trigger | What lands |
 |---|---|---|
-| The composite | Approve a sample at <http://localhost:8000> | The review on `lims/sample-result`, then the composite on `sample-chain` — **two messages, two mechanisms, one `sample_id`** |
+| Silence is the pass | Approve a clean sample at <http://localhost:8000> | The review lands on `lims/sample-result`. **Nothing** on `deviation` — the compliant case is quiet |
+| The deviation | Press **Dirty** at <http://localhost:8089>, wait for a reading, draw and approve | One message on `deviation`, `values.violations[0].code` = `environmental_excursion` |
 | Read it out loud | — | `ts` vs `ingest_ts`, `as_of` vs `ts`, `age_s`. Three gaps, no arithmetic |
-| A rejection is a disposition | Reject instead | Same document, `disposition: "fail"`. Nothing downstream infers a rejection from silence |
+| A rejection is a disposition | Reject instead | Publishes on its own, `violations[0].code` = `failed_review`. Nothing downstream infers a rejection from silence |
 | Outside the window | Advance past HARVEST in Tag Explorer, badge again, approve | `operation: "IDLE"`, `qualified_window: false`, **and nothing empty** |
-| A gap is a finding | `docker stop icc26-sim-metone`, wait, approve again | `age_s` climbs past the 27 s the poll normally guarantees. The composite still publishes |
+| A gap is a finding | `docker stop icc26-sim-metone`, wait, approve again | `age_s` climbs past the 27 s the poll normally guarantees — a stale reading, not a silence, so this alone is not yet a deviation |
 | Nothing says how it arrived | Scroll the watcher | Three topics, three `meta.mechanism` values, one sample |
 
 **Put `br-201` back in `GROWTH` before you demo.** It is parked there on `B-20260830-02` on

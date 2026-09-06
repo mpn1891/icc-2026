@@ -19,7 +19,7 @@
       "type": "com.cirruslink.mqtt.transmission.gateway.mqtt.handler",
       "config": {
         "serverName": "chariot_broker",
-        "topic": "icc26/site1/qc/sample-chain",
+        "topic": "icc26/site1/qc/deviation",
         "qos": 1,
         "retained": false
       },
@@ -37,7 +37,7 @@
   },
   "filter": {
     "enabled": true,
-    "userCode": "\treturn bool(event.data)\n"
+    "userCode": "\treturn sample_chain.is_deviation(event.data)\n"
   },
   "transform": {
     "enabled": true,

@@ -50,6 +50,12 @@ was pulled inside the qualified phase window.
 **The composite event (pattern 7 payoff):**
 > Sample pulled outside qualified phase window with concurrent environmental excursion.
 
+*As built, 2026-09-06:* pattern 7 publishes **only** on a deviation, and the triggers are the
+environmental excursion and a failed analyst review. The qualified window is carried in the
+document but is deliberately **not** a trigger — `QUALIFIED` is `("GROWTH",)` of five
+operations, so gating on it would make the deviation the normal case. See
+[`07-sample-chain.md`](07-sample-chain.md).
+
 Each pattern segment runs **intro (business context) → demo → risk/complexity in GxP → a
 positive closing message** — the upbeat beat after the risk speaker is deliberate, so no segment
 (and not the talk overall) ends on risk. The patterns will likely be introduced 1-4 as summaries, then a demo for all three and then swapping to 5-7 and doing the same thing.  The **GxP hook** line in each spec below is that segment's risk beat.

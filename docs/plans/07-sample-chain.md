@@ -134,7 +134,9 @@ Chosen 2026-08-30 over a before-only lookup and over a 60-second cutoff.
 - **Nearest either side.** A reading three seconds *after* the valve closed is better evidence
   than one twenty-five seconds before.
 - **No tolerance.** 07 always reports the nearest reading and **always reports its age**, and
-  lets the reader judge. A gap is a finding, not a silence.
+  lets the reader judge. Where the block is genuinely empty that is a finding in its own right —
+  since 2026-09-06 a null `environment` is the `environment_unverifiable` violation, not a
+  silently omitted key. (Silence now means *compliant*; it never means *unknown*.)
 - **Therefore the age field is load-bearing.** Put it at the top level of the reading block, not
   buried in it. A forty-minute-old reading must not be able to read as current.
 
@@ -171,7 +173,7 @@ the handler's `topic`, and the transform's one line.
 transform   return sample_chain.build(event.data)
 handler     com.cirruslink.mqtt.transmission.gateway.mqtt.handler
             serverName  chariot_broker
-            topic       icc26/site1/qc/sample-chain
+            topic       icc26/site1/qc/deviation
             qos 1, retained false
 ```
 
@@ -273,9 +275,28 @@ measurement. `meta.ingest_ts` is when 07 built it, and the gap between the two i
 record's provenance, visible on stage. This is the same rule
 [`04-lims-webhook.md`](04-lims-webhook.md) states for the review message.
 
-**Always publish.** If a lookup finds nothing, the block is `null` with a `reason` beside it —
-never a missing key, never a silent default. `00-master-plan.md` states this for the MET ONE
-section and it applies to both lookups here.
+**Publish only a deviation.** *(Revised 2026-09-06. Until then this decision read "Always
+publish" and 07 emitted one composite per review.)* 07 now publishes only when the sample
+violated something and names what in `values.violations` — a list that is never empty on a
+message that exists. Silence is the compliant case.
+
+**The gate lives in the filter, not the transform**, and that was measured rather than chosen:
+a transform returning `None` publishes the literal string `"None"` onto the topic, because
+`transformEncoder` is `ignition.string`. The filter is the only stage that can stop a message.
+So `filter.userCode` is `return sample_chain.is_deviation(event.data)` and the transform is
+unchanged. Both run the same two lookups — four queries per review at demo volume, which is
+cheaper than a cache shared between two stages that could race.
+
+The gate reads two flags and computes nothing, which is what keeps this compatible with
+decision 1: `em.reading.status` came from `metone_poll` against `config/excursion_threshold`,
+and `disposition` from the analyst in the LIMS. `qualified_window` is deliberately **not** a
+trigger — `QUALIFIED` is `("GROWTH",)` of five operations, so gating on it would make the
+deviation the normal case; it stays in the document as context.
+
+**A lookup that finds nothing still produces a `null` block with a `reason` beside it** — never
+a missing key, never a silent default. Only the decision to publish changed, not the shape. A
+null `environment` is itself a violation (`environment_unverifiable`): a sample whose room
+cannot be evidenced is not one anybody can release.
 
 ---
 
@@ -293,7 +314,9 @@ section and it applies to both lookups here.
      produced them* says why.
 2. **The event stream**, per the config above.
 3. **Verify on the wire**, not in the database. Subscribe as `observer` on
-   `icc26/site1/qc/sample-chain`, then approve a sample in the LIMS review screen.
+   `icc26/site1/qc/deviation`, then approve a sample in the LIMS review screen: a clean one
+   publishes **nothing**. Press **Dirty** on the MET ONE panel (<http://localhost:8089>), wait
+   for a fresh reading, draw and approve again — that one publishes.
 4. **The talk track**, `docs/talk-tracks/07-sample-chain.md`. The repo's two-document convention
    makes this the closing step, not an optional extra.
 
@@ -454,3 +477,4 @@ on stage and be surprised by.
 |---|---|
 | 2026-08-30 | Spec written, from [`00-pre-07-cleanup.md`](00-pre-07-cleanup.md)'s four closed checkpoints and seven decisions |
 | 2026-08-30 | **Built and broker-verified the same evening. All eight checkpoints closed.** `sample_chain` + Event Stream `07_chain/lims-review`, applied with `scan` — no restart, no Designer, and nothing outside the two new resources changed. Route 0 held and the gateway said so in its own log; the source's type id, config keys and `byte[]` payload are recorded in § *As built* along with five document shapes the spec left open. Two real approvals (`S-20260830-0085` pass, `S-20260830-0084` fail) and two transient probes closed the eight. **One correction to this file:** CP6's wording contradicts decision 7 — nearest-either-side means the environment block is `null` only on an empty `em.reading`, so a stopped MET ONE shows a growing `age_s`, not a silence. Both halves of what CP6 was for are closed anyway. One new open item: the source's re-subscribe behaviour across a broker drop |
+| 2026-09-06 | **Reversed to publish only a deviation, and broker-verified the same afternoon.** Topic moved `icc26/site1/qc/sample-chain` → `icc26/site1/qc/deviation`; `values.violations` names what was wrong and is never empty on a message that exists. Triggers are `em.reading.status == "excursion"` and `disposition == "fail"`, both read as flags their owning modules already set — 07 still computes nothing. `qualified_window` is reported but deliberately not a trigger. **One Ignition finding cost the first implementation:** a transform returning `None` does **not** suppress a message, it publishes the four-byte string `None`, because `transformEncoder` is `ignition.string` — watched live on the topic. The filter is the only stage that can stop a message, so the gate moved to `filter.userCode` → `sample_chain.is_deviation(event.data)` and the fact went to [`../00-architecture.md`](../00-architecture.md). Verified on the real gesture, no fixtures: **Dirty** at :8089 → 163 counts → 3482/4303/4218, badge `B-1042` → `S-20260906-0006` → **approved**, and it deviated anyway on `environmental_excursion`, `age_s` 2.4 `after`, `GROWTH`, `qualified_window: true`, `disposition: pass` — a sample that passed every analytical spec and still failed the room. **Clean** → `S-20260906-0008` → silence, `... is clean; no deviation published` in the gateway log. A rejection published `failed_review` on its own. Applied with `scan` — no restart, no Designer |
