@@ -129,7 +129,7 @@ def from_args(argv=None) -> Config:
     cfg = from_env()
     parser = argparse.ArgumentParser(
         prog="particle_sim",
-        description="particle counter API simulator (GraphQL over HTTPS)")
+        description="Particle counter API simulator (GraphQL over HTTPS)")
     parser.add_argument("--port", type=int, default=cfg.port)
     parser.add_argument("--panel-port", type=int, default=cfg.panel_port)
     parser.add_argument("--device-id", default=cfg.device_id)
