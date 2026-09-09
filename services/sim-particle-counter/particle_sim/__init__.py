@@ -1,4 +1,4 @@
-"""particle counter API simulator — pattern 6's instrument.
+"""Particle counter API simulator — pattern 6's instrument.
 
 GraphQL over HTTPS with JWT auth and cursor pagination, transcribed from
 `docs/reference/particle_counter_sim.md`, plus an operator touchscreen that the

@@ -9,7 +9,7 @@
   "evictionTime": 1800000,
   "failoverMode": "STANDARD",
   "failoverProfile": "",
-  "includeSchemaInTableName": false,
+  "includeSchemaInTableName": true,
   "password": {
     "data": {
       "ciphertext": "nAYSmZ-8iQ",
