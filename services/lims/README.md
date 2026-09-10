@@ -52,8 +52,15 @@ awaiting-analysis ──(analytes attach)──▶ received ──(e-sign)──
 
 `awaiting-analysis` is the one state a signature cannot be applied to — there is
 nothing yet to have reviewed. Both the screen and `Store._not_reviewable` refuse
-it. `batch_id` arrives with the analysis: the valve opens on a badge, not a work
-order, and its event carries no batch at all.
+it.
+
+**This service tracks no `batch_id`** (dropped 2026-09-09,
+[`migrate-10`](../../compose/postgres/migrate-10-drop-lims-batch-id.sql)). The valve
+opens on a badge, not a work order, and the analyzer only echoes whatever was typed
+at its login screen — so nothing on this side of the wire actually knows the batch,
+and the column held one of four competing conventions. Pattern 7 resolves batch
+identity against `bes.batch_event` using `equipment_id` and the acquisition instant,
+which is the batch system's own record rather than the lab's copy of it.
 
 ## Why it has no publish rights
 

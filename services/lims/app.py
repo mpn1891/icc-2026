@@ -163,7 +163,6 @@ class Config:
         self.generator_interval_s = _env_float("GENERATOR_INTERVAL_S", 0.0)
         self.http_port = _env_int("HTTP_PORT", 8000)
         self.default_analyst = _env("DEFAULT_ANALYST", "mnorris")
-        self.default_batch_id = _env("DEFAULT_BATCH_ID", "B-2026-0142")
 
 
 def _now() -> datetime:
@@ -334,7 +333,6 @@ class Store:
         if not reported:
             LOG.warning("ingest skipped: no sample_id")
             return 0
-        batch_id = values.get("batch_id") or None
         try:
             collected_at = _parse_ts(envelope.get("ts") or _now())
         except (TypeError, ValueError):
@@ -363,12 +361,12 @@ class Store:
                     result = conn.execute(
                         """
                         INSERT INTO lims.sample_result
-                            (reported_sample_id, sample_id, batch_id, analyte, value, uom,
+                            (reported_sample_id, sample_id, analyte, value, uom,
                              collected_at, attached_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (reported_sample_id, analyte) DO NOTHING
                         """,
-                        (reported, sample_id, batch_id, analyte, number, uom,
+                        (reported, sample_id, analyte, number, uom,
                          collected_at, attached_at),
                     )
                     inserted += result.rowcount
@@ -399,20 +397,19 @@ class Store:
         return attached
 
     def _promote(self, conn, sample_id: str) -> None:
-        """An entry with results on it is reviewable, and learns its batch from them.
+        """An entry with results on it is reviewable.
 
-        The valve does not know the batch -- it opens on a badge, not on a work
-        order -- so `batch_id` arrives with the analysis or not at all.
+        It does not learn a batch here, and there is nowhere for one to be
+        learned from: neither the valve nor the analyzer knows which work order
+        the material belonged to. Batch identity is pattern 7's, resolved against
+        `bes.batch_event` at the sample instant -- the batch system's own record,
+        not the lab's copy of a field somebody typed.
         """
         conn.execute(
             """
             UPDATE lims.sample s
             SET status = CASE WHEN s.status = 'awaiting-analysis' THEN 'received'
-                              ELSE s.status END,
-                batch_id = coalesce(s.batch_id, (
-                    SELECT max(r.batch_id) FROM lims.sample_result r
-                    WHERE r.sample_id = s.sample_id
-                ))
+                              ELSE s.status END
             WHERE s.sample_id = %s
             """,
             (sample_id,),
@@ -420,12 +417,24 @@ class Store:
 
     # ---- the review queue
 
-    def pending_samples(self) -> list[dict]:
-        """Every entry not yet reviewed, whether or not results have arrived."""
+    # How many open entries the review screen renders. Nothing retires an entry
+    # but a human signing it, so a week of rehearsal leaves hundreds -- and the
+    # sample just drawn on stage is the one that has to be visible without
+    # scrolling. Hence newest first AND a cap; either alone is not enough.
+    PAGE_SIZE = 25
+
+    def pending_samples(self, limit: int = PAGE_SIZE) -> tuple[list[dict], int, int]:
+        """Newest open entries, plus the true totals behind the cap.
+
+        Returns (rows, total, awaiting_total). The two counts are window
+        functions over the whole grouped set, computed before LIMIT, so the panel
+        can say "showing 25 of 68" rather than quietly lying about how much work
+        is queued.
+        """
         with self.connect() as conn:
             rows = conn.execute(
                 """
-                SELECT s.sample_id, s.batch_id, s.status, s.badge_id, s.badge_holder,
+                SELECT s.sample_id, s.status, s.badge_id, s.badge_holder,
                        s.sample_start, s.sample_completion, s.open_duration_s,
                        s.cycle_result, s.created_at,
                        coalesce(min(r.collected_at), s.sample_completion) AS collected_at,
@@ -434,34 +443,41 @@ class Store:
                                'analyte', r.analyte, 'value', r.value, 'uom', r.uom
                            ) ORDER BY r.analyte) FILTER (WHERE r.analyte IS NOT NULL),
                            '[]'::json
-                       ) AS results
+                       ) AS results,
+                       count(*) OVER () AS total,
+                       count(*) FILTER (WHERE s.status = 'awaiting-analysis')
+                           OVER () AS awaiting_total
                 FROM lims.sample s
                 LEFT JOIN lims.sample_result r ON r.sample_id = s.sample_id
                 WHERE s.status IN ('awaiting-analysis', 'received')
                 GROUP BY s.sample_id
-                ORDER BY s.sample_completion NULLS LAST, s.created_at
-                """
+                ORDER BY s.sample_completion DESC NULLS LAST, s.created_at DESC
+                LIMIT %s
+                """,
+                (limit,),
             ).fetchall()
+        # Both counts are the same on every row; no rows means nothing is open.
+        total = rows[0][11] if rows else 0
+        awaiting_total = rows[0][12] if rows else 0
         return [
             {
                 "sample_id": row[0],
-                "batch_id": row[1],
-                "status": row[2],
-                "badge_id": row[3],
-                "badge_holder": row[4],
-                "sample_start": row[5],
-                "sample_completion": row[6],
-                "open_duration_s": row[7],
-                "cycle_result": row[8],
-                "created_at": row[9],
-                "collected_at": row[10],
-                "results": row[11] if isinstance(row[11], list) else json.loads(row[11] or "[]"),
+                "status": row[1],
+                "badge_id": row[2],
+                "badge_holder": row[3],
+                "sample_start": row[4],
+                "sample_completion": row[5],
+                "open_duration_s": row[6],
+                "cycle_result": row[7],
+                "created_at": row[8],
+                "collected_at": row[9],
+                "results": row[10] if isinstance(row[10], list) else json.loads(row[10] or "[]"),
                 # 'awaiting-analysis' is the one state a signature cannot be
                 # applied to: there is nothing yet to have reviewed.
-                "reviewable": row[2] == "received",
+                "reviewable": row[1] == "received",
             }
             for row in rows
-        ]
+        ], total, awaiting_total
 
     def unmatched_results(self) -> list[dict]:
         """Results the instrument reported against an id no entry carries.
@@ -473,7 +489,7 @@ class Store:
         with self.connect() as conn:
             rows = conn.execute(
                 """
-                SELECT reported_sample_id, max(batch_id), min(collected_at), min(created_at),
+                SELECT reported_sample_id, min(collected_at), min(created_at),
                        json_agg(json_build_object(
                            'analyte', analyte, 'value', value, 'uom', uom
                        ) ORDER BY analyte) AS results
@@ -486,10 +502,9 @@ class Store:
         return [
             {
                 "reported_sample_id": row[0],
-                "batch_id": row[1],
-                "collected_at": row[2],
-                "created_at": row[3],
-                "results": row[4] if isinstance(row[4], list) else json.loads(row[4] or "[]"),
+                "collected_at": row[1],
+                "created_at": row[2],
+                "results": row[3] if isinstance(row[3], list) else json.loads(row[3] or "[]"),
             }
             for row in rows
         ]
@@ -551,7 +566,7 @@ class Store:
     # ---- review
 
     # Selected on both review paths, and the column order _build_envelope reads.
-    _ENTRY_COLUMNS = """sample_id, batch_id, equipment_id, badge_id, badge_holder,
+    _ENTRY_COLUMNS = """sample_id, equipment_id, badge_id, badge_holder,
                         sample_start, sample_completion, open_duration_s,
                         cycle_result, analyst, verified_at"""
 
@@ -765,13 +780,12 @@ class Store:
             },
             "values": {
                 "sample_id": sample_id,
-                "batch_id": self.cfg.default_batch_id,
                 "chem": {"gluc": 4.21, "lac": 1.08},
                 "osmo": 312.0,
             },
         }
         self.ingest(envelope)
-        return {"ok": True, "sample_id": sample_id, "batch_id": self.cfg.default_batch_id}
+        return {"ok": True, "sample_id": sample_id}
 
 
 def _build_envelope(entry: tuple, results: list, disposition: str) -> dict:
@@ -792,15 +806,17 @@ def _build_envelope(entry: tuple, results: list, disposition: str) -> dict:
 
     `values.equipment_id` is the vessel, parsed from pattern 1's topic. It is
     pattern 7's join key into bes.batch_event and em.reading, and it is the
-    reason 07 does not have to hardcode a reactor. `values.batch_id` is NOT --
-    every sample pattern 1 mints carries an empty one, so 07 takes batch
-    identity from bes.batch_event instead.
+    reason 07 does not have to hardcode a reactor. **There is no
+    `values.batch_id`**, and its absence is the point: nothing in the lab -- not
+    the valve, which opens on a badge, not the analyzer, which echoes whatever
+    was typed at it -- knows the work order. 07 resolves the batch against
+    `bes.batch_event` at the sample instant, from the batch system's own record.
 
     `values.disposition` is the analyst's verdict -- `pass` or `fail`. Both
     outcomes publish, so nothing downstream has to infer a rejection from
     silence. Pattern 7 fires on the review either way.
     """
-    (sample_id, batch_id, equipment_id, badge_id, badge_holder, sample_start,
+    (sample_id, equipment_id, badge_id, badge_holder, sample_start,
      sample_completion, open_duration_s, cycle_result, analyst, _verified_at) = entry
     collected_at = min((row[3] for row in results), default=None) or sample_completion
     return {
@@ -814,7 +830,6 @@ def _build_envelope(entry: tuple, results: list, disposition: str) -> dict:
         },
         "values": {
             "sample_id": sample_id,
-            "batch_id": batch_id,
             "equipment_id": equipment_id,
             "collected_at": _iso(collected_at) if collected_at else None,
             "analyst": analyst,
@@ -1138,12 +1153,13 @@ def create_app(cfg: Config, store: Store, ingest: MqttIngest, drainer: Drainer,
     def render(request: Request, flash: str = "", flash_ok: bool = True) -> HTMLResponse:
         analyst = request.query_params.get("analyst") or cfg.default_analyst
         try:
-            pending = store.pending_samples()
+            pending, pending_total, awaiting_total = store.pending_samples()
             unmatched = store.unmatched_results()
             outbox = store.outbox_rows()
         except Exception:
             LOG.exception("page query failed")
             pending, unmatched, outbox = [], [], []
+            pending_total = awaiting_total = 0
             if not flash:
                 flash = "Postgres is unreachable."
                 flash_ok = False
@@ -1159,9 +1175,15 @@ def create_app(cfg: Config, store: Store, ingest: MqttIngest, drainer: Drainer,
             "@@DRAINER_LABEL@@",
             "Running" if drainer.enabled.is_set() else "Paused",
         )
-        awaiting = [item for item in pending if not item["reviewable"]]
-        page = page.replace("@@PENDING_COUNT@@", str(len(pending)))
-        page = page.replace("@@AWAITING_COUNT@@", str(len(awaiting)))
+        # The counts are the totals, not what fits on the page -- a hint that
+        # counted only the visible 25 would understate the queue exactly when it
+        # matters. `shown` says so explicitly when the cap is biting.
+        shown = ("showing %s of %s sample(s)" % (len(pending), pending_total)
+                 if pending_total > len(pending) else "%s sample(s)" % pending_total)
+        page = page.replace("@@PENDING_SHOWN@@", shown)
+        # The nav badge is the whole queue, capped or not.
+        page = page.replace("@@PENDING_COUNT@@", str(pending_total))
+        page = page.replace("@@AWAITING_COUNT@@", str(awaiting_total))
         page = page.replace("@@UNMATCHED_COUNT@@", str(len(unmatched)))
         page = page.replace("@@OUTBOX_COUNT@@", str(len(outbox)))
         if flash:
@@ -1399,13 +1421,11 @@ def _pending_html(pending: list[dict], analyst: str) -> str:
                 cells = (
                     '<td class="sample-cell" rowspan="%s">'
                     '<div class="sid">%s</div>'
-                    '<div class="smeta">%s</div>'
                     '<div class="smeta">%s · %s</div>'
                     "%s@@FLAG@@"
                     "</td>" % (
                         span,
                         _esc(sample["sample_id"]),
-                        _esc(sample["batch_id"] or "batch not assigned"),
                         _esc(_fmt_display_ts(sample["collected_at"])),
                         "analyzer" if results else "no analyser",
                         _collection_html(sample),
@@ -1524,11 +1544,10 @@ def _unmatched_html(unmatched: list[dict], pending: list[dict], analyst: str) ->
         rows.append(
             "<tr>"
             '<td class="sample-cell"><div class="sid">%s</div></td>'
-            "<td>%s</td><td>%s</td><td>%s</td>"
+            "<td>%s</td><td>%s</td>"
             '<td class="action-cell">%s</td>'
             "</tr>" % (
                 _esc(item["reported_sample_id"]),
-                _esc(item["batch_id"] or "—"),
                 _esc(_fmt_display_ts(item["collected_at"])),
                 _esc(summary or "—"),
                 action,
@@ -1536,7 +1555,7 @@ def _unmatched_html(unmatched: list[dict], pending: list[dict], analyst: str) ->
         )
     return (
         "<table><thead><tr>"
-        "<th>Reported as</th><th>Batch</th><th>Acquired</th><th>Results</th><th></th>"
+        "<th>Reported as</th><th>Acquired</th><th>Results</th><th></th>"
         "</tr></thead><tbody>%s</tbody></table>"
         '<p class="meaning">The id the instrument reported is kept exactly as received. '
         "Attaching records which sample the analysis belongs to and who decided that — "

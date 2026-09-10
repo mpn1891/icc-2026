@@ -109,12 +109,16 @@ no row. [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md) § *Granularity*.
 
 ## 6. Approve — <http://localhost:8000>
 
-**Do not click the first thing on the screen.** The queue orders by `sample_completion` ascending, so
-a block of pre-`migrate-08` rows with a null `equipment_id` sits at the top, and they are the only
-other clickable rows there. Approving one produces a composite with `batch_context: null` and looks
-exactly like a broken join.
+**The sample you just drew is at the top.** Since 2026-09-09 the queue orders by
+`sample_completion` **descending**, capped at 25, with the panel hint saying "showing 25 of N"
+when there is more behind it. The pre-`migrate-08` rows with a null `equipment_id` are from
+2026-08-25, so newest-first puts them below every entry drawn since — usually off the page
+entirely. (That is the *date* sorting them down, not their null `equipment_id`; `NULLS LAST`
+governs a different column, `sample_completion`, and only matters for an entry with no close time
+at all.) Approving one of them still produces a composite with `batch_context: null` that looks
+exactly like a broken join, so it is worth checking the id before clicking.
 
-Find **your** `sample_id` and approve that one. Reject works too and is worth doing once: same
+Confirm the `sample_id` is **yours**, then approve it. Reject works too and is worth doing once: same
 document, `disposition: "fail"`, not silence.
 
 ## 7. Nothing is published — and that is the pass
@@ -194,7 +198,7 @@ an instrument and sign. That gap is provenance, not lag.
 | Symptom | Cause | Fix |
 |---|---|---|
 | The review message landed, the composite never did | The Event Stream MQTT source may not re-subscribe after a broker drop — **unmeasured as of 2026-08-31** | Disable and re-enable `07_chain/lims-review`, then approve again |
-| `batch_context: null`, reason `the review message carried no equipment_id` | You approved one of the pre-`migrate-08` rows at the top of the queue | Approve your own sample (step 6) |
+| `batch_context: null`, reason `the review message carried no equipment_id` | You approved one of the pre-`migrate-08` rows, which now sort to the bottom of the queue rather than the top | Approve your own sample (step 6) |
 | `qualified_window: false` | The reactor is not in `GROWTH`, or the sample was drawn before the advance | Step 3, then draw again. Note this is also a deliberate demo beat |
 | `environment: null` with a reason beside it | `em.reading` is empty | Step 1 |
 | `age_s` in the thousands | The poll recovered but the instrument is not sampling | Press **Start** on <http://localhost:8089> |

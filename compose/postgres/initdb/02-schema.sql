@@ -43,12 +43,14 @@ CREATE TABLE plant.batch (
 -- docs/00-architecture.md § *The sample id, and pattern 1 mints it* already set;
 -- this is that rule expressed in the schema.
 --
--- The valve event carries no `batch_id` — it does not know one. That column is
--- filled from the analyzer result when it attaches, and stays null on a sample
--- that never gets analysed.
+-- **There is no `batch_id` here** (dropped 2026-09-09, migrate-10). Nothing in
+-- the lab knows the work order: the valve opens on a badge, and the analyzer
+-- only echoes whatever was typed at it. Batch identity belongs to the batch
+-- system, and pattern 7 resolves it against `bes.batch_event` at the sample
+-- instant using `equipment_id` below. A LIMS-side copy was a fourth convention
+-- competing with three others and was never read by anything downstream.
 CREATE TABLE lims.sample (
     sample_id         text PRIMARY KEY,      -- minted by the valve on the badge grant
-    batch_id          text,                  -- from the analyzer result, not the valve
     -- Which vessel this was drawn from, topic form and lowercase (br-201).
     -- Pattern 7's join key into bes.batch_event and em.reading; parsed from the
     -- valve event topic by the bridge, because pattern 1's payload does not
@@ -97,7 +99,6 @@ CREATE TABLE lims.sample_result (
     id                 bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     reported_sample_id text NOT NULL,        -- what the instrument said
     sample_id          text,                 -- the entry it belongs to; NULL = unmatched
-    batch_id           text,
     analyte            text NOT NULL,        -- 'glucose' | 'lactate' | 'osmolality' | …
     value              numeric(12,4) NOT NULL,
     uom                text NOT NULL,

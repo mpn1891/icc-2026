@@ -1,8 +1,10 @@
 # Status
 
-> **Updated 2026-09-06.** **All seven patterns are built, and all seven talk tracks now exist.**
-> What is left is the Chariot licence, one unmeasured behaviour in 07's trigger, and the
-> housekeeping in [`00-post-07.md`](00-post-07.md) § 6.
+> **Updated 2026-09-09.** **All seven patterns are built, and all seven talk tracks now exist.**
+> What is left is the Chariot licence, one unmeasured behaviour in 07's trigger, the housekeeping
+> in [`00-post-07.md`](00-post-07.md) § 6, and — new on 2026-09-09 and the only actual code left —
+> [`00-post-07.md`](00-post-07.md) § 7, moving 07's batch identity onto the tag historian. Its
+> brief is [`07-sample-chain.md`](07-sample-chain.md) § 2a.
 
 What is built and what is not — nothing else. This file was 208 lines on 2026-08-25 and was
 gutted the same day, because most of it was either duplicated or archaeology:
@@ -24,6 +26,12 @@ closed. All seven patterns are built and all seven talk tracks are written, so w
 the gap between *the mechanisms work* and *the talk can be given* is: the Chariot licence, the
 review queue's twelve stale reviewables, one unmeasured behaviour in 07's trigger, and
 housekeeping.
+
+**Start with § 7** — added 2026-09-09 and the only code left on the list. 07's batch identity
+moves off `bes.batch_event`'s last-advance row and onto tag history at the sample instant, with
+the valve's sample id historized alongside it. Brief:
+[`07-sample-chain.md`](07-sample-chain.md) § *2a. The historian route*. Everything else on
+`00-post-07.md` is a licence email, a click, or a tidy-up.
 
 ## Built
 

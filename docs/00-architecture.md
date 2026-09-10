@@ -5,6 +5,7 @@ behind them, and every trap that cost real time to find. **This is the reference
 fact.** If something here is contradicted elsewhere, this file wins; if you learn something new,
 add it here rather than in a status note.
 
+- Each pattern's path from device to topic, drawn: [`data-flows.md`](data-flows.md).
 - What is built and what is not: [`plans/00-status.md`](plans/00-status.md).
 - What is still to be built, and in what order: [`plans/00-master-plan.md`](plans/00-master-plan.md).
 - Talk tracks — **all seven exist as of 2026-09-06**:

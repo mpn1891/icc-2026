@@ -133,7 +133,6 @@ walk, and the timestamps are illustrative — the walk's exact pair is quoted un
   },
   "values": {
     "sample_id": "S-20260831-0103",
-    "batch_id": "B-20260831-01",
     "equipment_id": "br-201",
     "analyst": "mnorris",
     "disposition": "pass",
@@ -170,9 +169,15 @@ how the cycle ended, beside the numbers somebody just signed for.
 null from pattern 3 and the absent-versus-zero rule writes no row. Deterministic, and not a bug
 to fix on stage.
 
-**`equipment_id` is the vessel and `batch_id` is not from the valve.** The valve opens on a badge,
-not on a work order, so the batch identity arrives with the analysis — and pattern 7 takes it from
-`bes.batch_event` regardless. `equipment_id` is what stops 07 having to hardcode a reactor.
+**`equipment_id` is the vessel, and there is no `batch_id` at all.** That absence is worth a
+sentence on stage rather than passing over. The valve opens on a badge, not on a work order, and
+the analyzer only echoes whatever somebody typed at it — so nothing in the lab actually knows
+which batch this material came from, and a LIMS-side copy of that field was only ever a guess
+dressed as a fact. **Pattern 7 asks the batch system instead**: `equipment_id` plus the
+acquisition instant against `bes.batch_event` gives the batch that was genuinely running when the
+valve opened. Dropped from the message and from `lims.sample` on 2026-09-09
+([`migrate-10`](../../compose/postgres/migrate-10-drop-lims-batch-id.sql)); `equipment_id` is what
+stops 07 having to hardcode a reactor, and now it is also what identifies the batch.
 
 ## The failure demo — rehearse it, it is the engineering half of the segment
 

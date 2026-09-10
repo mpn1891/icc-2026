@@ -130,7 +130,6 @@ are `opcua_event.build_cell_analyzer_result`'s, the two analyte values are the o
   "ts": "2026-08-31T15:41:04.000Z",
   "values": {
     "sample_id": "S-20260831-0103",
-    "batch_id": "B-20260831-01",
     "vessel_id": "BR-201",
     "operator": "Admin User",
     "chem": { "gluc": 5.92, "lac": 0.14, "na": "…", "k": "…" },
