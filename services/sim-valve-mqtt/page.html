@@ -303,9 +303,14 @@
     <h2>Simulator controls — not part of the device</h2>
     <div class="body">
       <p class="sim-note">A real assembly has an RFID reader here, and a plant air header
-        behind the actuator. These buttons stand in for both.</p>
+        behind the actuator. The first two buttons stand in for both. The third stands in
+        for nothing at all &mdash; no device ships a switch that mutes its own instruments
+        &mdash; and is here only so the topic tree can be quietened while something else is
+        on screen. It stops the publishing, not the physics: the air still sags, the sample
+        still fails to seat, and nothing on the backbone says so.</p>
       <div class="badges" id="badges"></div>
       <button type="button" class="ghost" id="air-supply" style="margin-top:1rem"></button>
+      <button type="button" class="ghost" id="telemetry" style="margin-top:.5rem"></button>
       <div class="readout">
         <div class="stem">
           <div class="stem-track"><div id="stem-fill" class="stem-fill" style="height:4px"></div></div>
@@ -339,6 +344,7 @@
 var $ = function (id) { return document.getElementById(id); };
 var dirty = false;   // never overwrite what someone is halfway through typing
 var airSagged = false;
+var telemetryOn = true;
 
 function esc(s) {
   return String(s === null || s === undefined ? "" : s)
@@ -417,6 +423,11 @@ function renderRuntime(s) {
     ? "Air supply sagging — click to restore it (next sample seats normally)"
     : "Air supply nominal — click to sag it (next sample fails to seat)";
 
+  telemetryOn = s.runtime.telemetry_enabled;
+  $("telemetry").textContent = telemetryOn
+    ? "Telemetry publishing — click to mute it (and clear the retained document, so the topic leaves the tree)"
+    : "Telemetry muted — click to resume it (badge scans, samples and status are unaffected)";
+
   paintTvis(v, s.runtime.last_cycle_result);
 
   var ls = s.runtime.last_scan;
@@ -472,6 +483,11 @@ $("badges").addEventListener("click", function (e) {
   var button = e.target.closest ? e.target.closest("button[data-badge]") : null;
   if (!button) { return; }
   post("/api/scan", { badge_id: button.getAttribute("data-badge") })
+    .then(function (r) { if (r.state) { apply(r.state); } });
+});
+
+$("telemetry").addEventListener("click", function () {
+  post("/api/telemetry", { enabled: !telemetryOn })
     .then(function (r) { if (r.state) { apply(r.state); } });
 });
 

@@ -129,6 +129,7 @@ the old retained documents sit at the old topics until something clears them —
 | `BADGE_ROSTER` | see above | |
 | `SAMPLE_WINDOW_S` / `VALVE_STROKE_S` | `12` / `1.5` | |
 | `TELEMETRY_INTERVAL_S` | `5` | |
+| `TELEMETRY_ENABLED` | `true` | whether the stream is running at startup; **`false` opens on a quiet topic tree**. Toggled live on the config page, not persisted — a restart returns to this |
 | `AIR_SUPPLY_BAR` | `5.5` | nominal actuator supply |
 | `AIR_SUPPLY_SAG_BAR` | `3.2` | what the page's sag button drops it to; between the seat threshold (4.5) and the stroke threshold (2.5), so it produces `failed-to-seat`. Below 2.5 the same button produces `stroke-timeout` |
 | `ENCLOSURE_TEMPERATURE_C` | `31.5` | |
@@ -149,6 +150,14 @@ the page walks `unlocking → open → closing → locked` while the wire stays 
 
 Sag the air supply, then press `B-1042`: the scan is granted and the sample completes
 `failed-to-seat`. Restore the supply and the next one is `normal`.
+
+Mute the telemetry from the same panel and the five-second stream stops. Because Retained is
+on by default, muting also publishes a zero-byte retained message to `telemetry`, which is
+what actually removes the topic from a broker's tree — stopping the publish alone would
+leave the last document sitting there for every later subscriber to read as current. Badge
+scans, sample completions and `status` are untouched. Nothing about the physics stops: sag
+the air while muted and the next sample still comes back `failed-to-seat`, with nothing on
+the wire having predicted it.
 
 `docker kill icc26-sim-valve-mqtt` fires the will: `status` goes to `offline`, published by
 the broker, with a `ts` that is when the session *connected*. `docker stop` disconnects

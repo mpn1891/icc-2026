@@ -142,6 +142,12 @@ class Config:
         self.stroke_s = _env_float("VALVE_STROKE_S", 1.5)
         self.sample_window_s = _env_float("SAMPLE_WINDOW_S", 12.0)
         self.telemetry_interval_s = _env_float("TELEMETRY_INTERVAL_S", 5.0)
+        # Whether the stream starts running. A stage control rather than firmware, and
+        # deliberately NOT in COMMISSIONABLE: the vendor's page has no such checkbox, and
+        # adding one would quietly repair the thing this container exists to show. Set
+        # false for a scripted run that should open on an empty topic tree; the config
+        # page toggles it live either way, and the setting does not survive a restart.
+        self.telemetry_enabled = _env_bool("TELEMETRY_ENABLED", True)
         # 0 disables free-running scans -- use that for a scripted stage run where the only
         # traffic should be the badge you present yourself.
         self.scan_interval_s = _env_float("SCAN_INTERVAL_S", 90.0)
@@ -221,7 +227,8 @@ class Config:
             {"message_type": TELEMETRY, "topic": self.topic(TELEMETRY), "qos": self.qos,
              "retain": self.retain,
              "note": "actuator air supply and enclosure temperature every %ss -- "
-                     "disposable" % self.telemetry_interval_s},
+                     "disposable, and the only one of the four the simulator controls "
+                     "below can mute" % self.telemetry_interval_s},
         ]
 
 
@@ -416,6 +423,27 @@ class MqttSink(Sink):
     def valve_telemetry(self, values: dict, ts: float) -> None:
         self._publish(TELEMETRY, envelope(self.cfg, values, ts))
 
+    def clear_retained_telemetry(self) -> None:
+        """Delete the retained telemetry document, so muting the stream empties the topic.
+
+        Stopping the publish is not enough while Retained is on. The last document stays
+        at the topic, every subscriber that connects afterwards is handed a stale air
+        supply reading as though it were current, and the topic itself never leaves the
+        broker's tree -- which is exactly the clutter the mute was for. A zero-byte
+        retained publish is how MQTT 3.1.1 says "forget this" (3.3.1.3), and it is the
+        only thing that actually removes it.
+
+        Same fact the topic-change warning in apply() makes, from the other side: a
+        retained message outlives the configuration that produced it, and somebody has to
+        go and clear it. Pattern 2 never has this problem -- the spec pins DATA to
+        retain=false, so a muted Sparkplug stream leaves nothing behind at all.
+        """
+        client = self.client
+        if client is None or not self.cfg.retain:
+            return
+        client.publish(self.cfg.topic(TELEMETRY), b"", qos=self.cfg.qos, retain=True)
+        self.published += 1
+
 
 # -- the config page's view of the device ------------------------------------------------
 
@@ -467,6 +495,7 @@ class Provider(webui.ConfigProvider):
                 "last_scan": self.assembly.last_scan,
                 "last_cycle_result": self.assembly.last_cycle_result,
                 "air_sagged": self.assembly.air_sagged,
+                "telemetry_enabled": self.assembly.telemetry_enabled,
                 "published": self.sink.published,
             },
             "roster": [badge.as_dict() for badge in cfg.roster.values()]
@@ -516,6 +545,14 @@ class Provider(webui.ConfigProvider):
 
     def set_air_supply(self, sagged: bool) -> None:
         self.assembly.set_air_supply(sagged)
+
+    def set_telemetry(self, enabled: bool) -> None:
+        # Muting a retained topic that keeps its last document is not muting it, so the
+        # device clears the document too. Turning the stream back on republishes within
+        # one interval and the topic reappears.
+        self.assembly.set_telemetry(enabled)
+        if not enabled:
+            self.sink.clear_retained_telemetry()
 
 
 # -- main --------------------------------------------------------------------------------
