@@ -260,8 +260,11 @@ The 52 `Ranges` leaves are also **not** tags: constant across a sample type, and
 subscriptions that never change is what §10 of the model doc argues against. They remain
 browsable on the server.
 
-To run an analysis from the tag browser: set `command/sample_id` and `command/batch_id`, then
-write `true` to `command/esm_schedule_analysis`.
+To run an analysis from the tag browser: set `command/sample_id`, then write `true` to
+`command/esm_schedule_analysis`. (`command/batch_id` and `command/vessel_id` still exist and are
+still writable — they are the vendor's tags. Since 2026-09-09 nothing sets them: they came off the
+sample-login screen and out of the published result, because the instrument does not know a batch.
+See `opcua_event/code.py` and docs/plans/07-sample-chain.md decision 2.)
 
 ### Two things Ignition 8.3 requires, learned on the Countess
 

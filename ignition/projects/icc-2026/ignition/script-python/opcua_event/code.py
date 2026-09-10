@@ -11,6 +11,14 @@ a consumer learns where it came from from the topic it arrived on. The sample id
 `meta.correlation_id` on the way back out, so the sample is still traceable across two
 colours on the firehose without this pattern asserting a field it did not measure.
 
+**`batch_id` is deliberately not published** (removed 2026-09-09). The vendor tag exists and
+stays bound -- `result/batch_id` is still one of the 57 monitored tags -- but the instrument
+does not know a batch. It echoes whatever was typed at its sample-login screen, and that field
+was removed from the screen the same day, so the tag now only ever holds its startup fallback.
+Publishing a hardcoded constant as though it were a measurement is exactly the assertion the
+paragraph above refuses. Batch identity is pattern 7's, resolved from the historian at the
+sample instant: docs/plans/07-sample-chain.md section "The decisions 07 inherits", decision 2.
+
 Jython 2.7: no f-strings, no type hints, integer division is floor division.
 """
 
@@ -22,7 +30,6 @@ LOGGER_NAME = "opcua_event"
 # Relative to the result folder the tag script passes in.
 _FIELDS = (
     "sample_id",
-    "batch_id",
     "vessel_id",
     "cell_type",
     "sample_source",
@@ -109,7 +116,6 @@ def build_cell_analyzer_result(result_folder):
         "ts": sample_time,
         "values": {
             "sample_id": _value(by_name["sample_id"]),
-            "batch_id": _value(by_name["batch_id"]),
             "vessel_id": _value(by_name["vessel_id"]),
             "cell_type": _value(by_name["cell_type"]),
             "sample_source": _value(by_name["sample_source"]),

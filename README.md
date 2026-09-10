@@ -289,9 +289,10 @@ Makefile          2-line Linux/macOS forwarder (make up)
 works and why; [`docs/plans/00-status.md`](docs/plans/00-status.md) for what is true today,
 [`docs/plans/00-post-07.md`](docs/plans/00-post-07.md) for what is left before the conference;
 [`docs/plans/`](docs/plans/) for per-pattern build specs — each one records what was built and
-what stayed open. [`docs/end-to-end-test.md`](docs/end-to-end-test.md) proves the stack works,
-[`docs/demo-through-line.md`](docs/demo-through-line.md) is why the segments run in the order
-they do, and [`docs/talk-tracks/`](docs/talk-tracks/) is what is said over each one.
+what stayed open. [`docs/data-flows.md`](docs/data-flows.md) draws each pattern's path from
+device to topic, one diagram apiece. [`docs/end-to-end-test.md`](docs/end-to-end-test.md) proves
+the stack works, [`docs/demo-through-line.md`](docs/demo-through-line.md) is why the segments run
+in the order they do, and [`docs/talk-tracks/`](docs/talk-tracks/) is what is said over each one.
 
 ## Topic namespace
 

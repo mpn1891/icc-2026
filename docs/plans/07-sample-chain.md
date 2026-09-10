@@ -14,6 +14,7 @@
 | **Touches** | one new script module `sample_chain`, one new event stream `07_chain/lims-review`, `docs/plans/*` |
 | **Does not touch** | `particle_counter_poll`, `bes_batch`, `bes_cdc`, `lims_webhook`, the UDTs, the simulators, the schema. **07 adds no tables, no ACL change, no new datasource** |
 | **Blocked by** | Nothing. Every prerequisite is built, committed and verified |
+| **Open, as of 2026-09-09** | Decision **2a** — move `batch_id` off `bes.batch_event` and onto tag history, and historize the valve's sample id alongside it. Specified below, not built |
 | **Unblocks** | The last talk track, and the demo's closing argument |
 
 ## Why this pattern is different
@@ -85,10 +86,11 @@ explicitly (*"this pattern and pattern 7 are the only two there are"*). That cla
 > to disk with `type: com.cirruslink.mqtt.engine.gateway.mqtt.source`, applied with `scan`, and
 > the gateway logged its own subscription. Route 1 is not needed. § *As built*.
 
-### 2. Batch identity comes from `bes.batch_event`, never from the review message
+### 2. Batch identity is never the lab's to assert
 
-`values.batch_id` on the review message is **empty for every sample the demo produces**, and
-there are now **four** conventions live, not the three the old plan recorded:
+**The decision as taken 2026-08-30.** `values.batch_id` on the review message was **empty for
+every sample the demo produced**, and there were **four** conventions live, not the three the
+old plan recorded:
 
 | Where | Value | Count |
 |---|---|---|
@@ -97,9 +99,116 @@ there are now **four** conventions live, not the three the old plan recorded:
 | `lims.sample` seed | `B-2026-0142` | 10 |
 | `bes.batch_event`, pre-2026-08-30 | `12345` | all old rows |
 
-07 takes `batch_id` off the `bes.batch_event` row it already lands on for the operation. It is
-free — same row, same query — and batch identity in the composite then comes from the batch
+07 therefore took `batch_id` off the `bes.batch_event` row it already lands on for the
+operation — free, same row, same query, and batch identity in the composite came from the batch
 system rather than from the lab's copy of it.
+
+> **Revised 2026-09-09 — the four conventions are down to one, and the source moves to the
+> historian.** Three of the four were deleted rather than reconciled:
+>
+> - The **cell analyzer's sample-login screen** lost its Batch ID and Vessel ID fields. Nobody at
+>   a sample port knows the work order, and the instrument only ever echoed what was typed at it.
+> - **`opcua_event.build_cell_analyzer_result` stopped publishing `values.batch_id`.** With the
+>   field gone from the screen the vendor tag holds nothing but its startup fallback, and
+>   publishing a hardcoded constant as a measurement is the assertion that module's own docstring
+>   refuses. The tag stays bound; it is simply not read into the document.
+> - **`lims.sample.batch_id` and `lims.sample_result.batch_id` were dropped**
+>   ([`migrate-10`](../../compose/postgres/migrate-10-drop-lims-batch-id.sql)), so the review
+>   message carries no `batch_id` at all. Nothing downstream read it — `sample_chain` never did.
+>
+> **What replaces it, and it is not `bes.batch_event`.** Taking the batch off the event row was
+> always the cheap answer rather than the right one: it names the batch that was running at the
+> reactor's last *advance*, which is only the batch running at the *sample instant* because
+> nothing in this demo interleaves them. The question 07 exists to ask is what was true when the
+> valve opened, and the thing that answers questions about what a value was at an instant is the
+> historian. **07 should query tag history on the reactor's `batch_data/batch_id`.**
+
+### 2a. The historian route — specified 2026-09-09, to be built
+
+Not started. This section is the brief, not a record.
+
+**The infrastructure is already there**, which is why this is a small job and not a new pattern:
+
+| Piece | State |
+|---|---|
+| `pg-historian` historian provider | **exists**, `SqlHistorian`, monthly partitions, 1-year pruning |
+| Its datasource `pg_db` | **exists** → `jdbc:postgresql://postgres:5432/postgres`, user `ignition`. Decision 6 already says it stays |
+| `System/Gateway/StoreAndForward/pg_db/Pipelines/TagHistory` | **exists** |
+| `br-201/batch_data/batch_id` | **exists**, String, memory tag, written by `bes_batch` on the first advance out of IDLE and cleared at `batch_end` |
+| `br-201` sample valve's `last_sample_id` | **exists**, String, **reference** tag bound through `{sample_id_path}` to the MQTT Engine tag |
+| `last_sample_time` | **exists**, DateTime, **expression** tag normalising pattern 1's ISO text and pattern 2's typed DateTime |
+| History **on any of them** | **missing.** No tag in the project carries `historyEnabled` — grep says so |
+
+So the build is four steps:
+
+1. Set `historyEnabled` + `historyProvider: pg-historian` on the bioreactor UDT's
+   `batch_data/batch_id` (and `batch_data/operation` is worth the same treatment while the file
+   is open — see the trap below). It is a memory tag, so history records the writes `bes_batch`
+   makes and nothing else, which is exactly the series wanted.
+2. **Historize the sample valve's `last_sample_id` and `last_sample_time` too** — added
+   2026-09-09, and see § *What historizing the sample id is and is not for* below, because it is
+   **not** what makes step 3 work. Use value-change sample mode, not a fixed rate: a String tag
+   on a scan class writes a row per scan for a value that changes a few times an hour.
+3. Replace the `batch_id` column in `sample_chain._BATCH_QUERY` with a
+   `system.tag.queryTagHistory` call against `batch_data/batch_id`: `rangeEnd` = the sample
+   instant, `aggregationMode="LastValue"`, `returnSize=1`. The tag path is already derivable —
+   `sample_chain.EQUIPMENT_TAG` builds the same prefix for `asset_data/equipment_identifier`.
+4. Carry a reason string when it comes back empty, the way `_batch_context` and `_environment`
+   already do. A sample drawn before the reactor's first advance has no batch, and saying so is
+   the honest answer — that rule does not change.
+
+### What historizing the sample id is and is not for
+
+**It is not a prerequisite for step 3, and starting there is how tomorrow gets spent on the wrong
+thing.** 07 already holds the sample instant: `_sample_instant()` takes
+`collection.sample_completion` off the review message — the valve close, pattern 1's own fact,
+and already the correct choice over `collected_at`, which is when the *analysis* ran (72 s later
+on stage, hours later in a plant). That instant feeds the history query directly. The sample id
+does not appear in it.
+
+What the sample id in history buys is three other things, and they are worth having:
+
+1. **The chain becomes reconstructible from the historian alone.** Today the instant is asserted
+   by a message that crossed three hops. With `last_sample_id` and `last_sample_time` historized,
+   07 can take only the id from the message and resolve the time from the system that recorded
+   it. That is the difference between provenance and hearsay, and it is the version that survives
+   a regulated audit.
+2. **The join becomes reversible** — *which samples were drawn during batch `B-20260830-02`?*
+   That is the question a QA investigator actually asks, and 07 cannot answer it in either
+   direction today.
+3. It makes *"the historian is the system of record"* a true sentence on stage rather than a
+   decorative one.
+
+> **The wrinkle to settle before writing code.** `system.tag.queryTagHistory` returns values over
+> a **time range**. It does not search for *when a tag held a given value*. So "resolve the
+> instant from the sample id" is not a tag-history call — it is either a windowed query scanned in
+> Jython, or a direct SELECT against the SQL historian's own tables (`sqlth_te` → `sqlt_data_*` in
+> `pg_db`), which means reaching past the tag API into the historian's schema. Decide which, or
+> leave the instant coming from the message and let the sample-id history serve reasons 2 and 3
+> only. **The recommendation is the latter**: it keeps step 3 a one-line change and still puts the
+> series in the historian for the reverse query.
+
+> **These two tags do not have `bes.batch_event`'s reliability profile.** `last_sample_id` is a
+> reference tag and `last_sample_time` an expression tag, so history records *the gateway's copy*
+> — a gateway outage is a gap in the series, subject to whatever store-and-forward caught. The
+> batch event table is tailed from the WAL by an out-of-band observer and has no such hole. If the
+> composite is going to lean on tag history for provenance, that asymmetry belongs in the talk
+> track rather than discovered by someone in the audience.
+
+**The trap, and it is the whole reason to write this down before building it.** Splitting the
+lookup makes `batch_id` and `operation` come from two different sources that can disagree, and
+they have a known skew: the UDT's own documentation on `batch_data/operation` records that
+`bes_batch` writes the tag **after** the database commit, so the tag lags the row. Within that
+window the historian and `bes.batch_event` will name different things. Decide deliberately
+whether the composite reports the historian for both (consistent, and matches what an operator
+watching the tag would have seen) or keeps `operation` on the event row (matches the record of
+record). **Do not let it fall out of the implementation by accident.** Whichever way it goes,
+the `ORDER BY occurred_at DESC, id DESC` tie-break below still governs anything still read from
+`bes.batch_event`.
+
+**Retire the `12345` rows first.** They are pre-2026-08-30 `bes.batch_event` rows and they are
+the last of the four conventions. If the composite is going to name one batch from one source,
+that source should not still contain a placeholder.
 
 ### 3. `operation` is never empty
 
@@ -199,6 +308,11 @@ WHERE  equipment_id = ?           -- values.equipment_id from the review message
 ORDER  BY occurred_at DESC, id DESC
 LIMIT  1;
 ```
+
+> **`batch_id` leaves this query** — decision 2a, 2026-09-09, not yet built. It moves to a tag
+> history query on `br-201/batch_data/batch_id` at the sample instant, which answers *what was
+> the batch when the valve opened* rather than *what was the batch at the reactor's last
+> advance*. Until that lands, this column is still where the composite's batch comes from.
 
 ```sql
 -- 2. what the room was doing.  Keyed on a DEVICE, not on the reactor.
@@ -467,6 +581,11 @@ on stage and be surprised by.
 - **`S-EQTEST-001`** is synthetic test data in `lims.sample`, verified, outbox row 22. Delete it.
 - **Three `nonUseCount` tag-provider files** reappear as a diff on every gateway restart. Worth
   gitignoring.
+- **Decision 2a is open and is 07's problem**, unlike everything else in this list: the batch in
+  the composite still comes from the reactor's last advance rather than from the sample
+  instant. Specified above, infrastructure already in place, not built.
+- **The `12345` rows in `bes.batch_event`** are the last of the four batch conventions and
+  should go before 2a lands.
 - **New, from the build: the MQTT source's subscription across a broker drop is unmeasured.**
   § *As built*. It matters because the Chariot trial lapses on its own, and it is one bounce and
   one approval to settle.
@@ -477,4 +596,5 @@ on stage and be surprised by.
 |---|---|
 | 2026-08-30 | Spec written, from [`00-pre-07-cleanup.md`](00-pre-07-cleanup.md)'s four closed checkpoints and seven decisions |
 | 2026-08-30 | **Built and broker-verified the same evening. All eight checkpoints closed.** `sample_chain` + Event Stream `07_chain/lims-review`, applied with `scan` — no restart, no Designer, and nothing outside the two new resources changed. Route 0 held and the gateway said so in its own log; the source's type id, config keys and `byte[]` payload are recorded in § *As built* along with five document shapes the spec left open. Two real approvals (`S-20260830-0085` pass, `S-20260830-0084` fail) and two transient probes closed the eight. **One correction to this file:** CP6's wording contradicts decision 7 — nearest-either-side means the environment block is `null` only on an empty `em.reading`, so a stopped particle counter shows a growing `age_s`, not a silence. Both halves of what CP6 was for are closed anyway. One new open item: the source's re-subscribe behaviour across a broker drop |
+| 2026-09-09 | **Batch identity re-sourced, on paper.** The four competing `batch_id` conventions were cut to one by deletion rather than reconciliation: the analyzer's sample-login screen lost its Batch ID and Vessel ID fields, `opcua_event` stopped publishing `values.batch_id`, and `lims.sample.batch_id` / `lims.sample_result.batch_id` were dropped ([`migrate-10`](../../compose/postgres/migrate-10-drop-lims-batch-id.sql)) — so the review message no longer carries a batch at all. `sample_chain` never read it, so nothing broke. **What it does read is now the wrong source too**, and decision **2a** specifies the replacement: tag history on `br-201/batch_data/batch_id` at the sample instant. `pg-historian`, `pg_db` and the tag all exist; `historyEnabled` on that tag does not. Scope grew the same evening: the valve's `last_sample_id` and `last_sample_time` get historized too — **not** because the batch lookup needs them (07 already holds the sample instant from the review message) but so the chain is reconstructible from the historian alone and the batch→samples join runs in reverse. One thing to settle before coding: `queryTagHistory` searches a time range, not a value, so resolving an instant *from* a sample id is not a tag-history call. Not built — next session |
 | 2026-09-06 | **Reversed to publish only a deviation, and broker-verified the same afternoon.** Topic moved `icc26/site1/qc/sample-chain` → `icc26/site1/qc/deviation`; `values.violations` names what was wrong and is never empty on a message that exists. Triggers are `em.reading.status == "excursion"` and `disposition == "fail"`, both read as flags their owning modules already set — 07 still computes nothing. `qualified_window` is reported but deliberately not a trigger. **One Ignition finding cost the first implementation:** a transform returning `None` does **not** suppress a message, it publishes the four-byte string `None`, because `transformEncoder` is `ignition.string` — watched live on the topic. The filter is the only stage that can stop a message, so the gate moved to `filter.userCode` → `sample_chain.is_deviation(event.data)` and the fact went to [`../00-architecture.md`](../00-architecture.md). Verified on the real gesture, no fixtures: **Dirty** at :8089 → 163 counts → 3482/4303/4218, badge `B-1042` → `S-20260906-0006` → **approved**, and it deviated anyway on `environmental_excursion`, `age_s` 2.4 `after`, `GROWTH`, `qualified_window: true`, `disposition: pass` — a sample that passed every analytical spec and still failed the room. **Clean** → `S-20260906-0008` → silence, `... is clean; no deviation published` in the gateway log. A rejection published `failed_review` on its own. Applied with `scan` — no restart, no Designer |

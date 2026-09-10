@@ -62,11 +62,12 @@ SCHEDULER = "ESMScheduleAnalysis"
 INFO = SCHEDULER + "/SampleInformation"
 
 # form field -> vendor tag under INFO. `sample_id` is deliberately first: it is
-# the one that matters and the one a person types.
+# the one that matters and the one a person types. BatchID and VesselID exist on
+# the vendor's SampleInformation branch and are still published on the result --
+# they are just not asked for here, because nobody at the sample port knows the
+# work order. They keep whatever the instrument was left holding.
 INFO_FIELDS = (
     ("sample_id", "SampleID"),
-    ("batch_id", "BatchID"),
-    ("vessel_id", "VesselID"),
     ("cell_type", "CellType"),
 )
 

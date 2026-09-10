@@ -22,7 +22,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cell Analyzer — Sample Login</title>
+<title>Pattern 3 — Cell Analyzer — Sample Login</title>
 <style>
   :root {
     --navy: #0a3d62;
@@ -250,14 +250,6 @@
 
       <div class="grid">
         <div>
-          <label for="batch_id">Batch ID</label>
-          <input id="batch_id" type="text" autocomplete="off" placeholder="B-2026-0142">
-        </div>
-        <div>
-          <label for="vessel_id">Vessel ID</label>
-          <input id="vessel_id" type="text" autocomplete="off" placeholder="BRX-2000-A">
-        </div>
-        <div>
           <label for="cell_type">Cell type</label>
           <input id="cell_type" type="text" autocomplete="off" placeholder="CHO-K1">
         </div>
@@ -318,7 +310,7 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
-  const FIELDS = ["sample_id", "batch_id", "vessel_id", "cell_type", "operator"];
+  const FIELDS = ["sample_id", "cell_type", "operator"];
   let typesFilled = false;
 
   function say(ok, text) {
@@ -357,7 +349,7 @@
     // one gets sent.
     if (document.activeElement && document.activeElement.tagName === "INPUT") return;
     if (s.loaded) {
-      ["batch_id", "vessel_id", "cell_type"].forEach((k) => {
+      ["cell_type"].forEach((k) => {
         if (!$(k).value && s.loaded[k]) $(k).value = s.loaded[k];
       });
     }
