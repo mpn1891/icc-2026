@@ -217,6 +217,22 @@ exactly four things:
 | **Room condition: clean / dirty** | The excursion. A physical gesture on stage rather than a `curl` |
 | **Live readout** | Last analysis, its counts, seconds to the next one. Proves the instrument is running independently of whether Ignition is looking |
 
+**A fifth control was added on 2026-09-10, and it is deliberately not one of the four.** The
+**sequence-persistence switch** sits on a rig strip *below* the case — dashed, dim, labelled
+*not part of the instrument* — because no real counter has a button for whether its own record
+numbering survives a power cycle.
+
+| | |
+|---|---|
+| **OFF** (default, and what a fresh volume gives you) | the counter restarts at 1, a stored cursor points past the end, the poll publishes nothing with everything green — **the stale-cursor demo, unchanged** |
+| **ON** | the counter survives the restart, the cursor stays valid, the poll picks up on its own — a rehearsal stack that stops going blind every time the container bounces |
+
+The switch persists to `/config` alongside the sample point and the room, so it is armed once
+and stays armed. **The buffer is still not persisted either way** — records nobody saw the
+instrument take have no business reappearing, the same rule that makes `SEED_SAMPLES` 0. And
+`POST /api/persist-sequence` is **not in the GraphQL schema**: the switch is the rig's, not the
+vendor's, so the table in § *What we do not add to the API* is unaffected.
+
 **`SEED_SAMPLES: 0` makes "press Start" a pre-show step that can be forgotten.** Mitigate, do
 not remove: the panel shows a large idle banner when the buffer is empty, and `tasks.py health`
 **now** reports the run state and the buffer count — both built. The forgotten-Start symptom is

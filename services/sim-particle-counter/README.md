@@ -106,6 +106,24 @@ it carries exactly four things:
 counts and does not know what a cleanroom limit is. The threshold is Ignition's rule and lives
 in exactly one place — `config/excursion_threshold` on the `particle_counter` UDT.
 
+### The rig strip below the case — a fifth control that is not the instrument's
+
+**Sequence persistence: OFF / ON.** Off, the sequence counter restarts at 1 when the container
+restarts, a poller's stored cursor still points past the end, and the poll runs perfectly while
+publishing nothing — **that is the stale-cursor demo, and off is the default.** On, the counter
+comes back and the cursor stays valid, so the poll picks up on its own. The switch itself
+persists to `/config`, so a rehearsal stack told once to keep its counter keeps it across
+`down`/`up` with nothing to re-arm.
+
+The buffer is **not** persisted either way. Records nobody in the room saw the instrument take
+have no business reappearing after a restart, which is the same reason `SEED_SAMPLES` is 0.
+
+It is drawn outside the instrument case, dashed and dim and labelled *not part of the
+instrument*, because a real counter has no button for whether its own record numbering survives
+a power cycle. It is a rig control, and `POST /api/persist-sequence` is **deliberately not in
+the GraphQL schema** — the vendor's surface stays the vendor's, the same boundary that keeps
+`startSampling` in the SDL and out of Ignition's hands.
+
 `SEED_SAMPLES: 0` means nothing exists until somebody presses Start, which makes that a pre-show
 step that can be forgotten. Two mitigations: the panel shows a large idle banner when the buffer
 is empty, and `python tasks.py health` reports the buffer count.

@@ -189,6 +189,13 @@ class Panel:
     room is doing, and what the last analysis said.
 
     Plain HTTP. It is a touchscreen on the front of a box, not an API.
+
+    **`/api/persist-sequence` is the one route that is not the instrument's.** No
+    real counter has a button for whether its own record numbering survives a
+    power cycle, so it is drawn on a service strip outside the case rather than
+    on the LCD, and the page says what it is. It is not in the GraphQL schema
+    either: the vendor's surface stays the vendor's. See
+    `Instrument.set_persist_sequence` for what it costs when it is on.
     """
 
     def __init__(self, instrument, page: bytes):
@@ -223,6 +230,8 @@ class Panel:
                 self.instrument.set_sample_point(payload.get("value"))
             elif path == "/api/room":
                 self.instrument.set_room(payload.get("value"))
+            elif path == "/api/persist-sequence":
+                self.instrument.set_persist_sequence(payload.get("value"))
             else:
                 return await _send_json(send, 404, {"ok": False,
                                                     "message": "not found"})

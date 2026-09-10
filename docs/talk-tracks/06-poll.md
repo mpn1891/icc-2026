@@ -191,6 +191,12 @@ The gateway is up. The timer fires. The HTTP call returns 200. The token refresh
 `state/last_error` stays empty. **Every health check is green.** A monitoring system that is up,
 connected, authenticated, and blind.
 
+> **Check the rig strip on `:8089` before you run this.** Below the instrument case there is a
+> **Sequence persistence** switch, added 2026-09-10 for rehearsal stacks that were going blind
+> every time somebody bounced the container. It must read **OFF** or this beat does not happen —
+> on, the counter survives the restart and the poll simply picks up. Off is the default and the
+> switch persists, so the only way it is on is that somebody turned it on.
+
 **The recovery is one tag.** Clear `state/cursor` in Tag Explorer and leave `state/last_sequence`
 alone — the poll drops its dedupe floor to zero whenever the cursor is empty, and the unique key
 on the vendor's analysis uuid is what makes that safe. Expect the backlog to drain faster than you
