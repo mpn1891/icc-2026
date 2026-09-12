@@ -62,13 +62,23 @@ SCHEDULER = "ESMScheduleAnalysis"
 INFO = SCHEDULER + "/SampleInformation"
 
 # form field -> vendor tag under INFO. `sample_id` is deliberately first: it is
-# the one that matters and the one a person types. BatchID and VesselID exist on
-# the vendor's SampleInformation branch and are still published on the result --
-# they are just not asked for here, because nobody at the sample port knows the
-# work order. They keep whatever the instrument was left holding.
+# the one that matters and the one a person types.
+#
+# `vessel_id` is asked for because the result publishes it. Left unasked it held
+# the empty string, so every run fell through to the instrument's own fallback
+# and put `BRX-2000-A` on the wire as though the analyzer had measured which
+# vessel the sample came from. A field on this screen makes it what it actually
+# is: transcribed, defaulted to BR-201 because that is the vessel this bench
+# serves, and wrong the moment somebody types it wrong -- the same honesty the
+# sample id gets two fields up.
+#
+# BatchID is the one still not asked. Nobody at the sample port knows the work
+# order, and batch identity is resolved from the historian at the sample instant
+# in pattern 7 rather than typed here: docs/plans/07-sample-chain.md, decision 2.
 INFO_FIELDS = (
     ("sample_id", "SampleID"),
     ("cell_type", "CellType"),
+    ("vessel_id", "VesselID"),
 )
 
 
@@ -180,28 +190,6 @@ class Console:
                  sample_id, str(payload.get("operator") or "Auto"))
         return True, "Analysis started for %s." % sample_id
 
-    def run_qc(self, level: str):
-        return self._call(self._run_qc("2" if str(level).strip() == "2" else "1"))
-
-    async def _run_qc(self, level: str):
-        """Run an onboard QC.
-
-        Kept as a button because QC otherwise only fires on free-running cycles
-        (`QC_EVERY_N`), and this instrument no longer free-runs. Losing it would
-        lose the manual's own section 9 warning made visible: QC writes QCResults
-        and increments QcCompleteCounter, and never touches the sample tree.
-        """
-        import app
-
-        state = await self._read(self.analyzer.ext.get("State"), -1)
-        if state == app.UNIT_STATE["Running"]:
-            return False, "An analysis is already running."
-        command = "ChemistryQcLevel" + level
-        await self.analyzer.command_leaves["%s/%s" % (command, command)].write(
-            True, app._now())
-        LOG.info("sample login: %s requested", command)
-        return True, "%s started -- no sample result, and no sample counter." % command
-
 
 class _Handler(BaseHTTPRequestHandler):
     server_version = "CellAnalyzer/1.0"
@@ -255,11 +243,6 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/run":
                 ok, message = self.console.run_sample(payload)
-                return self._send_json(200 if ok else 409,
-                                       {"ok": ok, "message": message,
-                                        "state": self.console.state()})
-            if path == "/api/qc":
-                ok, message = self.console.run_qc(payload.get("level") or "1")
                 return self._send_json(200 if ok else 409,
                                        {"ok": ok, "message": message,
                                         "state": self.console.state()})

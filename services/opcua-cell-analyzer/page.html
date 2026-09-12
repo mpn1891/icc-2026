@@ -166,8 +166,6 @@
     cursor: pointer;
   }
   button:hover { background: var(--cyan-2); }
-  button.ghost { background: #e8eef3; color: var(--navy); }
-  button.ghost:hover { background: #dce6ee; }
   button[disabled] { opacity: .45; cursor: not-allowed; }
 
   .msg { margin: .85rem 0 0; padding: .55rem .75rem; font-size: .86rem; }
@@ -186,26 +184,6 @@
   }
   .note b { color: var(--navy); font-weight: 700; }
   .note code { font-family: var(--mono); font-size: .78rem; }
-
-  .command-bar {
-    margin-top: auto;
-    background: var(--navy);
-    color: #d5e6f0;
-    display: flex;
-    align-items: center;
-    gap: .5rem;
-    padding: .45rem .7rem;
-    font-size: .78rem;
-  }
-  .cmd {
-    background: rgba(255,255,255,.1);
-    border: 1px solid rgba(255,255,255,.18);
-    padding: .4rem .7rem;
-    font-weight: 700;
-    letter-spacing: .04em;
-  }
-  .cmd.current { background: var(--cyan); color: #fff; border-color: var(--cyan); }
-  .command-bar .rest { margin-left: auto; opacity: .7; }
 </style>
 </head>
 <body>
@@ -251,7 +229,13 @@
       <div class="grid">
         <div>
           <label for="cell_type">Cell type</label>
-          <input id="cell_type" type="text" autocomplete="off" placeholder="CHO-K1">
+          <input id="cell_type" type="text" autocomplete="off" value="CHO-K1"
+                 placeholder="CHO-K1">
+        </div>
+        <div>
+          <label for="vessel_id">Vessel ID</label>
+          <input id="vessel_id" type="text" autocomplete="off" spellcheck="false"
+                 value="BR-201" placeholder="BR-201">
         </div>
         <div>
           <label for="sample_type">Sample type</label>
@@ -265,7 +249,6 @@
 
       <div class="actions">
         <button id="run" type="button">Run analysis</button>
-        <button id="qc" class="ghost" type="button">Run QC (Level 1)</button>
       </div>
 
       <div id="msg"></div>
@@ -299,18 +282,9 @@
   </div>
 </div>
 
-<div class="command-bar">
-  <span class="cmd current">Analysis</span>
-  <span class="cmd">Historical</span>
-  <span class="cmd">Calibration</span>
-  <span class="cmd">QC</span>
-  <span class="cmd">Maintenance</span>
-  <span class="rest">Destinations · ESM 80%</span>
-</div>
-
 <script>
   const $ = (id) => document.getElementById(id);
-  const FIELDS = ["sample_id", "cell_type", "operator"];
+  const FIELDS = ["sample_id", "cell_type", "vessel_id", "operator"];
   let typesFilled = false;
 
   function say(ok, text) {
@@ -328,7 +302,6 @@
       ? "free-running every " + s.interval_s + " s"
       : "runs on request only";
     $("run").disabled = !!s.running;
-    $("qc").disabled = !!s.running;
 
     if (!typesFilled && Array.isArray(s.sample_types)) {
       $("sample_type").innerHTML = s.sample_types
@@ -349,7 +322,7 @@
     // one gets sent.
     if (document.activeElement && document.activeElement.tagName === "INPUT") return;
     if (s.loaded) {
-      ["cell_type"].forEach((k) => {
+      ["cell_type", "vessel_id"].forEach((k) => {
         if (!$(k).value && s.loaded[k]) $(k).value = s.loaded[k];
       });
     }
@@ -385,8 +358,6 @@
     // field left populated is how the same id gets submitted twice.
     if (doc.ok) $("sample_id").value = "";
   });
-
-  $("qc").addEventListener("click", () => post("/api/qc", { level: "1" }));
 
   $("sample_id").addEventListener("keydown", (e) => {
     // Barcode wedges type the id and send Enter. Treat that as pressing Run,
