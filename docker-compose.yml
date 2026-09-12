@@ -357,9 +357,9 @@ services:
       BADGE_ROSTER: ${VALVE_BADGE_ROSTER:-B-1042:Jordan Reyes:qc-analyst:authorized,B-2087:Sam Okafor:maintenance:not-authorized}
       SAMPLE_WINDOW_S: ${VALVE_SAMPLE_WINDOW_S:-12}
       TELEMETRY_INTERVAL_S: ${VALVE_TELEMETRY_INTERVAL_S:-5}
-      # Whether the five-second stream is running when the container comes up. Set false to
-      # open on a quiet topic tree; the config page toggles it live either way and the
-      # toggle is not persisted, so a restart returns to whatever this says.
+      # Whether the five-second stream is running on a FRESH volume. Set false to open on
+      # a quiet topic tree. The config page's mute is persisted to the volume below, so once
+      # somebody has touched it that saved value wins and this is only what `nuke` restores.
       TELEMETRY_ENABLED: ${VALVE_TELEMETRY_ENABLED:-true}
       # Background badge traffic so the firehose is not empty between triggers.
       # Set to 0 for a scripted stage run where the only scan should be yours.
@@ -426,6 +426,8 @@ services:
       BADGE_ROSTER: ${VALVE_BADGE_ROSTER:-B-1042:Jordan Reyes:qc-analyst:authorized,B-2087:Sam Okafor:maintenance:not-authorized}
       SAMPLE_WINDOW_S: ${VALVE_SAMPLE_WINDOW_S:-12}
       TELEMETRY_INTERVAL_S: ${VALVE_TELEMETRY_INTERVAL_S:-5}
+      # Same as pattern 1: the page's mute is persisted to the volume below, so this is
+      # the fresh-volume default rather than what a restart reads.
       TELEMETRY_ENABLED: ${VALVE_SPB_TELEMETRY_ENABLED:-true}
       SCAN_INTERVAL_S: ${VALVE_SCAN_INTERVAL_S:-90}
       LOG_LEVEL: ${VALVE_SPB_LOG_LEVEL:-INFO}
@@ -643,7 +645,9 @@ volumes:
   ign-data:
   chariot-config:
   # What each valve was commissioned with, so a restart does not silently revert
-  # the topic somebody set on stage. `tasks.py nuke` returns both to factory.
+  # the topic somebody set on stage -- plus the telemetry mute, stored alongside under
+  # `stage` because it is a demo control rather than a commissioned field.
+  # `tasks.py nuke` returns both to factory.
   valve-mqtt-config:
   valve-spb-config:
   # Debezium's WAL offsets. Survives a container restart on purpose; `nuke`

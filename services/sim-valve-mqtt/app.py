@@ -116,6 +116,12 @@ class Config:
 
     COMMISSIONABLE = ("base_topic", "qos", "retain")
 
+    # Persisted as well, but deliberately not commissioned. The mute is a stage control this
+    # repo added for the demo, not a field the vendor's page offers, and folding it into
+    # COMMISSIONABLE would quietly turn "everything this device promises is three form
+    # fields" into four. It goes in the same file under its own key instead.
+    STAGE = ("telemetry_enabled",)
+
     def __init__(self) -> None:
         self.broker_host = _env("BROKER_HOST", "chariot")
         self.broker_port = _env_int("BROKER_PORT", 1883)
@@ -145,8 +151,9 @@ class Config:
         # Whether the stream starts running. A stage control rather than firmware, and
         # deliberately NOT in COMMISSIONABLE: the vendor's page has no such checkbox, and
         # adding one would quietly repair the thing this container exists to show. Set
-        # false for a scripted run that should open on an empty topic tree; the config
-        # page toggles it live either way, and the setting does not survive a restart.
+        # false for a scripted run that should open on an empty topic tree. The config page
+        # toggles it live and that toggle IS persisted, under `stage`, so this env var is
+        # the factory default a `nuke` returns to rather than the value a restart reads.
         self.telemetry_enabled = _env_bool("TELEMETRY_ENABLED", True)
         # 0 disables free-running scans -- use that for a scripted stage run where the only
         # traffic should be the badge you present yourself.
@@ -179,10 +186,19 @@ class Config:
         for key in self.COMMISSIONABLE:
             if key in stored:
                 setattr(self, key, stored[key])
+        # Stage controls live under their own key so that reading this file still tells you
+        # exactly what was commissioned and what was merely staged. A file written before
+        # the block existed simply has no `stage`, and every key falls back to its env
+        # default -- which is the same answer as a fresh volume.
+        stage = stored.get("stage") or {}
+        for key in self.STAGE:
+            if key in stage:
+                setattr(self, key, stage[key])
         logging.info("loaded commissioned settings from %s", self.config_path)
 
     def save(self) -> None:
         document = {key: getattr(self, key) for key in self.COMMISSIONABLE}
+        document["stage"] = {key: getattr(self, key) for key in self.STAGE}
         directory = os.path.dirname(self.config_path)
         try:
             if directory:
@@ -553,6 +569,11 @@ class Provider(webui.ConfigProvider):
         self.assembly.set_telemetry(enabled)
         if not enabled:
             self.sink.clear_retained_telemetry()
+        # The assembly holds the live flag; cfg holds the one that survives a restart. Both,
+        # because muting between demos should still be muted after a `compose restart` --
+        # and an unmute that is not written back would come up muted again, which is worse.
+        self.cfg.telemetry_enabled = enabled
+        self.cfg.save()
 
 
 # -- main --------------------------------------------------------------------------------

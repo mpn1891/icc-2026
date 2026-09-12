@@ -140,6 +140,11 @@ class Config:
 
     COMMISSIONABLE = ("group_id", "edge_node_id", "device_id")
 
+    # Same split as pattern 1, and here the reason is sharper: the spec leaves you these
+    # three names and nothing else, so a fourth commissioned field would misrepresent
+    # Sparkplug itself. The mute is ours, it is staged, and it is stored apart.
+    STAGE = ("telemetry_enabled",)
+
     def __init__(self) -> None:
         self.broker_host = _env("BROKER_HOST", "chariot")
         self.broker_port = _env_int("BROKER_PORT", 1883)
@@ -168,7 +173,9 @@ class Config:
         self.telemetry_interval_s = _env_float("TELEMETRY_INTERVAL_S", 5.0)
         # Same stage control as pattern 1, same reason it is not commissionable: the three
         # names in COMMISSIONABLE are the only three the spec leaves anybody, and a fourth
-        # field would make this page a worse illustration of that.
+        # field would make this page a worse illustration of that. Persisted under `stage`
+        # exactly as pattern 1 does, so this env var is the factory default, not the value
+        # a restart reads.
         self.telemetry_enabled = _env_bool("TELEMETRY_ENABLED", True)
         self.scan_interval_s = _env_float("SCAN_INTERVAL_S", 90.0)
 
@@ -197,10 +204,19 @@ class Config:
         for key in self.COMMISSIONABLE:
             if key in stored:
                 setattr(self, key, stored[key])
+        # Stage controls live under their own key so that reading this file still tells you
+        # exactly what was commissioned and what was merely staged. A file written before
+        # the block existed simply has no `stage`, and every key falls back to its env
+        # default -- which is the same answer as a fresh volume.
+        stage = stored.get("stage") or {}
+        for key in self.STAGE:
+            if key in stage:
+                setattr(self, key, stage[key])
         logging.info("loaded commissioned settings from %s", self.config_path)
 
     def save(self) -> None:
         document = {key: getattr(self, key) for key in self.COMMISSIONABLE}
+        document["stage"] = {key: getattr(self, key) for key in self.STAGE}
         directory = os.path.dirname(self.config_path)
         try:
             if directory:
@@ -701,6 +717,10 @@ class Provider(webui.ConfigProvider):
         measuring against the last thing said, not the last thing known.
         """
         self.assembly.set_telemetry(enabled)
+        # Survives a restart, same as pattern 1's. Nothing to clear on the way off, so this
+        # is the whole of the difference between the two implementations of this call.
+        self.cfg.telemetry_enabled = enabled
+        self.cfg.save()
 
 
 # -- main --------------------------------------------------------------------------------
