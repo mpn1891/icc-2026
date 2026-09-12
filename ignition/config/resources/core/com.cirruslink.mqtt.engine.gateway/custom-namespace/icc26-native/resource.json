@@ -7,7 +7,12 @@
     "config.json"
   ],
   "attributes": {
-    "enabled": true,
-    "description": "Pattern 1: sample-valve-01 event/state/telemetry -> auto-created tags in the MQTT Engine provider"
+    "lastModification": {
+      "actor": "admin",
+      "timestamp": "2026-09-12T14:17:08Z"
+    },
+    "description": "Pattern 1: sample-valve-01 event/state/telemetry -\u003e auto-created tags in the MQTT Engine provider",
+    "lastModificationSignature": "8852e33ae1a3301d320a3902fff3a1087ca53f6b779254be8b4b8c5c5483068a",
+    "enabled": true
   }
 }
