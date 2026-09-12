@@ -41,7 +41,7 @@ different names for the cell-density channel. A unit-of-measure typed `Single`. 
 `OPCSystemObjects` and `OPCSystemCommands` — of string-id nodes, where the Countess model we
 designed is a tidy DI/LADS hierarchy. **Tidying any of it would produce a simulator that lies
 about the product.** 911 nodes in the server, 141 sample leaves and 102 QC leaves; the Ignition
-UDT binds 57 tags out of it, and every one was verified monitored server-side — because the
+UDT binds 52 tags out of it, and every one was verified monitored server-side — because the
 gateway will not tell you which ones bound.
 
 **2. There is no completion signal, and that is the finding.** No counter. No event. No method.
@@ -100,7 +100,7 @@ osmolality is a number an analyst could have signed for.
                                   │
                      OPC UA subscription, nsu=…;s=…
                                   ▼
-              Ignition — cell_analyzer UDT, 57 tags monitored
+              Ignition — cell_analyzer UDT, 52 tags monitored
                                   │
         tag-change script on result/sample_time  (skips initialChange and Bad)
                                   ▼

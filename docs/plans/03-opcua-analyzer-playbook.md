@@ -307,7 +307,7 @@ than the Countess's rather than shorter.
 | **Address space** | ours, DI + LADS | **the vendor's**, flat `OPCSystemObjects` / `OPCSystemCommands` | ✗ assumed same shape |
 | **Trigger node** | `CountCompletedCounter` | `ICC26Extensions->SampleCompleteCounter` | ✗ vendor has **no counter at all** |
 | **Command bit** | ours, added in step 8 | **the vendor's own** `ESMScheduleAnalysis` | ✗ assumed we'd add one |
-| Ignition UDT | `cell_counter`, 44 tags | `cell_analyzer`, 57 tags | ✓ two types |
+| Ignition UDT | `cell_counter`, 44 tags | `cell_analyzer`, 52 tags | ✓ two types |
 | Size | 71 fields | 141 sample + 102 QC leaves, 911 nodes | ✗ "fewer fields" |
 
 The three decisions, resolved:

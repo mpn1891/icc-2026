@@ -11,13 +11,24 @@ a consumer learns where it came from from the topic it arrived on. The sample id
 `meta.correlation_id` on the way back out, so the sample is still traceable across two
 colours on the firehose without this pattern asserting a field it did not measure.
 
-**`batch_id` is deliberately not published** (removed 2026-09-09). The vendor tag exists and
-stays bound -- `result/batch_id` is still one of the 57 monitored tags -- but the instrument
-does not know a batch. It echoes whatever was typed at its sample-login screen, and that field
-was removed from the screen the same day, so the tag now only ever holds its startup fallback.
+**`batch_id` is deliberately not published** (removed 2026-09-09). The vendor node is still in
+the address space and still writable by an OPC client, but the instrument does not know a batch.
+It echoes whatever was typed at its sample-login screen, and that field was removed from the
+screen the same day, so the node only ever holds its startup fallback. Ignition stopped
+subscribing to it on 2026-09-12: `command/batch_id` and `result/batch_id` came out of the UDT,
+which took it from 57 bound tags to 52. A bound tag is a claim that something reads it, and for
+three days nothing did.
 Publishing a hardcoded constant as though it were a measurement is exactly the assertion the
 paragraph above refuses. Batch identity is pattern 7's, resolved from the historian at the
 sample instant: docs/plans/07-sample-chain.md section "The decisions 07 inherits", decision 2.
+
+**`vessel_id` failed the same test until 2026-09-12 and was answered the other way.** Nothing
+asked for it, so the vendor node sat empty and every run took the instrument's `BRX-2000-A`
+fallback -- the batch_id problem exactly, one key further down. It keeps its place here because
+a vessel is something the person at the sample port does know, so the sample-login screen now
+carries a Vessel ID field defaulted to BR-201. What is on the wire is transcribed, and can be
+transcribed wrong, which is the only condition under which this document is allowed to assert
+anything it did not measure.
 
 Jython 2.7: no f-strings, no type hints, integer division is floor division.
 """
