@@ -12,7 +12,7 @@
   that simply has no QoS setting looks like a device that forgot one. A device that shows you
   the setting, greyed out, with the clause that pinned it, is telling you something.
 
-  Skin: Alfa Laval Unique Sampling Valve Type 10 double-seat with ThinkTop V50 —
+  Skin: Alfa Laval Unique Sampling Valve Type 10 double-seat with ThinkTop V50 -
   identical chrome to the MQTT twin. No external assets of any kind -- the demo has
   to run with networking disabled.
 -->
@@ -117,17 +117,33 @@
   .led.on { background: var(--ok); }
 
   main { padding: 1.25rem 1.5rem; }
-  section {
+  /* `details.fold` is a section that starts closed. It shares every rule below with a
+     plain section on purpose -- the two pages are screenshotted side by side, so a folded
+     panel has to read as the same object as an open one, just shut. The panels that get
+     this treatment are reference material rather than controls; leaving them open pushed
+     the simulator off the first screen. */
+  section, details.fold {
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: 2px;
     margin-bottom: 1rem;
     box-shadow: 0 1px 0 rgba(6,20,40,.06);
   }
-  section > h2 {
+  section > h2, details.fold > summary {
     font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: #fff;
     margin: 0; padding: .65rem 1rem; background: var(--al-blue); font-weight: 700;
   }
+  details.fold > summary {
+    cursor: pointer; list-style: none; display: flex; align-items: center; gap: .5rem;
+    user-select: none;
+  }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary::before {
+    content: "▸"; font-size: .78rem; line-height: 1;
+    transition: transform .12s ease;
+  }
+  details.fold[open] > summary::before { transform: rotate(90deg); }
+  details.fold > summary:focus-visible { outline: 2px solid var(--sim); outline-offset: -2px; }
   .body { padding: 1rem 1.1rem 1.15rem; }
   .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .9rem; align-items: end; }
   .grid.locked { grid-template-columns: 1fr 8rem 8rem; }
@@ -277,73 +293,13 @@
     </div>
   </section>
 
-  <section>
-    <h2>MQTT publishing — fixed by the specification</h2>
-    <div class="body">
-      <div class="grid locked">
-        <div>
-          <label for="fixed_topic">Topic</label>
-          <input type="text" id="fixed_topic" disabled>
-          <span class="rule">Derived from the three names above.
-            <br>tck-id-topics-ddata-topic</span>
-        </div>
-        <div>
-          <label for="fixed_qos">QoS</label>
-          <select id="fixed_qos" disabled>
-            <option>0 &mdash; at most once</option>
-          </select>
-          <span class="rule" id="qos-rule">&hellip;</span>
-        </div>
-        <div>
-          <label for="fixed_retain">Retained</label>
-          <div class="check"><input type="checkbox" id="fixed_retain" disabled>
-            <span>publish retained</span></div>
-          <span class="rule" id="retain-rule">&hellip;</span>
-        </div>
-      </div>
-      <p class="sim-note" style="margin:1.1rem 0 0">
-        These three controls are the same three the plain-MQTT variant of this assembly puts
-        in front of you. Here they are disabled, because getting them wrong is not a
-        configuration option.
-      </p>
-    </div>
-  </section>
-
-  <section>
-    <h2>What this produces</h2>
-    <div class="body scroll">
-      <table>
-        <thead><tr><th>Message</th><th>Topic</th><th>QoS</th><th>Retained</th>
-          <th>What it is</th></tr></thead>
-        <tbody id="plan"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section>
-    <h2>Metrics — published in every birth certificate</h2>
-    <div class="body scroll">
-      <table>
-        <thead><tr><th>Metric</th><th>Datatype</th><th>Alias</th><th>Unit</th>
-          <th>Deadband</th><th>Value</th></tr></thead>
-        <tbody id="metrics"></tbody>
-      </table>
-      <p class="sim-note" style="margin:.9rem 0 0">
-        A consumer learns all of this from DBIRTH without being told anything in advance:
-        the names, the datatypes, the engineering units, and which metrics exist but have no
-        value yet. Nothing equivalent crosses the wire in pattern 1 &mdash; there, somebody
-        writes it into a tag configuration by hand and keeps it in step forever.
-      </p>
-    </div>
-  </section>
-
   <section class="sim">
-    <h2>Simulator controls — not part of the device</h2>
+    <h2>Simulator controls - not part of the device</h2>
     <div class="body">
       <p class="sim-note">A real assembly has an RFID reader here, and a plant air header
         behind the actuator. The first two buttons stand in for both, and they are the same
         two the plain-MQTT page offers, because it is the same device. The third stands in
-        for nothing &mdash; no device ships a switch that mutes its own instruments &mdash;
+        for nothing - no device ships a switch that mutes its own instruments -
         and is here only so the topic tree can be quietened while something else is on
         screen. It stops the publishing, not the physics: the air still sags and the sample
         still fails to seat, and the difference from pattern 1 is that this device leaves
@@ -374,6 +330,66 @@
           <div class="state-line" id="last-scan" style="margin-top:.45rem"></div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <details class="fold">
+    <summary>MQTT publishing - fixed by the specification</summary>
+    <div class="body">
+      <div class="grid locked">
+        <div>
+          <label for="fixed_topic">Topic</label>
+          <input type="text" id="fixed_topic" disabled>
+          <span class="rule">Derived from the three names above.
+            <br>tck-id-topics-ddata-topic</span>
+        </div>
+        <div>
+          <label for="fixed_qos">QoS</label>
+          <select id="fixed_qos" disabled>
+            <option>0 - at most once</option>
+          </select>
+          <span class="rule" id="qos-rule">&hellip;</span>
+        </div>
+        <div>
+          <label for="fixed_retain">Retained</label>
+          <div class="check"><input type="checkbox" id="fixed_retain" disabled>
+            <span>publish retained</span></div>
+          <span class="rule" id="retain-rule">&hellip;</span>
+        </div>
+      </div>
+      <p class="sim-note" style="margin:1.1rem 0 0">
+        These three controls are the same three the plain-MQTT variant of this assembly puts
+        in front of you. Here they are disabled, because getting them wrong is not a
+        configuration option.
+      </p>
+    </div>
+  </details>
+
+  <details class="fold">
+    <summary>What this produces</summary>
+    <div class="body scroll">
+      <table>
+        <thead><tr><th>Message</th><th>Topic</th><th>QoS</th><th>Retained</th>
+          <th>What it is</th></tr></thead>
+        <tbody id="plan"></tbody>
+      </table>
+    </div>
+  </details>
+
+  <section>
+    <h2>Metrics - published in every birth certificate</h2>
+    <div class="body scroll">
+      <table>
+        <thead><tr><th>Metric</th><th>Datatype</th><th>Alias</th><th>Unit</th>
+          <th>Deadband</th><th>Value</th></tr></thead>
+        <tbody id="metrics"></tbody>
+      </table>
+      <p class="sim-note" style="margin:.9rem 0 0">
+        A consumer learns all of this from DBIRTH without being told anything in advance:
+        the names, the datatypes, the engineering units, and which metrics exist but have no
+        value yet. Nothing equivalent crosses the wire in pattern 1 - there, somebody
+        writes it into a tag configuration by hand and keeps it in step forever.
+      </p>
     </div>
   </section>
 
@@ -437,10 +453,10 @@ function renderStatic(s) {
 
   $("fixed_topic").value = s.topic_plan.length ? s.topic_plan[2].topic : "";
   $("fixed_qos").innerHTML = "<option>" + s.fixed.data_qos +
-    " &mdash; at most once</option>";
+    " - at most once</option>";
   $("fixed_retain").checked = !!s.fixed.data_retain;
   $("qos-rule").textContent = s.fixed.qos_rule;
-  $("retain-rule").textContent = "retain equal to false — same clause. The Will is the one "
+  $("retain-rule").textContent = "retain equal to false - same clause. The Will is the one "
     + "exception: QoS " + s.fixed.will_qos + ", retain "
     + (s.fixed.will_retain ? "true" : "false") + ".";
 
@@ -460,9 +476,9 @@ function renderMetrics(s) {
     var m = s.metrics[i];
     rows += "<tr><td class='mono'>" + esc(m.name) + "</td>" +
       "<td>" + esc(m.datatype) + "</td>" +
-      "<td class='mono'>" + (m.alias === null ? "&mdash;" : m.alias) + "</td>" +
-      "<td>" + (m.unit ? esc(m.unit) : "&mdash;") + "</td>" +
-      "<td class='mono'>" + (m.deadband === null ? "&mdash;" : m.deadband) + "</td>" +
+      "<td class='mono'>" + (m.alias === null ? "-" : m.alias) + "</td>" +
+      "<td>" + (m.unit ? esc(m.unit) : "-") + "</td>" +
+      "<td class='mono'>" + (m.deadband === null ? "-" : m.deadband) + "</td>" +
       "<td class='mono'>" +
       (m.value === null ? "<span class='note'>null</span>" : esc(m.value)) +
       "</td></tr>";
@@ -479,7 +495,7 @@ function renderRuntime(s) {
   $("v-state").textContent = v.state;
   $("v-pos").textContent = v.position_pct;
   $("v-cycles").textContent = v.cycle_count;
-  $("v-cycle-result").textContent = s.runtime.last_cycle_result || "—";
+  $("v-cycle-result").textContent = s.runtime.last_cycle_result || "-";
   $("v-air").textContent = t.air_supply_bar;
   $("v-temp").textContent = t.enclosure_temperature_c;
   $("v-pub").textContent = s.runtime.published;
@@ -489,13 +505,13 @@ function renderRuntime(s) {
 
   airSagged = s.runtime.air_sagged;
   $("air-supply").textContent = airSagged
-    ? "Air supply sagging — click to restore it (next sample seats normally)"
-    : "Air supply nominal — click to sag it (next sample fails to seat)";
+    ? "Air supply sagging - click to restore it (next sample seats normally)"
+    : "Air supply nominal - click to sag it (next sample fails to seat)";
 
   telemetryOn = s.runtime.telemetry_enabled;
   $("telemetry").textContent = telemetryOn
-    ? "Telemetry publishing — click to mute it (DDATA stops; DBIRTH still carries the values)"
-    : "Telemetry muted — click to resume it (badge scans, samples and NBIRTH are unaffected)";
+    ? "Telemetry publishing - click to mute it (DDATA stops; DBIRTH still carries the values)"
+    : "Telemetry muted - click to resume it (badge scans, samples and NBIRTH are unaffected)";
 
   paintTvis(v, s.runtime.last_cycle_result);
 
