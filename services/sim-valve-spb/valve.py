@@ -212,6 +212,12 @@ class ValveAssembly:
         # cause of every stroke fault below, which is the whole reason telemetry was
         # re-pointed here from a line pressure / line temperature pair.
         self.air_sagged = False
+        # Whether the telemetry stream reaches the sink at all. Not a property of the
+        # device -- no assembly ships a switch that mutes its own instruments -- but a
+        # stage control, so the topic tree can be quietened between demos without stopping
+        # the container and taking the birth/will pair down with it. Events and state are
+        # untouched: muting the heartbeat must not silence the sample story.
+        self.telemetry_enabled = cfg.telemetry_enabled
         # The settled level the header is heading for, and the reading it actually shows.
         # They differ by the breath below, which is why a sag still takes a few seconds to
         # arrive while the reading itself moves on every tick.
@@ -367,6 +373,24 @@ class ValveAssembly:
             self.air_sagged = sagged
         LOG.info("air supply %s", "sagging" if sagged else "restored")
 
+    def set_telemetry(self, enabled: bool) -> None:
+        """Mute the telemetry stream, or let it run. Also a stage control, not firmware.
+
+        Five seconds of air supply and enclosure temperature is the loudest thing either
+        firmware puts on the backbone, and between demos it is what buries the messages
+        worth looking at. This stops the *publish* and nothing else: the header keeps
+        breathing, a sag still arrives, the next sample still fails to seat. Only nobody is
+        announcing it -- which is its own small lesson about what a quiet topic means.
+
+        The interval clock keeps running underneath, so unmuting resumes on the next
+        boundary rather than firing a catch-up message the instant it is clicked.
+        """
+        with self.lock:
+            if self.telemetry_enabled == enabled:
+                return
+            self.telemetry_enabled = enabled
+        LOG.info("telemetry %s", "enabled" if enabled else "muted")
+
     # ---- the state machine
 
     def _enter(self, state: str, now: float) -> None:
@@ -514,7 +538,8 @@ class ValveAssembly:
                 self._drift()
                 if now >= self._next_telemetry_at:
                     self._next_telemetry_at = now + self.cfg.telemetry_interval_s
-                    self.sink.valve_telemetry(self.telemetry_values(), now)
+                    if self.telemetry_enabled:
+                        self.sink.valve_telemetry(self.telemetry_values(), now)
                 if self._next_auto_scan_at is not None and now >= self._next_auto_scan_at:
                     self._auto_scan(now)
             except Exception:

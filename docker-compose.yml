@@ -357,6 +357,10 @@ services:
       BADGE_ROSTER: ${VALVE_BADGE_ROSTER:-B-1042:Jordan Reyes:qc-analyst:authorized,B-2087:Sam Okafor:maintenance:not-authorized}
       SAMPLE_WINDOW_S: ${VALVE_SAMPLE_WINDOW_S:-12}
       TELEMETRY_INTERVAL_S: ${VALVE_TELEMETRY_INTERVAL_S:-5}
+      # Whether the five-second stream is running when the container comes up. Set false to
+      # open on a quiet topic tree; the config page toggles it live either way and the
+      # toggle is not persisted, so a restart returns to whatever this says.
+      TELEMETRY_ENABLED: ${VALVE_TELEMETRY_ENABLED:-true}
       # Background badge traffic so the firehose is not empty between triggers.
       # Set to 0 for a scripted stage run where the only scan should be yours.
       SCAN_INTERVAL_S: ${VALVE_SCAN_INTERVAL_S:-90}
@@ -422,6 +426,7 @@ services:
       BADGE_ROSTER: ${VALVE_BADGE_ROSTER:-B-1042:Jordan Reyes:qc-analyst:authorized,B-2087:Sam Okafor:maintenance:not-authorized}
       SAMPLE_WINDOW_S: ${VALVE_SAMPLE_WINDOW_S:-12}
       TELEMETRY_INTERVAL_S: ${VALVE_TELEMETRY_INTERVAL_S:-5}
+      TELEMETRY_ENABLED: ${VALVE_SPB_TELEMETRY_ENABLED:-true}
       SCAN_INTERVAL_S: ${VALVE_SCAN_INTERVAL_S:-90}
       LOG_LEVEL: ${VALVE_SPB_LOG_LEVEL:-INFO}
       TZ: ${TZ:-America/Chicago}

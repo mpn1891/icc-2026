@@ -21,6 +21,14 @@
   is Ignition's rule, lives once on the UDT, and is applied by particle_counter_poll at
   ingest. What this screen shows is counts.
 
+  Below the case is a fifth control that is NOT one of the four, and is drawn
+  outside the instrument for that reason: the sequence-persistence switch. A real
+  counter has no button for whether its own record numbering survives a power
+  cycle. It is a rig control, it says so on the page, and the strip it lives on
+  is deliberately unstyled like the product -- dashed, dim, bench-label. Off is
+  the stale-cursor demo; on is a rehearsal stack that stops going blind every
+  time somebody restarts the container.
+
   Skin: a portable particle counter -- dark instrument case, light
   data panel, large numerals, physical-looking keys. No external assets of any
   kind; the demo has to run with networking disabled (docs/00-architecture.md).
@@ -55,7 +63,8 @@
     color: var(--ink);
     font: 15px/1.45 "Segoe UI", system-ui, sans-serif;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
     padding: 1rem;
   }
 
@@ -220,6 +229,47 @@
     line-height: 1.5;
   }
   .note code { font-family: var(--mono); color: #b9c4cc; }
+
+  /* ── the rig strip: ours, not the instrument's ───────────────────────── */
+  .rig {
+    width: 100%;
+    max-width: 940px;
+    margin-top: .9rem;
+    background: #191d21;
+    border: 1px dashed #3f484f;
+    border-radius: 6px;
+    padding: .75rem 1rem .85rem;
+    color: #97a3ac;
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+    flex-wrap: wrap;
+  }
+  .rig h2 {
+    margin: 0;
+    font: 700 .66rem/1.4 var(--mono);
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: #74808a;
+  }
+  .rig h2 span {
+    display: block;
+    font: 600 .62rem/1.4 "Segoe UI", system-ui, sans-serif;
+    letter-spacing: .02em;
+    text-transform: none;
+    opacity: .75;
+  }
+  .rig .spacer { flex: 1; }
+  .rig .counter { font: 700 .78rem/1 var(--mono); color: #b9c4cc; }
+  .rig p {
+    flex-basis: 100%;
+    margin: .1rem 0 0;
+    font-size: .76rem;
+    line-height: 1.5;
+  }
+  .rig code { font-family: var(--mono); color: #b9c4cc; }
+  button.persist { padding: .6rem 1rem; }
+  button.persist.on { background: linear-gradient(180deg, #2f9fd6, #17709e); }
 </style>
 </head>
 <body>
@@ -311,6 +361,14 @@
   </div>
 </div>
 
+<div class="rig">
+  <h2>Simulator rig<span>not part of the instrument</span></h2>
+  <div class="spacer"></div>
+  <div class="counter" id="rig-counter">counter &mdash;</div>
+  <button class="persist" id="btn-persist">Sequence persistence: &mdash;</button>
+  <p id="rig-note"></p>
+</div>
+
 <script>
 (function () {
   "use strict";
@@ -325,6 +383,19 @@
     }).then(function (r) { return r.json(); }).then(render);
   }
 
+  // Last rendered value, so the button sends the opposite of what is showing
+  // rather than trusting the click to know the state.
+  var persistOn = false;
+
+  var PERSIST_OFF = "Sequence numbering restarts at 1 when this container "
+    + "restarts, so a poller's stored cursor points past the end and the poll "
+    + "goes quiet with nothing failing. That is the stale-cursor demo — leave "
+    + "this off for it.";
+  var PERSIST_ON = "The counter survives a container restart, so a poller's "
+    + "stored cursor stays valid and the poll picks up on its own. The buffer "
+    + "still does not come back: analyses taken before the restart are gone "
+    + "either way.";
+
   var pointFocused = false;
   el("sample-point").addEventListener("focus", function () { pointFocused = true; });
   el("sample-point").addEventListener("blur", function () { pointFocused = false; });
@@ -333,6 +404,9 @@
   el("btn-stop").addEventListener("click", function () { post("/api/stop"); });
   el("btn-clean").addEventListener("click", function () { post("/api/room", { value: "clean" }); });
   el("btn-dirty").addEventListener("click", function () { post("/api/room", { value: "dirty" }); });
+  el("btn-persist").addEventListener("click", function () {
+    post("/api/persist-sequence", { value: !persistOn });
+  });
   el("set-point").addEventListener("click", function () {
     post("/api/sample-point", { value: el("sample-point").value });
   });
@@ -386,6 +460,13 @@
     }
     el("buffer").textContent = s.buffer_count + " / " + s.buffer_max
       + (s.evicted ? "  (" + s.evicted + " evicted)" : "");
+
+    persistOn = !!s.persist_sequence;
+    el("btn-persist").className = "persist" + (persistOn ? " on" : "");
+    el("btn-persist").textContent = "Sequence persistence: "
+      + (persistOn ? "ON" : "OFF");
+    el("rig-counter").textContent = "counter #" + s.sequence;
+    el("rig-note").textContent = persistOn ? PERSIST_ON : PERSIST_OFF;
   }
 
   function poll() {

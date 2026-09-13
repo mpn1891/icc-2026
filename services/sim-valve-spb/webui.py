@@ -28,8 +28,8 @@ class ConfigProvider:
     """What the page can ask the device for, and do to it.
 
     The two variants implement `state()` and `apply()` very differently -- that asymmetry is
-    the content -- but the simulator controls (`scan`, `set_air_supply`) are identical,
-    because the physical device is identical.
+    the content -- but the simulator controls (`scan`, `set_air_supply`, `set_telemetry`)
+    are identical, because the physical device is identical.
     """
 
     def state(self) -> dict:
@@ -43,6 +43,9 @@ class ConfigProvider:
         raise NotImplementedError
 
     def set_air_supply(self, sagged: bool) -> None:
+        raise NotImplementedError
+
+    def set_telemetry(self, enabled: bool) -> None:
         raise NotImplementedError
 
 
@@ -112,6 +115,13 @@ class _Handler(BaseHTTPRequestHandler):
                 # give it its air back. Everything the fault path does downstream follows
                 # from this one boolean.
                 self.provider.set_air_supply(bool(payload.get("sagged")))
+                return self._send_json(200, {"ok": True, "state": self.provider.state()})
+            if path == "/api/telemetry":
+                # The stage control: mute the five-second stream so the topic tree stays
+                # legible while something else is being shown. The two variants answer it
+                # differently on the way off -- pattern 1 has a retained document to clear
+                # and pattern 2 does not -- and that asymmetry is in their Providers.
+                self.provider.set_telemetry(bool(payload.get("enabled")))
                 return self._send_json(200, {"ok": True, "state": self.provider.state()})
         except Exception as exc:  # a config page must never take the device down with it
             LOG.exception("request to %s failed", path)

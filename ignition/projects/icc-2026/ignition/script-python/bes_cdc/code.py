@@ -10,6 +10,15 @@ That is the pattern, and the failure demo is what proves it: stop the Debezium
 container and clicking `manual_advance` still writes rows, still advances the
 reactor, and produces nothing on the topic.
 
+**Two topics, and the split is the point.** An INSERT is a batch event and goes
+to the operational topic, where nothing in the payload says how it arrived.
+`bes.batch_event` is append-only, so an UPDATE or DELETE is not a batch event at
+all -- it is somebody amending the record after the fact, and it goes to the
+audit topic instead, carrying the `before` image Postgres writes into the WAL
+because of REPLICA IDENTITY FULL. That is the one place `op` and the LSN belong
+in a payload in this stack: on the audit topic the database operation is the
+subject, not the transport. compose/postgres/initdb/04-cdc.sql.
+
 **Auth is a query-string token, not a header.** Debezium Server's support for
 custom request headers is version-dependent, and a demo should not be one image
 bump away from silently losing its authentication. The token rides in the URL
@@ -32,6 +41,18 @@ TOKEN = "icc26-cdc-token"
 # the namespace, and nothing in it says "CDC" -- that is the whole point of
 # meta.mechanism existing.
 TOPIC_TEMPLATE = "icc26/site1/upstream/%s/batch/event"
+
+# The audit stream is per-table, not per-device: somebody watching for amended
+# records wants one subscription, not one per reactor. `equipment_id` rides in
+# the payload rather than the address, which also means a DELETE still publishes
+# when the row named no equipment -- on the insert path a missing equipment_id
+# is a 400, because there it *is* the address.
+#
+# Off the operational tree on purpose. Everything under upstream/ and qc/ is a
+# thing that happened in the plant, and a subscriber reading those topics still
+# cannot tell which mechanism carried them. This one is about the database, so
+# it is the one topic in the namespace allowed to say `op`.
+AUDIT_TOPIC = "icc26/site1/audit/bes/batch-event"
 
 
 def _iso(date=None):
@@ -144,13 +165,120 @@ def _decode_payload(raw):
     return decoded if isinstance(decoded, dict) else {}
 
 
-def handle(request):
-    """Validate, filter to inserts, publish one message. WebDev response.
+def _field_value(key, value):
+    """One column, in the form the audit message shows it."""
+    if key == "payload":
+        return _decode_payload(value)
+    if key == "occurred_at" and value is not None:
+        return _to_millis(str(value))
+    return value
 
-        valid token, op='c'       200  publishes
-        missing or wrong token    401  no
-        op != 'c'                 200  no -- and says so
-        unparseable body          400  no
+
+def _row(image):
+    """A whole change-event row, every column in its display form."""
+    if not isinstance(image, dict):
+        return {}
+    out = {}
+    for key in image.keys():
+        out[key] = _field_value(key, image.get(key))
+    return out
+
+
+def _changed(before, after):
+    """{column: {"from": ..., "to": ...}} for every column whose value moved.
+
+    Compared raw and displayed normalized, which is deliberately not the same
+    pass: `occurred_at` is trimmed to milliseconds for the wire like every other
+    timestamp in this stack, and comparing the trimmed form would hide an edit
+    smaller than a millisecond.
+    """
+    fields = {}
+    keys = set(before.keys()) | set(after.keys())
+    for key in keys:
+        old = before.get(key)
+        new = after.get(key)
+        if old == new:
+            continue
+        fields[key] = {"from": _field_value(key, old),
+                       "to": _field_value(key, new)}
+    return fields
+
+
+def _publish_audit(request, logger, event, op):
+    """An UPDATE or DELETE on an append-only table -- publish it as an amendment.
+
+    `ts` is the commit time from `source.ts_ms`, and deliberately **not** the
+    row's occurred_at. On an UPDATE that moves occurred_at, the new value is the
+    very thing being changed; stamping the audit record with it would date the
+    evidence to whatever somebody just typed in.
+    """
+    source = event.get("source") or {}
+    before = _row(event.get("before"))
+    after = _row(event.get("after"))
+
+    # REPLICA IDENTITY FULL is what puts the pre-image in the WAL. Without it
+    # `before` carries the primary key and nothing else, and this message has
+    # almost nothing to say. 04-cdc.sql sets it; if this ever fires, look there
+    # before looking anywhere else.
+    if not before:
+        logger.warnf("cdc sink: op=%s with no `before` image -- is REPLICA "
+                     "IDENTITY still FULL on bes.batch_event?", op)
+
+    row = after if op == "u" else before
+    values = {
+        "op": op,
+        "row_id": row.get("id"),
+        "batch_id": row.get("batch_id"),
+        "equipment_id": row.get("equipment_id"),
+        # The log position, which on this topic is evidence rather than
+        # transport trivia: it is what ties an amendment to a point in the
+        # write-ahead log that somebody can go and read for themselves.
+        "lsn": source.get("lsn"),
+    }
+    if op == "u":
+        # Raw images in, so the comparison sees full precision. _changed does
+        # the normalizing on the way out.
+        values["changed"] = _changed(event.get("before") or {},
+                                     event.get("after") or {})
+    else:
+        values["deleted"] = before
+
+    envelope = {
+        "ts": _timestamp(source.get("ts_ms")),
+        "seq": row.get("id"),
+        "source": {"id": "bes", "type": "bes"},
+        # Three keys, exactly as every other pattern. `op` and `lsn` are down in
+        # `values` rather than up here, because on this topic they are what the
+        # message is *about* -- which is not the same thing as `meta` growing a
+        # transport field. docs/00-architecture.md would be broken by the latter.
+        "meta": {
+            "mechanism": MECHANISM,
+            "ingest_ts": _iso(),
+        },
+        "values": values,
+    }
+
+    # Retain false, for the reason it is false everywhere in this repo: a
+    # retained amendment replays to every reconnecting subscriber and presents
+    # a week-old edit as one that just happened.
+    system.cirruslink.transmission.publish(
+        BROKER, AUDIT_TOPIC, system.util.jsonEncode(envelope), 1, False)
+
+    logger.infof("cdc sink published op=%s on row %s (lsn %s) to %s",
+                 op, str(values["row_id"]), str(source.get("lsn")), AUDIT_TOPIC)
+    return _json(request, 200, {"ok": True, "published": True,
+                                "topic": AUDIT_TOPIC, "op": op})
+
+
+def handle(request):
+    """Validate, route on the operation, publish one message. WebDev response.
+
+        valid token, op='c'        200  publishes to the batch event topic
+        valid token, op='u' | 'd'  200  publishes to the audit topic
+        missing or wrong token     401  no
+        any other op               200  no -- and says so
+        empty body (tombstone)     200  no
+        unparseable body           400  no
     """
     logger = system.util.getLogger(LOGGER_NAME)
 
@@ -160,14 +288,30 @@ def handle(request):
 
     event, error = _body(request)
     if event is None:
+        if error == "empty body":
+            # A Kafka tombstone, which means nothing to an HTTP sink.
+            # `tombstones.on.delete=false` in application.properties stops
+            # Debezium sending them at all; this branch exists so that a config
+            # drift reads as one info line rather than a 400 on every delete.
+            logger.info("cdc sink saw a tombstone -- nothing published")
+            return _json(request, 200, {"ok": True, "published": False,
+                                        "op": "tombstone"})
         logger.warnf("cdc sink rejected: %s", error)
         return _json(request, 400, {"ok": False, "error": error})
 
     op = str(event.get("op") or "")
+    if op in ("u", "d"):
+        # bes.batch_event is append-only, so this is not a batch event -- it is
+        # somebody amending the record. It publishes, with its pre-image, on the
+        # audit topic. Announcing it is the point: the operational topic stays a
+        # stream of things that happened in the plant, and the amendment lands
+        # somewhere a subscriber can actually see it. Refusing it silently, which
+        # is what this did until now, is the weaker answer.
+        return _publish_audit(request, logger, event, op)
     if op != "c":
-        # bes.batch_event is append-only, so an UPDATE or DELETE here is somebody
-        # editing history. Not a batch event, and worth being able to say so on
-        # stage rather than filtering it away silently.
+        # 'r' is a snapshot read and should never appear (snapshot.mode=no_data);
+        # 't' is a truncate, skipped at the source. Either one arriving means the
+        # Debezium config has moved, so say so rather than swallow it.
         logger.infof("cdc sink saw op=%s -- not an insert, nothing published", op)
         return _json(request, 200, {"ok": True, "published": False, "op": op})
 

@@ -166,6 +166,10 @@ class Config:
         self.stroke_s = _env_float("VALVE_STROKE_S", 1.5)
         self.sample_window_s = _env_float("SAMPLE_WINDOW_S", 12.0)
         self.telemetry_interval_s = _env_float("TELEMETRY_INTERVAL_S", 5.0)
+        # Same stage control as pattern 1, same reason it is not commissionable: the three
+        # names in COMMISSIONABLE are the only three the spec leaves anybody, and a fourth
+        # field would make this page a worse illustration of that.
+        self.telemetry_enabled = _env_bool("TELEMETRY_ENABLED", True)
         self.scan_interval_s = _env_float("SCAN_INTERVAL_S", 90.0)
 
         # The assembly's own condition, identical to pattern 1's because valve.py is
@@ -639,6 +643,7 @@ class Provider(webui.ConfigProvider):
                 "last_scan": self.assembly.last_scan,
                 "last_cycle_result": self.assembly.last_cycle_result,
                 "air_sagged": self.assembly.air_sagged,
+                "telemetry_enabled": self.assembly.telemetry_enabled,
                 "published": self.sink.published,
                 "bd_seq": self.sink.bd_seq,
                 "rebirths": self.sink.rebirths,
@@ -679,6 +684,23 @@ class Provider(webui.ConfigProvider):
 
     def set_air_supply(self, sagged: bool) -> None:
         self.assembly.set_air_supply(sagged)
+
+    def set_telemetry(self, enabled: bool) -> None:
+        """Mute the stream. Nothing to clean up afterwards, and that is the point.
+
+        DATA is retain=false by spec, so a muted Sparkplug device leaves no stale document
+        for a late subscriber to mistake for live -- pattern 1 has to go and delete one.
+        And what a subscriber arriving during the quiet DOES get is DBIRTH: every metric
+        still declared, Actuator/AirSupplyBar still carrying its value, because a birth
+        certificate is a snapshot rather than a stream. Mute pattern 1 and clear its
+        retained document and a late subscriber learns nothing at all about the air supply
+        until somebody unmutes it.
+
+        The registry keeps its last *published* value while muted, so the first DDATA
+        after unmuting is whatever has since cleared the deadband -- report-by-exception
+        measuring against the last thing said, not the last thing known.
+        """
+        self.assembly.set_telemetry(enabled)
 
 
 # -- main --------------------------------------------------------------------------------

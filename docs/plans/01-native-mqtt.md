@@ -238,7 +238,7 @@ disabled).
 | **MQTT publishing** | Topic (free text), QoS (0/1/2), Retained. Save reconnects — a new topic means a new will, registered only at CONNECT |
 | **What this produces** | The four derived topics, live |
 | **Last will** | Topic, QoS, retained, both halves of the birth/will pair, and the frozen-timestamp sentence |
-| **Simulator controls** | Fenced *not part of the device*: one badge button per roster entry plus off-roster `B-9999`, air-supply sag, live valve state (page-only — it is on no topic) |
+| **Simulator controls** | Fenced *not part of the device*: one badge button per roster entry plus off-roster `B-9999`, air-supply sag, telemetry mute (a stage control — stops the publish, not the physics, and clears the retained `telemetry` document so the topic leaves the tree), live valve state (page-only — it is on no topic) |
 
 Saving a new topic: **a retained message outlives the config that produced it.** No cleanup
 path, deliberate (2026-08-23) — a real device would not clean up either. The page's warning is

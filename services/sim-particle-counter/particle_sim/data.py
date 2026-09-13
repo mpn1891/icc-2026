@@ -18,6 +18,14 @@ health check green. Persisting the buffer would remove the best failure demo in
 pattern 6. What *does* persist, in ``/config``, is the operator's sample point,
 the room condition and whether a run was going.
 
+**The trap is the default, not a law: ``persist_sequence`` turns it off.** The rig
+strip on the panel switches it, and the switch itself persists, so a stack that
+has been told to keep its counter keeps it across ``down``/``up`` without anybody
+re-arming anything. On, the *counter* comes back and a stored bookmark stays
+valid; the buffer still does not, because records nobody saw the instrument take
+have no business appearing after a restart. Off is what the demo needs and off is
+what a fresh volume gives you -- see ``set_persist_sequence``.
+
 **The simulator does not know what a cleanroom limit is.** It has a clean
 distribution and a dirty one, and no notion of a threshold. The excursion rule
 is Ignition's, lives once on the UDT, and is applied by ``particle_counter_poll`` at
@@ -55,6 +63,13 @@ CLEAN_PER_28L = {
 _FALLBACK_EXPONENT = -2.6
 
 STATE_FILE = "state.json"
+
+
+def _truthy(value) -> bool:
+    """JSON true, and the strings a curl would send. Tolerant like `set_room`."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "on", "yes")
 
 
 def _now() -> datetime:
@@ -109,6 +124,7 @@ class Instrument:
         self.next_sample_at = None   # epoch seconds, or None when stopped
         self.started_run_at = None
         self.evicted = 0             # how many records the cap has dropped
+        self.persist_sequence = False   # the rig switch; off is the demo
         self._load_state()
         if cfg.seed_samples > 0:
             self._seed(cfg.seed_samples)
@@ -131,20 +147,33 @@ class Instrument:
             return
         self.sample_point = str(state.get("sample_point") or self.cfg.device_name)
         self.room = "dirty" if state.get("room") == "dirty" else "clean"
+        self.persist_sequence = _truthy(state.get("persist_sequence"))
+        if self.persist_sequence:
+            # The counter, not the buffer. The records are gone; the numbers they
+            # would have been given are not, which is all a keyset cursor needs
+            # to stay pointed at the right end of the run.
+            self._sequence = int(state.get("sequence") or 0)
         if state.get("running"):
-            # A run that was going before the restart resumes -- but from
-            # sequence number 1, because the buffer did not come back. That
-            # combination is exactly the stale-cursor demo.
+            # A run that was going before the restart resumes. With the switch
+            # off it resumes from sequence number 1, because the buffer did not
+            # come back -- and that combination is exactly the stale-cursor demo.
             self.start()
-        LOG.info("restored state: sample_point=%r room=%s running=%s",
-                 self.sample_point, self.room, self.running)
+        LOG.info("restored state: sample_point=%r room=%s running=%s "
+                 "persist_sequence=%s sequence=%d",
+                 self.sample_point, self.room, self.running,
+                 self.persist_sequence, self._sequence)
 
     def _save_state(self) -> None:
         state = {
             "sample_point": self.sample_point,
             "room": self.room,
             "running": self.running,
+            "persist_sequence": self.persist_sequence,
         }
+        # Written only when it will be read back, so the file says what will
+        # actually come back rather than carrying a number that is ignored.
+        if self.persist_sequence:
+            state["sequence"] = self._sequence
         try:
             os.makedirs(self.cfg.config_dir, exist_ok=True)
             tmp = self._state_path + ".tmp"
@@ -186,6 +215,37 @@ class Instrument:
         self._save_state()
         LOG.info("room condition set to %s", self.room)
         return self.room
+
+    def set_persist_sequence(self, value) -> bool:
+        """Does the sequence counter survive a restart? Off by default.
+
+        **Off is the stale-cursor demo** and the reason this switch defaults off
+        on a fresh volume: the counter restarts at 1, a poller's stored bookmark
+        still says 45, the server answers "nothing after 45" correctly, and the
+        poll runs perfectly while publishing nothing. That is the ending of the
+        pattern-6 segment (docs/talk-tracks/06-poll.md), and turning this on
+        deletes it.
+
+        On, the counter comes back and the bookmark stays valid, so the poll
+        picks up on its own -- which is how an instrument with a persistent
+        record counter behaves, and what a rehearsal stack that keeps getting
+        restarted actually wants. The buffer is *not* persisted either way:
+        analyses taken before the restart are gone, and records nobody in the
+        room saw the instrument take have no business coming back.
+
+        This is a rig control, not an operator one -- no real counter has a
+        button for whether its own numbering survives a power cycle. It lives on
+        the panel's service strip, outside the case, and it is deliberately not
+        in the GraphQL schema: the vendor's surface stays the vendor's.
+        """
+        self.persist_sequence = _truthy(value)
+        self._save_state()
+        LOG.info("sequence persistence %s (counter at %d)",
+                 "ON -- the counter survives a restart"
+                 if self.persist_sequence
+                 else "OFF -- the counter restarts at 1, which is the trap",
+                 self._sequence)
+        return self.persist_sequence
 
     def clear(self) -> bool:
         """`clearSamples`. Empties the buffer, keeps the sequence counter.
@@ -309,6 +369,11 @@ class Instrument:
         started = completed - timedelta(seconds=self.cfg.duration)
         sample = self._make_sample(started, completed)
         self._append(sample)
+        if self.persist_sequence:
+            # The counter moved, so the file has to. Only on this path: with the
+            # switch off nothing extra is written and the default behaviour is
+            # exactly what it was. One small atomic replace per analysis.
+            self._save_state()
         self.next_sample_at = now + self.cfg.duration
         LOG.info("analysis %d complete: %s room, %s",
                  sample["sequenceNumber"], self.room,
@@ -359,6 +424,7 @@ class Instrument:
             "buffer_max": self.cfg.buffer_max,
             "evicted": self.evicted,
             "sequence": self._sequence,
+            "persist_sequence": self.persist_sequence,
             "seconds_to_next": seconds_to_next,
             "last": None if last is None else {
                 "sequence_number": last["sequenceNumber"],
