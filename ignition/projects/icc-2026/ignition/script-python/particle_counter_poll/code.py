@@ -4,8 +4,9 @@
 on its own clock, holds results in a rolling buffer, and the `06-poll` gateway
 timer calls `poll()` every 30 s to find out what happened. The honest consequence
 is a **detection gap**: for up to one poll interval plus one sample duration the
-room can be out of spec and the backbone can be silent about it. That gap is characterized, not hidden -- `values.ts` is the instrument's
-clock and `meta.ingest_ts` is ours, so every message on the wire shows it.
+room can be out of spec and the backbone can be silent about it. That gap is
+characterized, not hidden -- `ts` is the instrument's clock and
+`values.ingest_ts` is ours, so every message on the wire shows it.
 
 **The cursor is a watermark the vendor did not call one.** `getSamples(cursor,
 limit)` returns records *after* a bookmark, oldest-first, plus a fresh bookmark.
@@ -333,7 +334,7 @@ def _write_current(base, record):
 # ── the Event Stream transform ───────────────────────────────────────────────
 
 def build_document(record):
-    """The full envelope, built here rather than in Event Stream user code.
+    """The published document, built here rather than in Event Stream user code.
 
     Called from `06_poll/particle-counter-result`'s transform with what `poll()` published,
     which is a JSON **string**: `system.eventstream.publishEvent` coerces its
@@ -342,14 +343,20 @@ def build_document(record):
     accepted here, because what an Event Stream's source encoder hands a
     transform is not worth being brittle about.
 
-    **Pattern 6 carries the full envelope and pattern 3 does not**, and that is
-    not an inconsistency to tidy: pattern 3 relays the instrument's own document,
-    while this one contains fields the instrument never produced -- `status` and
-    `location` are ours. A record the site partly authored gets the site's
-    envelope.
+    **`ts` + `values` only, the same shape pattern 3 publishes.** `seq`, `source`
+    and `meta` were dropped 2026-09-13: nothing subscribes to this topic --
+    pattern 7 reads `em.reading` out of Postgres -- so every one of them was a
+    field written for a reader that does not exist. `values.sequence_number`
+    stays, because that is the instrument's own monotonic number and a consumer
+    diffing a replay needs it.
 
-    `meta.correlation_id` is absent. Pattern 6 has nothing to correlate to: it
-    never sees a sample id, and pattern 7 finds its reading by time, not by key.
+    **The ingest instant moved rather than went**, exactly as patterns 4 and 7 did
+    on the same day -- `values.verified_at` and `values.assessed_at` there,
+    `values.ingest_ts` here. It was the only published record of when the poll
+    found a reading, and `ts` against it is the detection gap on the wire. It is
+    a measured fact about the analysis, not metadata about the message, so
+    `values` is where it belonged anyway. The stage beat is unchanged; it is read
+    one level shallower.
     """
     if record is None:
         return None
@@ -362,17 +369,13 @@ def build_document(record):
             return None
 
     envelope = {
-        # The instrument's completedAt. meta.ingest_ts is when the poll found it,
-        # and those two differing by tens of seconds -- visible in every message
-        # on mosquitto_sub -- is the detection gap on the wire without anybody
-        # having to explain it.
+        # The instrument's completedAt. `values.ingest_ts` is when the poll found
+        # it, and those two differing by tens of seconds -- visible in every
+        # message on mosquitto_sub -- is the detection gap on the wire without
+        # anybody having to explain it.
         "ts": record.get("completed_at"),
-        # The instrument's own monotonic number, exactly as pattern 5's `seq` is
-        # the bes.batch_event row id. Not one we invent.
-        "seq": record.get("sequence_number"),
-        "source": {"id": record.get("device_id"), "type": "analyzer"},
-        "meta": {"mechanism": "poll", "ingest_ts": record.get("ingest_ts")},
         "values": {
+            "ingest_ts": record.get("ingest_ts"),
             "sequence_number": record.get("sequence_number"),
             "status": record.get("status"),
             "location": record.get("location"),

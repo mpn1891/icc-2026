@@ -2,8 +2,14 @@
 
 The other half of `bes_batch`. That module writes rows and knows nothing about
 MQTT; Debezium Server tails the WAL as user `cdc` and POSTs each change event to
-the `cdc-sink` WebDev endpoint; this module puts it on the wire as
-`mechanism=cdc` through Transmission.
+the `cdc-sink` WebDev endpoint; this module puts it on the wire through
+Transmission.
+
+**`ts` and `values`, and nothing else.** Pattern 5 carried the full envelope
+until 2026-09-13 -- it was the last one to -- and gave it up on the same
+argument patterns 4, 6 and 7 did that day: a
+document that has to name its own mechanism is a document whose address is not
+doing its job. docs/00-architecture.md, "Payload envelope".
 
 Nothing in the chain from the writer to here is something the writer asked for.
 That is the pattern, and the failure demo is what proves it: stop the Debezium
@@ -33,13 +39,14 @@ from java.util import Date, TimeZone
 LOGGER_NAME = "bes_cdc"
 
 BROKER = "chariot_broker"
-MECHANISM = "cdc"
 TOKEN = "icc26-cdc-token"
 
 # The topic is built per-event from values.equipment_id, so a click on br-202
 # cannot land on br-201's address. Device-addressed, like every other topic in
-# the namespace, and nothing in it says "CDC" -- that is the whole point of
-# meta.mechanism existing.
+# the namespace, and nothing in it says "CDC". Nothing in the payload does
+# either, now that `meta` is gone -- the demo's claim is that a subscriber
+# cannot tell which mechanism carried a message, and pattern 5 no longer ships
+# the one field that would have let them.
 TOPIC_TEMPLATE = "icc26/site1/upstream/%s/batch/event"
 
 # The audit stream is per-table, not per-device: somebody watching for amended
@@ -243,18 +250,12 @@ def _publish_audit(request, logger, event, op):
     else:
         values["deleted"] = before
 
+    # `op` and `lsn` stay, because they are in `values` and always were: on the
+    # audit topic the database operation is what the message is *about*, which
+    # is not the same thing as metadata describing how it travelled. Dropping
+    # `seq` costs nothing here -- `values.row_id` is the same number.
     envelope = {
         "ts": _timestamp(source.get("ts_ms")),
-        "seq": row.get("id"),
-        "source": {"id": "bes", "type": "bes"},
-        # Three keys, exactly as every other pattern. `op` and `lsn` are down in
-        # `values` rather than up here, because on this topic they are what the
-        # message is *about* -- which is not the same thing as `meta` growing a
-        # transport field. docs/00-architecture.md would be broken by the latter.
-        "meta": {
-            "mechanism": MECHANISM,
-            "ingest_ts": _iso(),
-        },
         "values": values,
     }
 
@@ -330,32 +331,10 @@ def handle(request):
 
     envelope = {
         # The instant the operation changed, not the instant we heard about it.
-        # The gap between this and meta.ingest_ts is the CDC latency, and it is
-        # visible on stage -- same shape of gap pattern 4 makes a point of.
+        # `meta.ingest_ts` used to sit beside this, and the gap between the two
+        # was the CDC latency on stage. With the envelope gone that number is in
+        # the gateway log line below and in Debezium's, not on the wire.
         "ts": _timestamp(after.get("occurred_at")),
-        # The database row id, exactly as pattern 4 uses its outbox id. Durable
-        # and monotonic: an in-memory counter would restart at 1 on every gateway
-        # restart and tell a subscriber nothing.
-        "seq": after.get("id"),
-        # The batch execution system this stands in for -- named in the payload,
-        # because there is no `bes` area in the namespace. An area is a place; a
-        # BES is software. docs/00-architecture.md.
-        #
-        # id == type, matching pattern 4's {"id": "lims", "type": "lims"}.
-        "source": {"id": "bes", "type": "bes"},
-        # Exactly the documented keys, and no more. An earlier revision carried
-        # meta.op and meta.lsn here because the log position is the one field no
-        # other mechanism can produce -- but no other pattern extends `meta`, and
-        # a payload that advertises its own transport is a strange thing for a
-        # demo whose claim is that a subscriber cannot tell how anything arrived.
-        # The LSN is still in the gateway log line below, and in Debezium's.
-        #
-        # No correlation_id: pattern 5 has nothing to correlate to. Pattern 7
-        # joins it by time. docs/00-architecture.md § Payload envelope.
-        "meta": {
-            "mechanism": MECHANISM,
-            "ingest_ts": _iso(),
-        },
         "values": {
             "batch_id": after.get("batch_id"),
             "equipment_id": equipment_id,
@@ -375,10 +354,10 @@ def handle(request):
 
     # The LSN is logged rather than published. It is the best evidence that this
     # message came off the write-ahead log, so it belongs where somebody
-    # investigating can find it -- not in an envelope every other pattern keeps
-    # to three meta keys.
+    # investigating can find it -- and there is no longer an envelope on the
+    # operational topic for it to ride in.
     logger.infof("cdc sink published %s/%s (row %s, lsn %s) to %s",
                  envelope["values"]["event_type"],
                  envelope["values"]["operation"],
-                 str(envelope["seq"]), str(source.get("lsn")), topic)
+                 str(after.get("id")), str(source.get("lsn")), topic)
     return _json(request, 200, {"ok": True, "published": True, "topic": topic})

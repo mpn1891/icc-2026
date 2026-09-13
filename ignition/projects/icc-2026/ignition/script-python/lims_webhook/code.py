@@ -4,6 +4,13 @@ The LIMS has no MQTT publish rights. This module is the other half of that
 decision: Ignition accepts the HTTP callback, manufactures exactly-once from
 the outbox's at-least-once POSTs, and Transmission publishes as ign-transmission.
 
+**It does not decorate the document.** What the LIMS posted is what goes on the
+wire, byte for byte in content -- no `seq` minted here, no `source` filled in,
+no `meta.mechanism` stamped on the way past. Pattern 4's envelope is `ts` and
+`values`, the same shape patterns 1, 2 and 3 publish, and a consumer reads the
+mechanism off the topic it subscribed to. This module authenticates and
+deduplicates; it does not author.
+
 Dedupe is a module-level bounded dict (last ~500 keys), not a table. A gateway
 restart loses the window, which is honest and acceptable; a durable version
 needs the ICC26 JDBC datasource, which does not exist yet.
@@ -13,35 +20,17 @@ Jython 2.7: no f-strings, no type hints, integer division is floor division.
 
 from collections import OrderedDict
 
-from java.text import SimpleDateFormat
-from java.util import Date, TimeZone
-
 LOGGER_NAME = "lims_webhook"
 
 BROKER = "chariot_broker"
 TOPIC = "icc26/site1/qc/lims/sample-result"
 SECRET = "icc26-webhook-secret"
-MECHANISM = "webhook"
 
 # Last ~500 idempotency keys. An outbox delivers at least once, so a redelivery
 # after a 200 was lost in flight is normal operation. The 409 path is what
 # makes it look exactly-once.
 _MAX_KEYS = 500
 _seen = OrderedDict()
-_seq = [0]
-
-
-def _iso(date=None):
-    formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
-    formatter.setTimeZone(TimeZone.getTimeZone("UTC"))
-    if date is None:
-        date = Date()
-    return formatter.format(date)
-
-
-def _next_seq():
-    _seq[0] += 1
-    return _seq[0]
 
 
 def _header(request, name):
@@ -132,21 +121,9 @@ def handle(request):
         logger.infof("lims webhook replay of %s -- 409, not published", key)
         return _json(request, 409, {"ok": False, "error": "replay", "key": key})
 
-    meta = envelope.get("meta")
-    if not isinstance(meta, dict):
-        meta = {}
-        envelope["meta"] = meta
-    meta["mechanism"] = MECHANISM
-    if not meta.get("ingest_ts"):
-        meta["ingest_ts"] = _iso()
-    if not meta.get("correlation_id"):
-        meta["correlation_id"] = key
-    if not envelope.get("seq"):
-        envelope["seq"] = _next_seq()
-    source = envelope.get("source")
-    if not isinstance(source, dict):
-        envelope["source"] = {"id": "lims", "type": "lims"}
-
+    # Published exactly as received. See the module docstring: the envelope is
+    # the LIMS's document, and the only thing this handler is entitled to say
+    # about it is whether it is authentic and whether it has been seen before.
     payload = system.util.jsonEncode(envelope)
     system.cirruslink.transmission.publish(BROKER, TOPIC, payload, 1, False)
     logger.infof("lims webhook published %s to %s", key, TOPIC)
