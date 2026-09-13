@@ -143,8 +143,7 @@ One message lands on `icc26/site1/qc/deviation`. It passes if all of these hold:
 |---|---|---|
 | `values.violations[0].code` | `environmental_excursion` | Why the message exists at all |
 | `values.violations[0].source` | `em.reading.status` | Names the module that owns the rule — 07 computed nothing |
-| `meta.correlation_id` | your `sample_id` | The chain held onto the right sample |
-| `meta.mechanism` | `aggregate` | Pattern 7's own mechanism tag |
+| `values.sample_id` | the id you drew | The chain held onto the right sample. **This replaced `meta.correlation_id` on 2026-09-13** — the correlation id was always a copy of it |
 | `values.batch_id` | today's, e.g. `B-20260831-01` | Not `null` — the `bes.batch_event` lookup hit |
 | `values.batch_context.operation` | `GROWTH` | Pattern 5's fact, read rather than recomputed |
 | `values.batch_context.qualified_window` | `true` | The GxP claim the whole talk builds to |
@@ -156,19 +155,27 @@ One message lands on `icc26/site1/qc/deviation`. It passes if all of these hold:
 | `values.collection.badge_holder` | `Jordan Reyes` | Pattern 1's provenance survived the whole chain |
 | `values.disposition` / `values.analyst` | `pass` / your user | Pattern 4 signs on both outcomes |
 | `values.equipment_identifier` | `br-201` | A tag read off the UDT — `null` if unreadable, never fatal |
-| `seq` | non-zero | The review's outbox delivery id |
+| `values.assessed_at` | a few seconds after `ts` | When 07 assembled the document. **Replaced the envelope's `meta` block on 2026-09-13** |
+| `seq`, `source`, `meta` | **absent** | The envelope came off every pattern on 2026-09-13. A message carrying any of them is a stale gateway holding an old copy of the script |
 
 **Press Clean again when you are done**, or every subsequent sample deviates.
 
-**Read the three gaps out loud, because they are the argument:** `ts` against `meta.ingest_ts` is the
-human in the loop, `batch_context.as_of` against `ts` is how far into the operation the sample was
-drawn, and `age_s` is how close the room reading was. No arithmetic on stage.
+**Read the three gaps out loud, because they are the argument:** `values.assessed_at` against `ts`
+is the human in the loop, `batch_context.as_of` against `ts` is how far into the operation the
+sample was drawn, and `age_s` is how close the room reading was. No arithmetic on stage.
+
+> **All three moved one level shallower on 2026-09-13** and none of them changed value. They used
+> to be read off `meta`; every pattern now publishes `ts` + `values` and the instants live in
+> `values` — 04's is `verified_at`, 06's is `ingest_ts`, 07's is `assessed_at`. See
+> [`00-architecture.md` § *Payload envelope*](00-architecture.md).
 
 ### Known good — the 2026-08-31 walk
 
-Trimmed from `S-20260831-0103`, which passed every row above. **It predates the 2026-09-06
-deviation change**, so it carries no `values.violations` and was published on the old
-`icc26/site1/qc/sample-chain`; every other field is unchanged:
+Trimmed from `S-20260831-0103`, which passed every row above. **Two things about it are now
+history rather than expectation.** It predates the 2026-09-06 deviation change, so it carries no
+`values.violations` and was published on the old `icc26/site1/qc/sample-chain`; and it predates
+the 2026-09-13 envelope removal, so its `meta`, `source` and `seq` are exactly the three things
+the table above now expects to be **absent**. Read it for the `values` block, which is unchanged:
 
 ```json
 {"meta":{"ingest_ts":"2026-08-31T15:41:13.184Z","correlation_id":"S-20260831-0103",
@@ -191,7 +198,8 @@ deviation change**, so it carries no `values.violations` and was published on th
 ```
 
 `ts` to `ingest_ts` was 72.6 s on that walk — the time it took a person to copy an id, type it into
-an instrument and sign. That gap is provenance, not lag.
+an instrument and sign. That gap is provenance, not lag. **The same number is `values.assessed_at`
+against `ts` now**; only the path changed.
 
 ## When it does not work
 
