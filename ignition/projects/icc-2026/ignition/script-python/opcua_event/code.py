@@ -7,9 +7,11 @@ already bound and return one JSON document. Nothing under ICC26Extensions is rea
 What goes on the wire is the timestamp and the values the instrument produced -- no `seq`,
 no `source`, no `meta`. An analyzer result is the instrument's document, not the site's, and
 a consumer learns where it came from from the topic it arrived on. The sample id travels as
-`values.sample_id`, which is what the LIMS ingests and what pattern 4 re-stamps as
-`meta.correlation_id` on the way back out, so the sample is still traceable across two
-colours on the firehose without this pattern asserting a field it did not measure.
+`values.sample_id`, which is what the LIMS ingests and what pattern 4 carries straight back out
+under the same name, so the sample is still traceable across every topic it touches without this
+pattern asserting a field it did not measure. (Pattern 4 re-stamped it as `meta.correlation_id`
+until 2026-09-13; the correlation id was always a copy of `values.sample_id` and went with the
+rest of the envelope.)
 
 **`batch_id` is deliberately not published** (removed 2026-09-09). The vendor node is still in
 the address space and still writable by an OPC client, but the instrument does not know a batch.

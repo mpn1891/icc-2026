@@ -139,13 +139,16 @@ Unchanged except for one added object. `values` now carries:
 }
 ```
 
-`ts` is still `collected_at` — the event being described is the measurement, and the gap to
-`meta.ingest_ts` is still the point. On a sample that was never analysed there is no acquisition
-instant, so the valve's close time stands in: that genuinely is when the record was made.
+`ts` is still `collected_at` — the event being described is the measurement, and the gap to the
+approval instant is still the point. That instant is `values.verified_at` as of 2026-09-13; it
+was `meta.ingest_ts` until the envelope came off, and the number and the stage beat are
+unchanged. On a sample that was never analysed there is no acquisition instant, so the valve's
+close time stands in: that genuinely is when the record was made.
 
-**No Ignition change was needed for any of this.** `lims_webhook.handle()` republishes the
-envelope wholesale and only fills `meta` / `seq` / `source` when absent — there is no field
-whitelist to widen.
+**No Ignition change was needed for any of this.** `lims_webhook.handle()` validates the secret
+and the idempotency key and republishes the document as the LIMS built it — it has never had a
+field whitelist to widen. It used to fill `meta` / `seq` / `source` when absent; that stopped on
+2026-09-13, because there is no longer an envelope to fill in.
 
 ### ACL
 

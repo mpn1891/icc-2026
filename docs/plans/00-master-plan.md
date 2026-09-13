@@ -67,8 +67,9 @@ positive closing message** — the upbeat beat after the risk speaker is deliber
 These apply to every spec below and belong at the top of `00-conventions.md` when that file
 is written (planned — not present yet).
 
-- **Envelope + namespace**: reference `docs/00-architecture.md`; `meta.mechanism` ∈
-  `native-mqtt | sparkplug | opcua-event | webhook | cdc | poll | aggregate`.
+- **Envelope + namespace**: reference `docs/00-architecture.md`. Every pattern publishes `ts`
+  and `values` and nothing else — no `seq`, no `source`, no `meta`. `meta.mechanism` was retired
+  on 2026-09-13; a message's provenance is the topic it arrived on.
 - **Ignition-originated publishes go through Transmission**:
   `system.cirruslink.transmission.publish("chariot_broker", topic, payload, qos, retain)` is the manual option. spB transmitters can publish entire
   tag structures, or event streams can publish to a specific topic..
@@ -148,7 +149,7 @@ Countess (`services/opcua-countess`) is **out of the demo** — do not finish it
 publish, and do not treat it as remaining Pattern 3 work.
 
 **Signal contributed to the spine:** viable cell density / viability reading — pattern 7 reads
-the analyzer's result for *when the sample was actually run* (`meta.correlation_id` = `sample_id`).
+the analyzer's result for *when the sample was actually run*, keyed on `values.sample_id`.
 
 **GxP hook:** a qualified instrument, read by a platform, one-way — the change-control boundary
 is explicit: the instrument is untouched, the gateway does the work.
@@ -270,9 +271,10 @@ This will require a history/database for the other events to log to in addition 
 > Sample pulled outside qualified phase window with concurrent environmental excursion.
 
 — the moment no single source system could have produced on its own. The correlating piece is
-the `sample_id` already stamped in 3 and 4, so one sample shows up under four `meta.mechanism`
-values in one `mosquitto_sub` (opcua-event, webhook, and whatever 5/6 contributed) plus the
-aggregate.
+the `sample_id` already stamped in 3 and 4, so one sample shows up on four topics in one
+`mosquitto_sub` — the analyzer result, the LIMS review, whatever 5/6 contributed — plus the
+aggregate. It used to be countable by `meta.mechanism`; since 2026-09-13 the topic is what
+tells them apart and `values.sample_id` is what threads them together.
 
 **Framing:** no single source knows this. Four systems each hold a fragment that means nothing
 alone. Patterns 1–6 are about acquisition; pattern 7 is about meaning.
