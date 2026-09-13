@@ -235,7 +235,7 @@ key off it directly.
 
 An Ignition gateway timer polls that API. On a new analysis, the script submits the payload to
 an Event Stream (`06_poll/particle-counter-result`), which publishes through Transmission to
-`icc26/site1/qc/analyzers/particle-counter-01/result` as `ts` + `values`. Same relay shape as
+`icc26/site1/env_monitoring/particle-counter-01/result` as `ts` + `values`. Same relay shape as
 pattern 3 and, since 2026-09-13, the same payload shape too; the acquisition is the poll.
 
 **GxP hook:** a characterized detection gap. Not fatal on its own, but it goes in the
@@ -249,8 +249,8 @@ around the through line's payoff. **This is the designated cut** if the schedule
 the join of 01, 03, 04, 05 and 06, and it cannot start until those four sources exist.
 
 A gateway script **listens for the pattern-4 LIMS review** on MQTT (`qc/lims/sample-result`,
-pass or fail). On that message it builds one composite document, `mechanism=aggregate`, on
-`icc26/site1/upstream/br-201/sample-chain/event`:
+pass or fail). On that message it assembles the sample's story from four sources and, **if any
+of it was violated**, publishes one document on `icc26/site1/qc/deviation`:
 
 | Section | Source | What it answers |
 |---|---|---|
@@ -259,14 +259,15 @@ pass or fail). On that message it builds one composite document, `mechanism=aggr
 | Batch operation and qualified window | pattern 5 `batch/event` at sample time | `operation` and `qualified_window` when the valve opened — `ORDER BY occurred_at DESC, id DESC`, see [`05-cdc-batch-event.md`](05-cdc-batch-event.md) |
 | Environmental excursion status | pattern 6 particle counter, nearest reading to the analyzer timestamp | `status` at (or nearest) the sample instant |
 
-The script derives two flags from those sections — `values.outside_qualified_window` (pattern
-5's `qualified_window` was `false` at the sample-open instant) and
-`values.environmental_excursion` (pattern 6's nearest reading was `status = excursion`). **Always
-publish**, whatever the flags say: a dirty or missing particle counter reading is a finding in the
-document, not a refusal. When both flags are `true`, the payload *is* the through line's
-composite event.
+**Reversed 2026-09-06: it speaks only on a deviation.** The plan above published a composite on
+every review; the built pattern names what was violated in `values.violations` — `code`
+`environmental_excursion` (pattern 6's nearest reading was `status = excursion`) or
+`failed_review` (the analyst rejected it) — and publishes **nothing** on a clean sample, so
+silence on the topic is the compliant case. `qualified_window` is reported but deliberately not a
+trigger, being `false` for four operations of five. It computes neither flag: both were decided
+at ingest by the module that owned them. [`07-sample-chain.md`](07-sample-chain.md).
 
-This will require a history/database for the other events to log to in addition to just the batch ones
+This requires a history/database for the other events to log to in addition to just the batch ones
 
 > Sample pulled outside qualified phase window with concurrent environmental excursion.
 

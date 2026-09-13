@@ -263,7 +263,7 @@ client connection to it.
 cursor tag points past the end of the instrument's new sequence: the poll re-authenticates on
 schedule, walks a page, writes nothing, and logs no error. It ran that way for 15.5 hours on
 2026-08-30 with every check green. Clearing one tag is the whole recovery —
-`[default]icc26/site1/qc/analyzers/particle-counter-01/state/cursor` — and `health` now warns
+`[default]icc26/site1/env_monitoring/particle-counter-01/state/cursor` — and `health` now warns
 when nothing has landed in `em.reading` for 180 s, which is the check that would have caught it.
 
 **Bind mounts behave differently per host**, and Ignition (UID 2003) must write to
@@ -312,8 +312,9 @@ icc26/site1/upstream/br-201/sample-valve-01/status                 # 1  online/o
 icc26/site1/upstream/br-201/sample-valve-01/telemetry              # 1  air supply / enclosure temp, every 5 s
 icc26/site1/qc/analyzers/cell-analyzer-01/result                   # 3  analyzer result
 icc26/site1/qc/lims/sample-result                                  # 4  review: analyst + disposition
-icc26/site1/upstream/br-201/batch/event                            # 5  CDC of bes.batch_event
-icc26/site1/qc/analyzers/particle-counter-01/result                # 6  particle count analysis
+icc26/site1/upstream/br-201/batch/event                            # 5  CDC of bes.batch_event — an INSERT
+icc26/site1/audit/bes/batch-event                                  # 5  an UPDATE/DELETE: somebody amended the record
+icc26/site1/env_monitoring/particle-counter-01/result              # 6  particle count analysis
 icc26/site1/qc/deviation                                           # 7  ONLY when something was violated
 
 spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|NDEATH}/SAMPLE-VALVE-02              # 2  spec-mandated

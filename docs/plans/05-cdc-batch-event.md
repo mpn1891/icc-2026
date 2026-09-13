@@ -301,11 +301,14 @@ row. Tailing it would deliver a single analyst review twice, under two different
 |---|---|
 | valid token, `op="c"` | `200`, publishes |
 | missing or wrong token | `401`, no publish |
-| `op != "c"` | `200`, **no publish**, and the body says which op it was |
+| `op` is `u` or `d` | `200`, published to the **audit topic**, and the body names it |
+| any other `op` | `200`, **no publish**, and the body says which op it was |
 | unparseable body / no `after` / no `equipment_id` | `400`, no publish |
 
 `bes.batch_event` is append-only, so an `UPDATE` or `DELETE` reaching the sink means somebody is
-editing history. Rejecting it visibly is a better answer on stage than filtering it away.
+editing history. It is published — to `icc26/site1/audit/bes/batch-event`, with the `before`
+image REPLICA IDENTITY FULL puts in the WAL — rather than dropped, because an amendment nobody
+can see is worse than one anybody can.
 
 **Auth is a query-string token, not a header.** Debezium Server's custom-header support is
 version-dependent, and a demo should not be one image bump away from silently unauthenticated
@@ -374,11 +377,13 @@ docker exec icc26-postgres psql -U icc26 -d icc26 -c \
   "UPDATE bes.batch_event SET batch_id = batch_id WHERE id = 1;"
 ```
 
-The sink returns `200` with `"published": false, "op": "u"`. Nothing on the wire.
+The sink returns `200` with `"published": true, "op": "u"` and the amendment lands on
+`icc26/site1/audit/bes/batch-event`. The **operational** topic stays silent: an edit is not a
+batch event.
 
 **Namespace check:** read `icc26/site1/upstream/br-201/batch/event` to somebody who has not seen
-the build and ask which mechanism it uses. Nothing in the topic string says CDC; `meta.mechanism`
-is the only tell.
+the build and ask which mechanism it uses. Nothing in the topic string says CDC, and since 2026-09-13
+nothing in the payload does either — there is no tell left.
 
 **Rehearsal path for pattern 7:** advance to `GROWTH`, badge the valve on :8085 → the sample is
 inside the qualified window. Advance to `HARVEST` and badge again → it is not.

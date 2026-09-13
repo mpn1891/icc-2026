@@ -343,19 +343,15 @@ seq 40 (`operation_end INOC`) and seq 41 (`operation_start GROWTH`) at the same 
 
 ### The document
 
-Follow the house envelope. Every other pattern uses it and 07 must not invent a new one.
+`ts` + `values`, the shape every pattern publishes since 2026-09-13. 07 must not invent a new
+one. The assembly instant is `values.assessed_at`, and `values.sample_id` is the thread across
+mechanisms that `meta.correlation_id` used to copy.
 
 ```json
 {
   "ts":   "<the sample instant — values.collection.sample_completion>",
-  "seq":  0,
-  "source": { "id": "sample-chain", "type": "aggregate" },
-  "meta": {
-    "mechanism": "aggregate",
-    "ingest_ts": "<now>",
-    "correlation_id": "<sample_id>"
-  },
   "values": {
+    "violations":   [ ],
     "sample_id":    "...",
     "equipment_id": "br-201",
     "batch_id":     "B-20260830-02",
@@ -385,7 +381,7 @@ Follow the house envelope. Every other pattern uses it and 07 must not invent a 
 ```
 
 **`ts` is the acquisition instant, not the assembly instant** — the event being described is the
-measurement. `meta.ingest_ts` is when 07 built it, and the gap between the two is the whole
+measurement. `values.assessed_at` is when 07 built it, and the gap between the two is the whole
 record's provenance, visible on stage. This is the same rule
 [`04-lims-webhook.md`](04-lims-webhook.md) states for the review message.
 

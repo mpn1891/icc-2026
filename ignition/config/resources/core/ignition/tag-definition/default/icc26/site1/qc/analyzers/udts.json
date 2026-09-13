@@ -17,10 +17,5 @@
     },
     "tagType": "UdtInstance",
     "typeId": "cell_analyzer"
-  },
-  {
-    "name": "particle-counter-01",
-    "tagType": "UdtInstance",
-    "typeId": "particle_counter"
   }
 ]

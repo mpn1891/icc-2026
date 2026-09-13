@@ -1415,7 +1415,7 @@ def task_health():
         warn("em.reading  STALLED - last stored %s ago while sim-particle-counter is "
              "SAMPLING with %s buffered. Stale cursor: clear"
              % (_human_age(float(lag)), sim_buffered))
-        warn("            [default]icc26/site1/qc/analyzers/particle-counter-01"
+        warn("            [default]icc26/site1/env_monitoring/particle-counter-01"
              "/state/cursor")
     else:
         warn("em.reading  STALLED - last stored %s ago and the instrument is "

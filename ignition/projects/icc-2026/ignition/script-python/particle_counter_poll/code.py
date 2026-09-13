@@ -70,10 +70,13 @@ DATASOURCE = "ICC26"
 PROJECT = "icc-2026"
 STREAM = "06_poll/particle-counter-result"
 
-# The tag path mirrors the topic exactly, which is why pattern 6 moved into
-# qc/analyzers on 2026-08-25. The device id is the last segment, taken from the
-# path the same way bes_batch takes equipment_id from its own.
-BASE = "[default]icc26/site1/qc/analyzers/particle-counter-01"
+# The tag path mirrors the topic exactly, which every pattern does and this one
+# keeps through two moves: into qc/analyzers on 2026-08-25, out to
+# env_monitoring on 2026-09-13. The device id is the last segment, taken from
+# the path the same way bes_batch takes equipment_id from its own -- so it is
+# still `particle-counter-01` after both moves, and `em.reading` never noticed
+# either one.
+BASE = "[default]icc26/site1/env_monitoring/particle-counter-01"
 
 # 50 records is ~8 minutes of backlog at a 10 s sample. Small enough that the
 # hasMore branch is exercised by any real stall rather than being dead code.

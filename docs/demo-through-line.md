@@ -138,8 +138,10 @@ plainly and hand it to the risk speaker.
 ## Pattern 6 — API Poll and Diff
 
 **Demo asset:** Environmental monitoring system (particle counter, simulated), with
-an HTTP API. It lives in the analyzer path — `icc26/site1/qc/analyzers/particle-counter-01/result`
-as of 2026-08-25, beside the analyzer rather than beside the reactor
+an HTTP API. It lives in its own area — `icc26/site1/env_monitoring/particle-counter-01/result`
+as of 2026-09-13, having spent 08-25 to 09-13 in `qc/analyzers` beside the analyzer, and before
+that beside the reactor. It watches a room rather than running analyses on samples, which is
+what moved it out of the analyzer path
 
 - Poll on an interval, diff by record id or analysis time, emit
 - Each analysis carries `status` ∈ `normal | excursion` against a configured cleanroom limit

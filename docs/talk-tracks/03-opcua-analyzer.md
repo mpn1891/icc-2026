@@ -78,10 +78,9 @@ the review message and on pattern 7's deviation — which is how one sample stay
 three topics without any of them asserting a field it did not measure.
 
 > **The consequence, owned rather than hidden.** "Seven mechanisms, seven colours on one
-> firehose" is not true and never was. Pattern 1 carries no `meta`, pattern 2 has no envelope of
-> ours at all, and this one publishes the instrument's own document — so one `mosquitto_sub`
-> shows **four** `meta.mechanism` values, from patterns 4, 5, 6 and 7. Say four, or do not say a
-> number. [`plans/06-poll-particle-counter.md`](../plans/06-poll-particle-counter.md) open item 5.
+> firehose" is not true and never was, and since **2026-09-13 it is not even partly true**: the
+> envelope came off every pattern, so one `mosquitto_sub` shows **no mechanism field anywhere**.
+> The topic is the only thing that tells them apart. Do not say a number. [`plans/06-poll-particle-counter.md`](../plans/06-poll-particle-counter.md) open item 5.
 
 **6. Bad quality becomes `null`, never zero.** The osmometer module is unfitted on the shipped
 defaults, so `Osmo/Result` sits at `Bad_NoData`, the transform's `_value()` returns `None`, and

@@ -191,7 +191,7 @@ only.
 
 A sample result produced by the pattern-3 analyzer is received by the LIMS off the event backbone,
 held unreviewed, released by a human, and only then pushed into Ignition over HTTP and published
-to `icc26/site1/qc/lims/sample-result` with `meta.mechanism = "webhook"`, `analyst`, and
+to `icc26/site1/qc/lims/sample-result` with `analyst` and
 `disposition` ∈ `pass | fail`. Both approve and reject publish.
 
 ## Talk point
@@ -241,7 +241,7 @@ pattern having to share a topic with the other.
 ```
 opcua-cell-analyzer ──OPC UA──▶ Ignition ──Event Stream──▶ Transmission
                                                           │
-                          icc26/site1/qc/analyzers/cell-analyzer-01/result   (mechanism: opcua-event)
+                          icc26/site1/qc/analyzers/cell-analyzer-01/result
                                                           │
                                               subscribe (QoS 1, lims-bridge)
                                                           ▼
@@ -255,14 +255,14 @@ opcua-cell-analyzer ──OPC UA──▶ Ignition ──Event Stream──▶ T
                                                           ▼
                                               Ignition WebDev  ──▶ Transmission
                                                           │
-                                 icc26/site1/qc/lims/sample-result   (mechanism: webhook)
+                                 icc26/site1/qc/lims/sample-result
 ```
 
-`meta.correlation_id` is stamped once, upstream, and survives the whole chain, so one sample is
-traceable across two `meta.mechanism` values on the wire — `opcua-event` then `webhook`, visible
-side by side in one `mosquitto_sub`. (This used to be phrased as "two colours on the firehose";
-the firehose was cut on 2026-08-25 and the terminal is the demo surface.) **This requires a
-one-line addition to pattern 3** — see [Ignition resources](#ignition-resources).
+`values.sample_id` is stamped once, upstream, and survives the whole chain, so one sample is
+traceable across two topics in one `mosquitto_sub` — the analyzer result, then the review. Since
+2026-09-13 the **topic** is what tells the mechanisms apart; nothing in the payload does. (This
+used to be phrased as "two colours on the firehose"; the firehose was cut on 2026-08-25 and the
+terminal is the demo surface.)
 
 ## Decisions, and the reasoning
 
@@ -511,14 +511,6 @@ bad sentence to say on a stage.
 
 ## Ignition resources
 
-**One edit to pattern 3, first.**
-`ignition/projects/icc-2026/ignition/script-python/opcua_event/code.py` does not currently set
-`meta.correlation_id`. Add it inside the `meta` dict so the chain is traceable:
-
-```python
-"correlation_id": _value(by_name["sample_id"]),
-```
-
 `sample_id` is already unique per run and already the join key the LIMS uses, so it needs no new
 identifier. Then `python tasks.py scan`.
 
@@ -576,20 +568,15 @@ Note that the reversal made this **less** defensible, not more: `qc/lims/` was e
 when three patterns keyed off one topic. Now one pattern does, and the only thing holding the
 address in place is the calendar. Say so.
 
-## Envelope
+## Payload
 
-Per `../00-architecture.md` § *Payload envelope*. One message per sample.
+**`ts` + `values`, and nothing else** — narrowed 2026-09-13 with patterns 5, 6 and 7. The
+verification instant survives as `values.verified_at`; `meta.correlation_id` was always a copy of
+`values.sample_id`. One message per sample.
 
 ```json
 {
   "ts": "2026-08-19T14:03:22.145Z",
-  "seq": 1041,
-  "source": { "id": "lims", "type": "lims" },
-  "meta": {
-    "mechanism": "webhook",
-    "ingest_ts": "2026-08-19T14:07:01.002Z",
-    "correlation_id": "S-2026-0819-014"
-  },
   "values": {
     "sample_id": "S-2026-0819-014",
     "batch_id": "B-2026-0042",
@@ -606,8 +593,8 @@ Per `../00-architecture.md` § *Payload envelope*. One message per sample.
 ```
 
 `ts` is `collected_at`, not the approval instant — the event being described is the measurement.
-The approval instant is `meta.ingest_ts`, and the gap between the two is visible on stage, which is
-the point of the whole pattern.
+The approval instant is `values.verified_at`, and the gap between the two is visible on stage,
+which is the point of the whole pattern.
 
 ## Empirical checkpoints
 
@@ -718,7 +705,6 @@ Then update, in this order:
   and sequencing to `00-master-plan.md` § *Order*.
 - `services/README.md` — the `lims/` row still reads *implementation undecided*, and § *The LIMS
   contract* still describes four surfaces.
-- `../00-architecture.md` — record that `meta.correlation_id` has a working first user, and that
-  the retired surfaces are retired rather than pending.
+- `../00-architecture.md` — record that the retired surfaces are retired rather than pending.
 - `compose/postgres/initdb/02-schema.sql` and `04-cdc.sql` — comments: pattern 4 only on
   `lims.sample_result`; pattern 5 CDC-tails `bes.batch_event`.

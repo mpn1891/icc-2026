@@ -1,0 +1,13 @@
+{
+  "scope": "A",
+  "version": 1,
+  "restricted": false,
+  "overridable": true,
+  "files": [
+    "config.json"
+  ],
+  "attributes": {
+    "description": "Pattern 6: the particle counter -> auto-created tags in the MQTT Engine provider. Split off icc26-analyzers when pattern 6 moved out of qc/analyzers on 2026-09-13.",
+    "enabled": true
+  }
+}

@@ -85,9 +85,9 @@ Since 2026-09-06 it speaks only on a deviation, so a quiet topic is the complian
 evidenced cannot be released.
 
 **5. Seven patterns, and a subscriber still cannot tell how any of it arrived.** One
-`mosquitto_sub` shows the same `sample_id` under `opcua-event`, `webhook` and `aggregate`, on
-three topics whose names say nothing about transport. `meta.mechanism` is the only field that
-tells them apart. Pattern 4 and pattern 7 are the only two subscribers there are — 07 is a
+`mosquitto_sub` shows the same `values.sample_id` on three topics whose names say nothing about
+transport, and since 2026-09-13 **no field anywhere says it either** — the topic is the only
+thing that tells them apart. Pattern 4 and pattern 7 are the only two subscribers there are — 07 is a
 genuine backbone subscriber, not a database job wearing a hat.
 
 ## The chain

@@ -523,14 +523,12 @@ correct to use it rather than pick an unrelated code.
 
 ## 10. MQTT projection (ICC-2026 pattern 03)
 
-Topic: `icc26/site1/qc/analyzers/countess-01/result`, envelope per `docs/00-architecture.md`:
+Topic: `icc26/site1/qc/analyzers/countess-01/result` — `ts` + `values`, as pattern 3 publishes.
+Design only: the Countess came out of the demo on 2026-08-25 and `countess-01` is deleted.
 
 ```json
 {
   "ts": "2026-08-13T14:03:22.145Z",
-  "seq": 1041,
-  "source": { "id": "countess-01", "type": "analyzer" },
-  "meta": { "mechanism": "opcua-event", "ingest_ts": "2026-08-13T14:03:22.190Z" },
   "values": {
     "count_id": 4711,
     "session_id": 88,
