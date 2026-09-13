@@ -87,12 +87,6 @@ LOGGER_NAME = "sample_chain"
 # TagHistory are both bound to it. Do not select it; do not remove it.
 DATASOURCE = "ICC26"
 
-MECHANISM = "aggregate"
-# id == type, matching pattern 5's {"id": "bes", "type": "bes"}. There is no
-# `sample-chain` device and no `aggregate` area -- this source is software, and
-# saying so is more honest than borrowing a vessel's name.
-SOURCE = {"id": "sample-chain", "type": MECHANISM}
-
 # The room's instrument, not the vessel's. One counter serves USP Suite A, so
 # this is a constant and not derived from the sample. See the module docstring.
 EM_DEVICE_ID = "particle-counter-01"
@@ -469,17 +463,24 @@ def build(document):
     accepted anyway, because what an Event Stream hands a transform is not worth
     being brittle about.
 
-    `ts` is the acquisition instant and `meta.ingest_ts` is when 07 assembled
+    The envelope is `ts` and `values` and nothing else -- no `seq`, no `source`,
+    no `meta` -- which is the shape every other pattern on this backbone now
+    publishes. A subscriber knows this document is 07's because it arrived on
+    07's topic, the same way it knows the analyzer result is the analyzer's.
+
+    `ts` is the acquisition instant and `values.assessed_at` is when 07 built
     the record. The gap between them is the whole document's provenance, visible
     on stage in one message -- the same rule docs/plans/04-lims-webhook.md
-    states for the review itself.
+    states for the review itself, and the same relocation: the instant is a
+    measured fact about this sample, so it sits in `values` beside the analyst
+    and the disposition rather than in a metadata block.
 
-    `seq` is the outbox delivery id off the review message. 07 has no counter of
-    its own and mints nothing: it holds no table, and an in-memory counter would
-    restart at 1 on every gateway restart and tell a subscriber nothing -- the
-    reason `bes_cdc` gives for using its row id. The review and the composite
-    sharing one `seq` is not a collision; it is the statement that this document
-    is that review, answered.
+    **07 no longer carries a `seq`.** It used to borrow the outbox delivery id
+    off the review message, because it holds no table and an in-memory counter
+    would restart at 1 on every gateway restart and tell a subscriber nothing.
+    Pattern 4 stopped publishing one, and 07 mints nothing to replace it: the
+    sample id is what identifies this document, and it is in `values` where a
+    reader can see it.
     """
     logger = system.util.getLogger(LOGGER_NAME)
 
@@ -510,16 +511,6 @@ def build(document):
 
     envelope = {
         "ts": instant_iso or document.get("ts"),
-        "seq": document.get("seq"),
-        "source": SOURCE,
-        "meta": {
-            "mechanism": MECHANISM,
-            "ingest_ts": _iso(),
-            # The sample id pattern 1 minted at the valve. It is the same string
-            # in the analyzer result, the LIMS review and here, which is what lets
-            # one sample be found under four mechanisms in one mosquitto_sub.
-            "correlation_id": sample_id,
-        },
         "values": {
             # Why this message exists. Never empty -- a clean sample returns
             # above and produces no message at all.
@@ -531,6 +522,13 @@ def build(document):
             "batch_id": batch_id,
             "disposition": values.get("disposition"),
             "analyst": values.get("analyst"),
+
+            # When 07 assembled this. Read against `ts` -- the acquisition
+            # instant -- it is the provenance gap the talk track reads out.
+            # `sample_id` above is the thread across mechanisms now that no
+            # document carries a `meta.correlation_id`; it was always the same
+            # string the correlation id was copied from.
+            "assessed_at": _iso(),
 
             # Pattern 1's contribution and pattern 3's, carried through the
             # review unchanged. 07 re-reports; it does not re-interpret.

@@ -258,12 +258,6 @@ row. Tailing it would deliver a single analyst review twice, under two different
 ```json
 {
   "ts": "2026-08-26T19:12:04.318Z",
-  "seq": 7,
-  "source": { "id": "bes", "type": "bes" },
-  "meta": {
-    "mechanism": "cdc",
-    "ingest_ts": "2026-08-26T19:12:04.402Z"
-  },
   "values": {
     "batch_id": "B-2026-0142",
     "equipment_id": "br-201",
@@ -274,20 +268,24 @@ row. Tailing it would deliver a single analyst review twice, under two different
 }
 ```
 
-- **`source.id` is `bes`, not an area.** There is no `bes` area in the namespace and there is not
-  going to be — an area is a place, and a BES is software. The batch event happens in a suite, so
-  it publishes under the cell that produced it and names its source system in the payload.
-  `id == type`, matching pattern 4's `{"id": "lims", "type": "lims"}`.
-- **`seq` is `bes.batch_event.id`** — the database row id, exactly as pattern 4 uses its outbox
-  id. Durable and monotonic. An in-memory counter (which this had in its first revision) restarts
-  at 1 on every gateway restart and tells a subscriber nothing.
-- **`meta` carries the three documented keys and no more.** An earlier revision added `meta.op`
-  and `meta.lsn`, on the argument that the log position is the one field no other mechanism can
-  produce. Removed 2026-08-26: no other pattern extends `meta`, and **a payload that advertises
-  its own transport is a strange thing for a demo whose claim is that a subscriber cannot tell how
-  anything arrived.** The LSN is still logged by `bes_cdc` and by Debezium, which is where somebody
-  investigating would look for it.
-- **`meta.correlation_id` is absent.** Pattern 5 has nothing to correlate to; pattern 7 joins it
+- **`ts` and `values`, and nothing else** — narrowed **2026-09-13**, on the argument patterns
+  4, 6 and 7 took the same day: a document that has to name its own mechanism is a document whose
+  address is not doing its job. What went, and why none of it is missed:
+  - **`seq`** was `bes.batch_event.id`, the database row id. Still durable and monotonic, still
+    the right number — it is simply not on the operational topic any more. It is in the gateway
+    log line, and the audit topic keeps it as `values.row_id`.
+  - **`source`** was `{"id": "bes", "type": "bes"}`, there because there is no `bes` area in the
+    namespace and never will be: an area is a place, a BES is software. That reasoning stands;
+    the conclusion is now that the topic names the cell and nothing needs to name the system.
+  - **`meta`** was `mechanism` + `ingest_ts`. A payload that advertises its own transport was
+    always a strange thing for a demo whose claim is that a subscriber cannot tell how anything
+    arrived. Now it cannot, from pattern 5, at all.
+- **The CDC latency is no longer on the wire.** `ts` minus `meta.ingest_ts` was the measurement;
+  the instant we heard about the change now appears only in `bes_cdc`'s log line and Debezium's.
+  Patterns 4, 6 and 7 kept their instants by moving them into `values` (`verified_at`,
+  `assessed_at`, `ingest_ts`) — pattern 5 has no equivalent domain fact, so it kept nothing.
+  Pattern 6's `values.ingest_ts` is the precedent if this one is ever wanted back.
+- **`correlation_id` was never here.** Pattern 5 has nothing to correlate to; pattern 7 joins it
   by time, not by id.
 - **`ts` is milliseconds**, like every other pattern, though Debezium hands over six-digit
   microseconds. `_to_millis` trims it rather than letting pattern 5 be the one message on the bus

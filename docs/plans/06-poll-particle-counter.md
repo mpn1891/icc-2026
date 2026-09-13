@@ -569,15 +569,13 @@ SELECT occurred_at, ingested_at, ingested_at - occurred_at AS detection_lag, sta
 
 ## Payload contract
 
-Full envelope, `mechanism=poll`.
+`ts` + `values`, no envelope (narrowed 2026-09-13 — see below).
 
 ```json
 {
   "ts": "2026-08-29T14:03:22.145Z",
-  "seq": 1041,
-  "source": { "id": "particle-counter-01", "type": "analyzer" },
-  "meta": { "mechanism": "poll", "ingest_ts": "2026-08-29T14:03:41.002Z" },
   "values": {
+    "ingest_ts": "2026-08-29T14:03:41.002Z",
     "sequence_number": 1041,
     "status": "normal",
     "location": "USP Suite A - BR-201 sample port",
@@ -600,22 +598,29 @@ Full envelope, `mechanism=poll`.
 }
 ```
 
-**`seq` is the instrument's `sequenceNumber`**, exactly as pattern 5's `seq` is the
-`bes.batch_event` row id: the source system's own monotonic number, not one we invent.
+**`values.sequence_number` is the instrument's `sequenceNumber`**, exactly as pattern 5's `seq`
+is the `bes.batch_event` row id: the source system's own monotonic number, not one we invent.
 
-**`ts` is the instrument's `completedAt`; `meta.ingest_ts` is when the poll found it.** Those
+**`ts` is the instrument's `completedAt`; `values.ingest_ts` is when the poll found it.** Those
 two differing by tens of seconds, visible in every message on `mosquitto_sub`, is the detection
 gap on the wire without anybody having to explain it.
 
-**This pattern carries the full envelope, and pattern 3 does not** — the analyzer publishes `ts` and
-`values` only ([`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md) § 9). That is
-not an inconsistency to tidy: pattern 3 relays the instrument's own document, while pattern 6's
-document **contains fields the instrument never produced** — `status` and `location` are ours.
-A record the site partly authored gets the site's envelope.
-
-`meta.correlation_id` is absent. Pattern 6 has nothing to correlate to: it never sees a sample
-id, and pattern 7 finds its reading by time, not by key
+**Narrowed 2026-09-13: `seq`, `source` and `meta` came off.** Until then this pattern carried the
+full envelope and pattern 3 did not, on the argument that pattern 3 relays the instrument's own
+document while this one **contains fields the instrument never produced** — `status` and
+`location` are ours — so a record the site partly authored gets the site's envelope. That lost to
+a shorter argument: **nothing subscribes to this topic.** Pattern 7 reads `em.reading` out of
+Postgres, so `seq`, `source` and `meta` were each written for a reader that does not exist, and
+the topic already says what a message is. Patterns 4 and 7 made the same move the same day
 ([`../00-architecture.md` § *Payload envelope*](../00-architecture.md)).
+
+**Two things survived the narrowing, and both had readers.** The ingest instant moved to
+`values.ingest_ts` — talk point 6 and the *gap, on the wire* stage beat are read straight off it,
+and it is a measured fact about the analysis rather than metadata about the message. `seq` was
+already duplicated as `values.sequence_number`; the envelope's copy is the one that went.
+
+`meta.correlation_id` was absent before any of this. Pattern 6 has nothing to correlate to: it
+never sees a sample id, and pattern 7 finds its reading by time, not by key.
 
 ## Event Stream
 
@@ -704,8 +709,9 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
    forgotten, and a forgotten Start looks exactly like the stale-cursor failure from the outside.
 1. Open <http://localhost:8089>, set the sample point, press **Start**. Analyses begin every
    10 s; the panel shows them, and the idle banner clears.
-2. Within 30 s, one message per analysis appears on the watcher — `mechanism=poll`,
-   `status: "normal"`, `ts` behind `meta.ingest_ts` by up to a poll interval.
+2. Within 30 s, one message per analysis appears on the watcher — `values.status: "normal"`,
+   `ts` behind `values.ingest_ts` by up to a poll interval. (Read `meta.mechanism` here before
+   2026-09-13; the envelope is gone and the topic is what says this arrived by poll.)
 3. `SELECT status, occurred_at, ingested_at FROM em.reading ORDER BY id DESC LIMIT 5;` — one row
    per message, `status` matching.
 4. Press **dirty**. The next analysis publishes `status: "excursion"`. Press clean; the one
@@ -804,11 +810,15 @@ unspecified store left in its way.
 4. **Nothing enforces that only one poll runs.** Two gateways against one instrument would both
    advance their own cursors and publish duplicates. Out of scope for a demo; worth a sentence
    if anybody asks how this scales.
-5. **The seven-mechanisms verification is already short.** Master plan § *Verification* step 4
-   expects seven distinct `meta.mechanism` values in one `mosquitto_sub`; pattern 1 carries no
-   `meta`, pattern 2 has no envelope, and pattern 3 as built publishes `ts` + `values` only. So
-   the real count is four — 4, 5, 6 and 7. Recorded here because pattern 6 is the one that made
-   it countable; fixing the claim belongs in the master plan, not in this spec.
+5. **The seven-mechanisms verification is dead, not short.** Master plan § *Verification* step 4
+   expects seven distinct `meta.mechanism` values in one `mosquitto_sub`. When this was written
+   the real count was four — 4, 5, 6 and 7 — because pattern 1 carries no `meta`, pattern 2 has
+   no envelope, and pattern 3 publishes `ts` + `values` only. **On 2026-09-13 patterns 4, 5, 6
+   and 7 dropped the envelope too, so the count is zero** — `meta.mechanism` is gone from the
+   backbone. A step that counts distinct values of a field nothing publishes cannot fail and
+   cannot pass. It needs rewriting into what it was always actually testing — seven topics
+   carrying seven different signals — and that rewrite belongs in the master plan, not in this
+   spec.
 6. ~~**Talk track.**~~ **Written 2026-09-06**, [`../talk-tracks/06-poll.md`](../talk-tracks/06-poll.md),
    and it ends where this item predicted: the stale cursor, recovered live by clearing one tag.
    It carries the 2026-08-31 numbers as well as this build's — the 414-record drain and the

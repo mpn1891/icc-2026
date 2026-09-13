@@ -79,10 +79,6 @@ from psycopg.types.json import Jsonb
 
 LOG = logging.getLogger("lims")
 
-MECHANISM = "webhook"
-SOURCE_ID = "lims"
-SOURCE_TYPE = "lims"
-
 # (analyte, dotted path under envelope["values"], uom)
 # A null at that path -- Bad OPC quality, per pattern 3's `_value` -- produces
 # no row at all, not a zero. Same absent-vs-zero discipline as the analyzer.
@@ -620,11 +616,6 @@ class Store:
                         "error": "outbox already has this sample",
                         "status_code": 409,
                     }
-                payload["seq"] = inserted[0]
-                conn.execute(
-                    "UPDATE lims.webhook_delivery SET payload = %s WHERE id = %s",
-                    (Jsonb(payload), inserted[0]),
-                )
         LOG.info("%s %s by %s -- disposition %s, outbox id %s",
                  status, sample_id, analyst, disposition, inserted[0])
         return {"ok": True, "sample_id": sample_id, "delivery_id": inserted[0]}
@@ -769,15 +760,11 @@ class Store:
                 },
             },
         )
+        # Shaped like what pattern 3 actually publishes: `ts` and `values`, no
+        # `seq`, no `source`, no `meta`. A fallback that fakes a richer document
+        # than the instrument sends is a fallback that hides a bug.
         envelope = {
             "ts": _iso(stamp),
-            "seq": 0,
-            "source": {"id": "lims-fallback", "type": "lims"},
-            "meta": {
-                "mechanism": "opcua-event",
-                "ingest_ts": _iso(stamp),
-                "correlation_id": sample_id,
-            },
             "values": {
                 "sample_id": sample_id,
                 "chem": {"gluc": 4.21, "lac": 1.08},
@@ -791,18 +778,29 @@ class Store:
 def _build_envelope(entry: tuple, results: list, disposition: str) -> dict:
     """One message per sample, carrying both halves of the record.
 
+    A timestamp and a bag of values, and nothing else -- the same shape patterns
+    1, 2 and 3 put on the wire. There is no `seq`, no `source` and no `meta`.
+    A consumer learns the mechanism from the topic it subscribed to, which is
+    the only provenance any of the other patterns offer it, and the LIMS
+    asserting its own name in a field is the site talking about itself inside a
+    document that is supposed to be the sample's.
+
     `ts` is the acquisition instant, not the approval instant -- the event being
-    described is the measurement. The approval instant is meta.ingest_ts, and the
-    gap between the two is visible on stage, which is the point of the pattern.
-    On a sample that was never analysed there is no acquisition instant, so the
-    valve's close time stands in: that genuinely is when the record was made.
+    described is the measurement. On a sample that was never analysed there is
+    no acquisition instant, so the valve's close time stands in: that genuinely
+    is when the record was made.
+
+    `values.verified_at` is when a person clicked, taken from the UPDATE's own
+    `now()` rather than re-read from the clock here. The gap between it and `ts`
+    is the whole pattern and is visible on stage, so it survives the envelope
+    going flat -- it just sits beside the analyst who caused it instead of in a
+    metadata block. It is a measured fact about this sample, which is the test
+    everything in `values` has to pass.
 
     `values.collection` is pattern 1's contribution, carried through review and
-    republished under mechanism=webhook. It is what makes this message
-    self-contained -- who drew the sample, when the valve opened, and how the
-    cycle ended, beside the numbers a person just signed for.
-
-    `seq` is filled in with the outbox id after INSERT.
+    republished. It is what makes this message self-contained -- who drew the
+    sample, when the valve opened, and how the cycle ended, beside the numbers
+    a person just signed for.
 
     `values.equipment_id` is the vessel, parsed from pattern 1's topic. It is
     pattern 7's join key into bes.batch_event and em.reading, and it is the
@@ -812,28 +810,27 @@ def _build_envelope(entry: tuple, results: list, disposition: str) -> dict:
     was typed at it -- knows the work order. 07 resolves the batch against
     `bes.batch_event` at the sample instant, from the batch system's own record.
 
+    `values.sample_id` is what carries the sample across mechanisms now that
+    there is no `meta.correlation_id`. It was always the same string -- the
+    correlation id was a copy of it -- so one `mosquitto_sub` still finds one
+    sample under every topic it touched.
+
     `values.disposition` is the analyst's verdict -- `pass` or `fail`. Both
     outcomes publish, so nothing downstream has to infer a rejection from
     silence. Pattern 7 fires on the review either way.
     """
     (sample_id, equipment_id, badge_id, badge_holder, sample_start,
-     sample_completion, open_duration_s, cycle_result, analyst, _verified_at) = entry
+     sample_completion, open_duration_s, cycle_result, analyst, verified_at) = entry
     collected_at = min((row[3] for row in results), default=None) or sample_completion
     return {
         "ts": _iso(collected_at) if collected_at else _iso(),
-        "seq": 0,
-        "source": {"id": SOURCE_ID, "type": SOURCE_TYPE},
-        "meta": {
-            "mechanism": MECHANISM,
-            "ingest_ts": _iso(),
-            "correlation_id": sample_id,
-        },
         "values": {
             "sample_id": sample_id,
             "equipment_id": equipment_id,
             "collected_at": _iso(collected_at) if collected_at else None,
             "analyst": analyst,
             "disposition": disposition,
+            "verified_at": _iso(verified_at) if verified_at else _iso(),
             "collection": {
                 "badge_id": badge_id,
                 "badge_holder": badge_holder,

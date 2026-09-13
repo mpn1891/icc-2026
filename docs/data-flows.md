@@ -35,10 +35,11 @@ all reach it through **Ignition → MQTT Transmission**, differing only in how t
 Ignition. Pattern 7 is not a new inbound transport at all: it subscribes to pattern 4 and
 publishes one document.
 
-**Four mechanisms are visible on the wire, not seven.** `meta.mechanism` is set by
-`lims_webhook` (`webhook`), `bes_cdc` (`cdc`), `particle_counter_poll` (`poll`) and
-`sample_chain` (`aggregate`). Patterns 1, 2 and 3 carry no `meta` at all — the device's document
-and the instrument's document are their own, and provenance is the topic they arrived on.
+**No mechanism is visible on the wire at all.** `meta.mechanism` is set by nothing: every
+pattern publishes `ts` and `values`, and provenance is the topic it arrived on. Patterns 1, 2
+and 3 were always that way; 4, 6 and 7 joined them on 2026-09-13 and pattern 5 followed later
+the same day, which retired the field. See
+[`00-architecture.md` § *Payload envelope*](00-architecture.md).
 
 ---
 
@@ -76,7 +77,7 @@ and the instrument's document are their own, and provenance is the topic they ar
    │ custom namespace        │      │ event/sample-complete OPENS  │
    │ `icc26-native`          │      │ the lims.sample entry        │
    │ subscription            │      └──────────────────────────────┘
-   │   …/sample-valve-01/#   │
+   │   icc26/site1/upstream/#│
    │                         │
    │ jsonPayload, qos1,      │
    │ writeableTags FALSE     │
@@ -223,7 +224,8 @@ ready when the question is asked.
    ┌──────────────────────────────────────────────────────────┐
    │  Ignition WebDev  lims/sample-result                     │
    │                     → lims_webhook.handle()              │
-   │    stamps meta.mechanism = "webhook"                     │
+   │    authenticates and dedupes. Adds NOTHING to            │
+   │    the document — no seq, no source, no meta             │
    │      ▼ Transmission                                      │
    └──────────────────────────┬───────────────────────────────┘
                               ▼
@@ -232,9 +234,10 @@ ready when the question is asked.
                               └─────────▶ pattern 7's Event Stream
 ```
 
-`meta.correlation_id` is stamped once upstream and survives the whole chain, so one sample is
-traceable across two mechanisms — `opcua-event`'s topic then `webhook` — side by side in one
-`mosquitto_sub`.
+`values.sample_id` is minted once at the valve and survives the whole chain unchanged, so one
+sample is traceable from the analyzer result through the LIMS review to the deviation, side by
+side in one `mosquitto_sub`. It used to be copied into `meta.correlation_id` as well; that copy
+came out on 2026-09-13 along with the rest of the envelope.
 
 ---
 
@@ -277,7 +280,7 @@ traceable across two mechanisms — `opcua-event`'s topic then `webhook` — sid
    ┌──────────────────────────────────────────────────────────┐
    │  WebDev cdc-sink → bes_cdc.handle()                      │
    │    builds the topic from equipment_id                    │
-   │    seq = the row id, meta.mechanism = "cdc"              │
+   │    publishes ts + values; nothing names the mechanism    │
    │      ▼ Transmission, retained false                      │
    └──────────────────────────┬───────────────────────────────┘
                               ▼
@@ -380,7 +383,7 @@ Not a new inbound transport. It subscribes, joins, and speaks only when somethin
    │      ▼ Transmission, retained false                                  │
    └──────────────────────────┬───────────────────────────────────────────┘
                               ▼
-   icc26/site1/qc/deviation      meta.mechanism = "aggregate"
+   icc26/site1/qc/deviation      ts + values — the topic says what it is
                                  values.violations names what was violated —
                                  an environmental excursion, or a failed review.
                                  Never empty on a message that exists.
@@ -403,7 +406,7 @@ operations of five, and a flag that fires most of the time is not a finding.
 
 | # | Origin | Crosses into Ignition via | Publishes to | Also lands in |
 |---|---|---|---|---|
-| 1 | `sim-valve-mqtt` :8085 | Engine custom namespace `icc26-native` | `…/sample-valve-01/{event/*,status,telemetry}` | `lims.sample` |
+| 1 | `sim-valve-mqtt` :8085 | Engine custom namespace `icc26-native` (`icc26/site1/upstream/#`) | `…/sample-valve-01/{event/*,status,telemetry}` | `lims.sample` |
 | 2 | `sim-valve-spb` :8086 | Engine default namespace `Sparkplug B` | `spBv1.0/ICC26-Site1-UPSTREAM/…` | Edge Nodes tag tree |
 | 3 | `opcua-cell-analyzer` :4841 | OPC connection → `cell_analyzer` UDT | `…/cell-analyzer-01/result` | `lims.sample_result` |
 | 4 | a human on :8000 | WebDev `lims/sample-result` | `…/qc/lims/sample-result` | `lims.webhook_delivery` |

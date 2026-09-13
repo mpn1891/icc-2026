@@ -10,7 +10,7 @@
 | | |
 |---|---|
 | **Pattern** | 6 of 7 — poll and diff, on somebody else's HTTP API |
-| **Mechanism tag** | `meta.mechanism = "poll"` |
+| **Mechanism tag** | none — dropped 2026-09-13. The topic is the only thing that says how this arrived |
 | **Container** | `sim-particle-counter` — GraphQL over HTTPS on `:8443`, JWT auth |
 | **Operator touchscreen** | <http://localhost:8089> — Start/Stop, the sample point, clean/dirty room |
 | **Acquisition** | An Ignition gateway timer, 30 s fixed delay. **Nothing pushes** |
@@ -81,9 +81,11 @@ equivalent, and `values.total_volume_l` goes on the wire so a consumer can norma
 we did not.
 
 **6. The instrument's clock and the backbone's are different clocks, and every message says so.**
-`ts` is the instrument's `completedAt`; `meta.ingest_ts` is when the poll found it. Those two
+`ts` is the instrument's `completedAt`; `values.ingest_ts` is when the poll found it. Those two
 differing by tens of seconds, in every message, **is the detection gap on the wire** without
-anybody having to explain it.
+anybody having to explain it. It sat in `meta.ingest_ts` until 2026-09-13 and reads one level
+shallower now — **the number and the beat are unchanged**, and moving it rather than dropping it
+was the condition of taking the envelope off this pattern.
 
 ## The chain
 
@@ -106,11 +108,11 @@ anybody having to explain it.
         (UNIQUE on the vendor's                  │
          analysis uuid)                          ▼
                                    Event Stream 06_poll/particle-counter-result
-                                                 │  transform builds the envelope
+                                                 │  transform builds the document
                                                  ▼
                                             Transmission
                                                  ▼
-        icc26/site1/qc/analyzers/particle-counter-01/result   (mechanism: poll)
+        icc26/site1/qc/analyzers/particle-counter-01/result
 ```
 
 **The watermark is two memory tags**, `state/cursor` and `state/last_sequence`, surviving a
@@ -122,10 +124,8 @@ Explorer, which is the recovery in the failure demo.
 ```json
 {
   "ts": "2026-08-29T14:03:22.145Z",
-  "seq": 1041,
-  "source": { "id": "particle-counter-01", "type": "analyzer" },
-  "meta": { "mechanism": "poll", "ingest_ts": "2026-08-29T14:03:41.002Z" },
   "values": {
+    "ingest_ts": "2026-08-29T14:03:41.002Z",
     "sequence_number": 1041,
     "status": "normal",
     "location": "USP Suite A - BR-201 sample port",
@@ -145,13 +145,18 @@ Explorer, which is the recovery in the failure demo.
 }
 ```
 
-**`seq` is the instrument's own `sequenceNumber`**, exactly as pattern 5's is a database row id:
-the source system's monotonic number, never one we invented.
+**`values.sequence_number` is the instrument's own `sequenceNumber`**, exactly as pattern 5's
+`seq` is a database row id: the source system's monotonic number, never one we invented. It was
+on the wire twice until 2026-09-13 — once as top-level `seq` and once in `values` — and the
+envelope's copy is the one that went.
 
-**This pattern carries the full envelope and pattern 3 does not**, and that is not an
-inconsistency to tidy. Pattern 3 relays the instrument's own document. **This document contains
-fields the instrument never produced** — `status` and `location` are ours — and a record the site
-partly authored gets the site's envelope.
+**`ts` + `values` and nothing else, the same shape pattern 3 publishes.** This carried the full
+envelope until 2026-09-13, on the argument that a record the site partly authored — `status` and
+`location` are ours, not the instrument's — should get the site's envelope. That argument lost to
+a simpler one: **nothing subscribes to this topic.** Pattern 7 reads `em.reading` out of
+Postgres. `seq`, `source` and `meta` were each a field written for a reader that does not exist,
+and the topic already says what a message is. Only the ingest instant had a job, so only it
+stayed.
 
 ### What one poll actually looks like
 
@@ -260,7 +265,7 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 |---|---|---|
 | Nothing free-runs | `python tasks.py health` before the room arrives | The `sim-particle-counter` line must say SAMPLING. A forgotten **Start** looks exactly like the failure below |
 | The burst | Press **Start** at <http://localhost:8089> | Within 30 s, **three** messages ~270 ms apart — not one every 10 s |
-| The gap, on the wire | Read `ts` against `meta.ingest_ts` | Tens of seconds, in every message, with nobody explaining it |
+| The gap, on the wire | Read `ts` against `values.ingest_ts` | Tens of seconds, in every message, with nobody explaining it |
 | The room goes dirty | Press **Dirty** | The next analysis publishes `status: "excursion"` — 3346–4350 counts against 1660 |
 | …and clean again | Press **Clean** | `normal` on the one after. **Do this**, or every later sample deviates in pattern 7 |
 | The stall | Uncheck `config/enabled`, wait, re-enable | Silence, then the backlog in one burst |
@@ -277,4 +282,5 @@ is the sentence that closes the segment.
 
 | Date | Change |
 |---|---|
+| 2026-09-13 | **The envelope came off.** `seq`, `source` and `meta` removed from the published document — nothing subscribes to this topic, so each was a field written for a reader that does not exist. The ingest instant moved to `values.ingest_ts` rather than going with them, because talk point 6 and the *gap, on the wire* beat are read off it; `seq` was already duplicated as `values.sequence_number`. Same migration patterns 4 and 7 made the same day, same rule — see [`00-architecture.md`](../00-architecture.md) § *Payload envelope*. **Everything on stage is unchanged except the path you point at.** |
 | 2026-09-06 | Written from [`plans/06-poll-particle-counter.md`](../plans/06-poll-particle-counter.md) as the closing step, per the two-document convention. Open item 6 predicted the ending and it is the one used: the stale cursor, recovered live by clearing one tag. Carries the 2026-08-31 numbers as well as the build's — the 414-record drain and the 15.5-hour blackout are what turned a predicted failure demo into a measured one. Vendor name is off this pattern as of 2026-09-06; the instrument is a particle counter and nothing here names a product line. |

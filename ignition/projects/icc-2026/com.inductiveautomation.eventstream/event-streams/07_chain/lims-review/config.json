@@ -37,7 +37,7 @@
   },
   "filter": {
     "enabled": true,
-    "userCode": "\treturn sample_chain.is_deviation(event.data)\n"
+    "userCode": "\tlogger \u003d system.util.getLogger(\"mqtt log\")\n\tlogger.info(str(event))\n\treturn sample_chain.is_deviation(event.data)\n"
   },
   "transform": {
     "enabled": true,

@@ -117,12 +117,6 @@ produced since 2026-08-30, rather than the hand-typed one the contract was writt
 ```json
 {
   "ts": "2026-08-26T19:12:04.318Z",
-  "seq": 7,
-  "source": { "id": "bes", "type": "bes" },
-  "meta": {
-    "mechanism": "cdc",
-    "ingest_ts": "2026-08-26T19:12:04.402Z"
-  },
   "values": {
     "batch_id": "B-20260826-01",
     "equipment_id": "br-201",
@@ -133,18 +127,19 @@ produced since 2026-08-30, rather than the hand-typed one the contract was writt
 }
 ```
 
-**`seq` is the database row id**, exactly as pattern 4's is its outbox id. Durable and monotonic
-across gateway restarts, which an in-memory counter is not — this had one in its first revision,
-and it restarted at 1 every time the gateway did.
+**Six fields, and not one of them says CDC.** Pattern 5 dropped `seq`, `source` and `meta` on
+**2026-09-13**, the same day patterns 4, 6 and 7 did and for the same reason: a document that has to
+name its own mechanism is a document whose address is not doing its job. This is the strongest
+version of the segment's claim — put this message beside pattern 1's valve document and there is
+nothing in either one that tells you a write-ahead log was involved in one of them.
 
-**`source.id` is `bes`, not an area.** There is no `bes` area in the namespace and there is not
-going to be: an area is a place, a BES is software. The event happens in a suite, so it publishes
-under the cell that produced it and names its source system in the payload.
-
-**`ts` to `meta.ingest_ts` is machine-speed here**, and that is worth one sentence: this is the
-one pattern in the stack where the gap is small, because nothing in the path waits for a person
-or a clock. Set it beside pattern 4's minutes and pattern 6's tens of seconds — three mechanisms,
-three completely different distances between *when it happened* and *when the backbone knew*.
+**The latency is still machine-speed; it just is not in the message any more.** `meta.ingest_ts`
+carried it until the narrowing, and the number now lives in `bes_cdc`'s gateway log line and in
+Debezium's. Worth one sentence on stage either way: this is the one pattern in the stack where
+the gap is small, because nothing in the path waits for a person or a clock. Set it beside
+pattern 4's minutes and pattern 6's tens of seconds — three mechanisms, three completely
+different distances between *when it happened* and *when the backbone knew*. If you want that
+gap back on the wire, it is one `values` field, the way pattern 4 kept `verified_at`.
 
 ## The failure demo — run it, it is half the segment
 

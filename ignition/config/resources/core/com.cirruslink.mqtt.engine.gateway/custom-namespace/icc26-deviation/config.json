@@ -4,7 +4,7 @@
   "numbersAsFloats": true,
   "qos1": true,
   "rootFolder": "",
-  "subscription": "icc26/site1/upstream/#",
+  "subscription": "icc26/site1/qc/deviation",
   "tagName": "",
   "writableTags": false
 }

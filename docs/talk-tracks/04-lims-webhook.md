@@ -13,7 +13,7 @@
 | | |
 |---|---|
 | **Pattern** | 4 of 7 — webhook, because a person has to sign it off |
-| **Mechanism tag** | `meta.mechanism = "webhook"` |
+| **Mechanism tag** | **none.** `ts` + `values`, like patterns 1-3 — the topic is the provenance |
 | **Container** | `lims` — [`services/lims/`](../../services/lims/) |
 | **Review screen** | <http://localhost:8000> — three panels, and the middle one is the pattern |
 | **Depends on** | pattern 1's `event/sample-complete` (opens the entry) and pattern 3's result (appends the analytes) |
@@ -105,7 +105,7 @@ with half a trigger. **Nothing downstream should have to infer a rejection from 
                                      ▼
                     Ignition WebDev ──▶ Transmission
                                      ▼
-        icc26/site1/qc/lims/sample-result     (mechanism: webhook)
+        icc26/site1/qc/lims/sample-result     (ts + values, no meta)
                                      │
                                      └──▶ pattern 7 subscribes here
 ```
@@ -124,18 +124,12 @@ walk, and the timestamps are illustrative — the walk's exact pair is quoted un
 ```json
 {
   "ts": "2026-08-31T15:41:04.000Z",
-  "seq": 26,
-  "source": { "id": "lims", "type": "lims" },
-  "meta": {
-    "mechanism": "webhook",
-    "ingest_ts": "2026-08-31T15:41:12.000Z",
-    "correlation_id": "S-20260831-0103"
-  },
   "values": {
     "sample_id": "S-20260831-0103",
     "equipment_id": "br-201",
     "analyst": "mnorris",
     "disposition": "pass",
+    "verified_at": "2026-08-31T15:41:13.184Z",
     "collection": {
       "badge_id": "B-1042", "badge_holder": "Jordan Reyes",
       "sample_start": "2026-08-31T15:39:47.109Z",
@@ -150,9 +144,16 @@ walk, and the timestamps are illustrative — the walk's exact pair is quoted un
 }
 ```
 
-**`ts` is the acquisition instant and `ingest_ts` is the signature, and the gap between them is
+**`ts` is the acquisition instant and `verified_at` is the signature, and the gap between them is
 the pattern.** `ts` is what the analyzer measured — pattern 3's own `ts`, its vendor `SampleTime`,
-stored as `collected_at` at ingest and never restamped. `ingest_ts` is when a person clicked.
+stored as `collected_at` at ingest and never restamped. `verified_at` is when a person clicked,
+taken from the same `UPDATE` that flipped the status rather than re-read off the clock.
+
+**This envelope is `ts` and `values`, the same as patterns 1, 2 and 3** (2026-09-13). There is no
+`seq`, no `source` and no `meta.mechanism`. If somebody asks how a subscriber knows this came
+from the LIMS: it arrived on `icc26/site1/qc/lims/sample-result`, and that is the only answer any
+other pattern gives either. The approval instant moved from `meta.ingest_ts` into `values` because
+it is a measured fact about this sample — the same test every other key in `values` has to pass.
 
 The number to say out loud is the one the whole walk measured: **the valve closed at
 `15:40:00.618` and the record was assembled at `15:41:13.184` — 72.6 seconds**, which is a person
@@ -161,7 +162,7 @@ plant it is hours. **That distance is provenance, not lag**, and this is the onl
 the stack where the distance is a human being.
 [`end-to-end-test.md`](../end-to-end-test.md) § *Known good*.
 
-**`values.collection` is pattern 1's contribution, republished under `mechanism: webhook`.** It is
+**`values.collection` is pattern 1's contribution, carried through the review.** It is
 what makes the released record self-contained: who drew the sample, when the valve opened, and
 how the cycle ended, beside the numbers somebody just signed for.
 
@@ -184,7 +185,7 @@ stops 07 having to hardcode a reactor, and now it is also what identifies the ba
 The buttons are on the review screen itself: **Pause outbound** and **Resume outbound**, with a
 lamp beside them.
 
-1. **Normal.** Approve a sample. One message, `mechanism: webhook`.
+1. **Normal.** Approve a sample. One message on `qc/lims/sample-result`.
 2. **Naive delivery, broken.** Press **Pause outbound**, then approve. The result is verified
    *inside* the LIMS and the backbone never hears about it. Show the row, then show the silent
    topic. **This is the state a naive webhook leaves you in permanently.**
@@ -250,7 +251,7 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 | The entry opens at collection | Badge `B-1042` at :8085 | ~15 s later the sample is on :8000 as **Awaiting analysis**, badge holder and open duration populated, **no Approve button** |
 | The transcription | Type that id into :8087, press Run | The **same** entry flips to ready with two analytes and a batch id. No second entry |
 | Nothing until a signature | Watch the topic | **Nothing** on `qc/lims/sample-result` until somebody clicks |
-| The signature | Approve | One message — `values.collection` beside the analytes. Read `ts` against `meta.ingest_ts` out loud |
+| The signature | Approve | One message — `values.collection` beside the analytes. Read `ts` against `values.verified_at` out loud |
 | A rejection is a disposition | Reject a different sample | Same topic, same outbox path, `disposition: "fail"`. **Not silence** |
 | Do it wrong | Repeat with a transposed character | Entry stays awaiting; result parks under **Unmatched results**; attach it and the wrong id survives in Postgres |
 | The outbox | **Pause outbound** → approve → **Resume outbound** | Silence, then a late delivery with `attempts > 1` |

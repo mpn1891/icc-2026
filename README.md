@@ -324,8 +324,9 @@ Pattern 2's addresses are the argument: nine of the eleven lines above are names
 chose, and the two that are not were fixed by the specification before anyone here had an
 opinion.
 
-Each pattern publishes to its **own** topic. The mechanism lives in the payload's
-`meta.mechanism` field, never in the address. Pattern 7 is the join: it listens for the
+Each pattern publishes to its **own** topic, and since 2026-09-13 the mechanism is not named
+anywhere — not in the address, and no longer in the payload either. Every message is `ts` and
+`values`. Pattern 7 is the join: it listens for the
 LIMS review and — **only when the sample violated something** — publishes one deviation
 document naming what. A clean sample publishes nothing, so silence on
 `icc26/site1/qc/deviation` is the compliant case.

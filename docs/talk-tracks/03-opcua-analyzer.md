@@ -73,8 +73,9 @@ instrument; everybody else is inferring from outside.
 **5. What goes on the wire is the instrument's document, not the site's.** `ts` and `values`.
 No `seq`, no `source`, no `meta` — so this pattern carries **no `meta.mechanism` at all**, and a
 consumer learns where the message came from the way it learns everything else here: from the
-topic it arrived on. The LIMS is what re-stamps the sample id as `meta.correlation_id` on the way
-back out.
+topic it arrived on. `values.sample_id` is what the LIMS ingests, and it is the same string on
+the review message and on pattern 7's deviation — which is how one sample stays findable across
+three topics without any of them asserting a field it did not measure.
 
 > **The consequence, owned rather than hidden.** "Seven mechanisms, seven colours on one
 > firehose" is not true and never was. Pattern 1 carries no `meta`, pattern 2 has no envelope of

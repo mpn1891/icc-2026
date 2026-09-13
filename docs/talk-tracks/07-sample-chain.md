@@ -10,7 +10,7 @@
 | | |
 |---|---|
 | **Pattern** | 7 of 7 — scripted aggregation, the composite GxP event |
-| **Mechanism tag** | `meta.mechanism = "aggregate"` |
+| **Mechanism tag** | **none.** `ts` + `values`, like patterns 1-4 — the topic is the provenance |
 | **New container** | **none.** One script module, one Event Stream, no new table, no ACL change, no new datasource |
 | **Depends on** | 1 (the draw), 3 (the numbers), 4 (the signature and the trigger), 5 (the batch), 6 (the room) |
 | **Blocks** | nothing. This is the close |
@@ -95,7 +95,7 @@ genuine backbone subscriber, not a database job wearing a hat.
 ```
                             a person clicks Approve (or Reject)
                                           │
-                     icc26/site1/qc/lims/sample-result   (mechanism: webhook)
+                     icc26/site1/qc/lims/sample-result   (ts + values)
                                           │
                         MQTT Engine Event Stream source, QoS 1
                                           ▼
@@ -108,7 +108,7 @@ genuine backbone subscriber, not a database job wearing a hat.
                                          │
                                     Transmission
                                          ▼
-                     icc26/site1/qc/deviation      (mechanism: aggregate)
+                     icc26/site1/qc/deviation      (ts + values)
                                   QoS 1, retained false
 ```
 
@@ -126,13 +126,6 @@ One approval, measured live on 2026-08-30 (`S-20260830-0085`, trimmed):
 ```json
 {
   "ts":  "2026-08-30T23:34:54.774Z",
-  "seq": 23,
-  "source": { "id": "sample-chain", "type": "aggregate" },
-  "meta": {
-    "mechanism": "aggregate",
-    "ingest_ts": "2026-08-30T23:35:35.963Z",
-    "correlation_id": "S-20260830-0085"
-  },
   "values": {
     "sample_id": "S-20260830-0085",
     "equipment_id": "br-201",
@@ -140,6 +133,7 @@ One approval, measured live on 2026-08-30 (`S-20260830-0085`, trimmed):
     "batch_id": "B-20260830-02",
     "disposition": "pass",
     "analyst": "M. Martin",
+    "assessed_at": "2026-08-30T23:35:35.963Z",
 
     "collection": {
       "badge_id": "B-1042", "badge_holder": "Jordan Reyes",
@@ -175,10 +169,16 @@ One approval, measured live on 2026-08-30 (`S-20260830-0085`, trimmed):
 
 **Three things to point at, in this order.**
 
-**`ts` against `meta.ingest_ts` — 41 seconds.** `ts` is the acquisition instant, the moment the
-valve closed. `ingest_ts` is when 07 assembled the record. The gap between them **is** the
+**`ts` against `values.assessed_at` — 41 seconds.** `ts` is the acquisition instant, the moment
+the valve closed. `assessed_at` is when 07 assembled the record. The gap between them **is** the
 record's provenance, and it is visible in one message without anybody explaining it. Same rule
 pattern 4 states for the review, and pattern 6 for the poll.
+
+**The envelope is `ts` and `values`, like every other pattern except 5 and 6** (2026-09-13).
+07 used to carry `seq`, `source` and `meta`; the `seq` was borrowed from pattern 4's outbox id,
+and when pattern 4 went flat there was nothing left to borrow and nothing worth minting — 07
+holds no table, and an in-memory counter restarts at 1 on every gateway restart. The assembly
+instant moved into `values` rather than being lost, which is why the beat above still works.
 
 **`batch_context.as_of` against `ts` — 39 minutes.** The reactor entered GROWTH at 22:55 and the
 sample was drawn at 23:34. Nobody computed that; it falls out of carrying the row's own
@@ -269,7 +269,7 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 |---|---|---|
 | Silence is the pass | Approve a clean sample at <http://localhost:8000> | The review lands on `lims/sample-result`. **Nothing** on `deviation` — the compliant case is quiet |
 | The deviation | Press **Dirty** at <http://localhost:8089>, wait for a reading, draw and approve | One message on `deviation`, `values.violations[0].code` = `environmental_excursion` |
-| Read it out loud | — | `ts` vs `ingest_ts`, `as_of` vs `ts`, `age_s`. Three gaps, no arithmetic |
+| Read it out loud | — | `ts` vs `assessed_at`, `as_of` vs `ts`, `age_s`. Three gaps, no arithmetic |
 | A rejection is a disposition | Reject instead | Publishes on its own, `violations[0].code` = `failed_review`. Nothing downstream infers a rejection from silence |
 | Outside the window | Advance past HARVEST in Tag Explorer, badge again, approve | `operation: "IDLE"`, `qualified_window: false`, **and nothing empty** |
 | A gap is a finding | `docker stop icc26-sim-particle-counter`, wait, approve again | `age_s` climbs past the 27 s the poll normally guarantees — a stale reading, not a silence, so this alone is not yet a deviation |
