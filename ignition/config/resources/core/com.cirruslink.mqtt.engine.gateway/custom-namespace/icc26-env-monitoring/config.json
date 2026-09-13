@@ -1,0 +1,10 @@
+{
+  "charset": "UTF_8",
+  "jsonPayload": true,
+  "numbersAsFloats": true,
+  "qos1": true,
+  "rootFolder": "",
+  "subscription": "icc26/site1/env_monitoring/#",
+  "tagName": "",
+  "writableTags": false
+}

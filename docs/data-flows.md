@@ -327,7 +327,7 @@ came out on 2026-09-13 along with the rest of the envelope.
    │      ▼ Transmission                                      │
    └──────────────────────────┬───────────────────────────────┘
                               ▼
-   icc26/site1/qc/analyzers/particle-counter-01/result
+   icc26/site1/env_monitoring/particle-counter-01/result
                               │
                               └─────────▶ read back by pattern 7 — from the TABLE, not the topic
 ```

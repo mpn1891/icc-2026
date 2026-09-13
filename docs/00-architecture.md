@@ -51,7 +51,7 @@ Everything else publishes through Ignition. Pattern 7 is not a new inbound trans
 | `opcua-cell-analyzer` | 4841, 8087 (sample login) | step 4 |
 | `sim-valve-mqtt` | 8085 (config page) | pattern 1 |
 | `sim-valve-spb` | 8086 (config page) | pattern 2 |
-| `lims` | 8000 (review screen) | pattern 4 — built; pass/fail remaining |
+| `lims` | 8000 (review screen) | pattern 4 |
 | `debezium` | 8083 | pattern 5 — built 2026-08-26 |
 | `sim-particle-counter` | 8443 (GraphQL API), 8089 (operator panel) | pattern 6 — built 2026-08-29 |
 
@@ -85,7 +85,7 @@ waiting on them.
   subscription is `icc26/site1/upstream/#` as of 2026-09-13 — the valve plus pattern 5's batch
   event. It was repurposed when pattern 1 became the valve, and earlier revisions of this
   document wrongly listed it as part of the retired set. **Deleting it breaks pattern 1.**
-  It is now one of three custom namespaces; see *Engine's subscriptions must not cover an
+  It is now one of four custom namespaces; see *Engine's subscriptions must not cover an
   Event Stream's topic* below.
 - The `vibration_sensor` UDT and `br-201`'s `asset_data/agitator_vibration` member are now
   orphaned, but `tag-type-definition/default/udts.json` has to be opened anyway to give the
@@ -154,19 +154,30 @@ icc26/site1/upstream/br-201/sample-valve-01/status     # 1  online/offline, reta
 icc26/site1/upstream/br-201/sample-valve-01/telemetry  # 1  air supply / enclosure temp, every 5 s
 icc26/site1/qc/analyzers/cell-analyzer-01/result            # 3  analyzer result
 icc26/site1/qc/lims/sample-result                      # 4  review: analyst + pass/fail
-icc26/site1/upstream/br-201/batch/event                # 5  CDC of bes.batch_event
-icc26/site1/qc/analyzers/particle-counter-01/result    # 6  particle count analysis
+icc26/site1/upstream/br-201/batch/event                # 5  CDC of bes.batch_event — an INSERT
+icc26/site1/audit/bes/batch-event                      # 5  an UPDATE/DELETE: somebody amended the record
+icc26/site1/env_monitoring/particle-counter-01/result  # 6  particle count analysis
 icc26/site1/qc/deviation                               # 7  aggregate; ONLY when something was violated
 
 spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|NDEATH}/SAMPLE-VALVE-02             # 2 — spec-mandated
 spBv1.0/ICC26-Site1-UPSTREAM/{DBIRTH|DDATA|DDEATH}/SAMPLE-VALVE-02/SV-202 # 2 — spec-mandated
 ```
 
-Areas: `upstream`, `downstream`, `qc`, `utilities`. These are **places** — in a biologics
-facility upstream and downstream really are segregated suites, with their own cleanroom grades,
-HVAC and personnel flow, so the process name and the physical area coincide. The industry would
-write these `usp`/`dsp`; spelled out they cost four characters and stop `dsp` colliding with
-*digital signal processing* in a talk that plots bearing spectra.
+Areas: `upstream`, `downstream`, `qc`, `utilities`, `env_monitoring`, `audit`. The first four
+are **places** — in a biologics facility upstream and downstream really are segregated suites, with
+their own cleanroom grades, HVAC and personnel flow, so the process name and the physical area
+coincide. The industry would write these `usp`/`dsp`; spelled out they cost four characters and
+stop `dsp` colliding with *digital signal processing* in a talk that plots bearing spectra.
+
+**`env_monitoring` is the exception to *places*, added 2026-09-13**, and it is named as one here
+rather than hidden. Environmental monitoring is a *programme* that runs across the suites, not a
+suite; by the rule that rejected an `mes` area it should not be an area at all, and the honest
+address for a particle counter is the room it stands in. What it buys is that the repo's own
+vocabulary already draws this line everywhere else — the table is `em.reading`, pattern 7 calls
+the finding an environmental excursion, and `sample_chain` notes the counter is *one instrument
+for the room, not one per vessel*. EM data is read as a programme, so it is addressed as one.
+The rule it breaks is the rule this document is otherwise built on; see the note on pattern 6's
+move below, and say so on stage rather than hoping nobody reads the namespace.
 
 Message types are a closed set: `telemetry`, `event`, `event/<subtype>`, `waveform`, `status`,
 `state`, `cmd/<verb>`, `response/<what>`, `ack`.
@@ -205,13 +216,30 @@ Pattern 7's topic above is still **provisional** — a topic is settled when its
 written, and 07 has none. Pattern 6's is settled: `docs/plans/06-poll-particle-counter.md` was written on
 2026-08-29 and broker-verified the same day. `downstream` and `utilities` still have no user.
 
-**Pattern 6 moved from `upstream/br-201` to `qc/analyzers` on 2026-08-25.** The particle counter now sits
-in the analyzer path beside the analyzer rather than beside the reactor. It is an *instrument that
-runs analyses*, which is what the `qc/analyzers` cell holds, and putting it there keeps the
-Ignition tag path and the MQTT topic identical — every other pattern has that property and a
-split would be the first exception. The cost is the "environmental reading taken beside the
-reactor" framing: the reactor association now lives in the payload and in pattern 7's join,
-not in the address. Nothing on stage depends on the old address.
+**Pattern 6 has had three addresses.** `upstream/br-201` until 2026-08-25, then `qc/analyzers`,
+then `env_monitoring/particle-counter-01` on 2026-09-13. The 08-25 move put it beside the
+analyzer on the grounds that it is an *instrument that runs analyses*; the 09-13 move undoes that
+reading. A particle counter does not run analyses on samples — it watches a room, continuously,
+against a cleanroom limit, and the thing it produces is an environmental record rather than a
+result about a material. Sitting in `qc/analyzers` it was the only device on that branch nobody
+drew a sample for.
+
+The property both moves preserve is that the **Ignition tag path and the MQTT topic stay
+identical** — every pattern has that and a split would be the first exception — and that the
+device id is the *last* segment, so `particle-counter-01` survived both moves untouched.
+`em.reading` keys on that id and noticed neither one: no migration, no dedupe reset.
+
+Two costs, both real. The "environmental reading taken beside the reactor" framing went at 08-25
+and has not come back; the reactor association lives in the payload's `location` and in pattern
+7's join, not in the address. And 09-13 bought the fix by breaking the *areas are places* rule
+— see the `env_monitoring` note above. Nothing on stage depends on either old address, and the
+topic is device-addressed under all three.
+
+**The move also took the counter out of a wildcard it was never meant to be in.** `lims-bridge`
+subscribes to `icc26/site1/qc/analyzers/+/result`, and the `+` matched `particle-counter-01`:
+every particle count reached the LIMS, was found to carry no `values.sample_id`, and was dropped
+at ingest — three warnings per 30 s poll, for a reader that never wanted them. Nothing was lost
+when that stopped, because nothing was being used.
 
 **Pattern 3's device id is `cell-analyzer-01`.** Topic, Ignition UDT instance, `uns_path`, Event
 Stream handler topic and `plant.equipment` id all use that name — as do the service directory, the
@@ -242,10 +270,12 @@ is `bes.batch_event`, and naming it after the writer is exactly what a schema is
 > `qc/lims/` was easier to justify when three patterns keyed off one topic. Now one does,
 > and the calendar is what holds the address. Say so on stage.
 
-**Every topic here is device-addressed.** There is currently no exception, which was not true
-of the earlier vibration-gateway design and is worth knowing changed: that pattern had a
-fleet-broadcast command topic and a flat response topic, both non-device-addressed, and both
-went away with it.
+**Every operational topic is device-addressed. Two topics are deliberately not**, and both say
+so by being shaped differently: `qc/deviation` is pattern 7's verdict about a *sample*, not a
+reading from a device, and `audit/bes/batch-event` is per-table because the thing being audited
+is the row, not the reactor. The earlier vibration-gateway design had a fleet-broadcast command
+topic and a flat response topic, non-device-addressed for no reason at all; both went away with
+it.
 
 **Pattern 1's conformance is enforced by an ACL, not by the protocol.** Its device has a
 free-text topic box on its config page, so the only thing keeping sample data out of the `qc`
@@ -298,7 +328,7 @@ A second re-source, after 2026-08-19's Odoo / Modbus particle counter / vibratio
 |---|---|---|---|
 | 4 | `webhook` | LIMS review (already built) | `analyst` + `disposition` pass/fail |
 | 5 | `cdc` | Ignition timer → `bes.batch_event` → Debezium | reactor operation cycle |
-| 6 | `poll` | Particle counter HTTP API in `qc/analyzers`, Ignition poll → Event Stream | particle-count analysis |
+| 6 | `poll` | Particle counter HTTP API in `env_monitoring`, Ignition poll → Event Stream | particle-count analysis |
 | 7 | `aggregate` | MQTT listener on the LIMS review | sample chain: valve, analyzer, batch, env |
 
 Pattern 5 is an application we own. Say that on stage: the textbook CDC case is an app you
@@ -620,15 +650,21 @@ Identical filters collapse because a SUBSCRIBE carrying a filter a client alread
 *replaces* that subscription rather than adding one. Breadth is irrelevant; a broad disjoint
 filter is fine.
 
-**This is why there are three custom namespaces and not one `icc26/#`.** MQTT has no exclusion
+**This is why there are four custom namespaces and not one `icc26/#`.** MQTT has no exclusion
 operator, so "everything except one topic" is necessarily more than one subscription:
 
 | Namespace | Subscription | Covers |
 |---|---|---|
 | `icc26-native` | `icc26/site1/upstream/#` | patterns 1 and 5 |
-| `icc26-analyzers` | `icc26/site1/qc/analyzers/#` | patterns 3 and 6 |
+| `icc26-analyzers` | `icc26/site1/qc/analyzers/#` | pattern 3 |
+| `icc26-env-monitoring` | `icc26/site1/env_monitoring/#` | pattern 6 |
 | `icc26-deviation` | `icc26/site1/qc/deviation` | pattern 7's own output, read back as tags |
 | — | *(deliberately uncovered)* | `icc26/site1/qc/lims/sample-result` — pattern 7's Event Stream source, and nothing else |
+
+`icc26-env-monitoring` was split off `icc26-analyzers` on 2026-09-13 rather than widening that
+one's subscription, because the namespace list is read as documentation of who consumes what —
+one namespace covering two patterns on unrelated branches would have been a subscription that
+outlived its reason.
 
 `icc26/#` was set on 2026-09-12 to make Engine "one consumer among several". That argument is
 about Engine versus the LIMS and survives the split intact; the catch-all was never load-bearing

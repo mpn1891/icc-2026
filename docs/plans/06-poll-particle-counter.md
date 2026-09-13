@@ -45,7 +45,7 @@
 |---|---|
 | **Mechanism** | `poll` |
 | **Signal contributed to the spine** | environmental excursion status at (or nearest to) the sample instant |
-| **Topic** | `icc26/site1/qc/analyzers/particle-counter-01/result` — QoS 1, **retain false** |
+| **Topic** | `icc26/site1/env_monitoring/particle-counter-01/result` — QoS 1, **retain false** |
 | **Instrument** | `services/sim-particle-counter` — GraphQL over HTTPS `:8443`, JWT auth; operator touchscreen on `:8089` |
 | **Acquisition** | Ignition **gateway timer**, 30 s, → `particle_counter_poll.poll()` |
 | **Store** | `em.reading` in the `icc26` database, through the `ICC26` JDBC datasource as user `icc26` |
@@ -297,7 +297,7 @@ in between.
 | Resource | Path | How |
 |---|---|---|
 | UDT type `particle_counter` | `tag-type-definition/default/udts.json` | **built** — files + `tasks.py scan`, no restart |
-| UDT instance `particle-counter-01` | `tag-definition/default/icc26/site1/qc/analyzers/udts.json` | **built** — files + `scan`. No parameters: nothing here is OPC-bound, so there is nothing to substitute |
+| UDT instance `particle-counter-01` | `tag-definition/default/icc26/site1/env_monitoring/udts.json` | **built** — files + `scan`. No parameters: nothing here is OPC-bound, so there is nothing to substitute |
 | Script module `particle_counter_poll` | `ignition/script-python/particle_counter_poll/code.py` | **built** — files + `scan` |
 | Event Stream `06_poll/particle-counter-result` | `com.inductiveautomation.eventstream/event-streams/06_poll/particle-counter-result/` | **built** — copied `03_opcua/cell-analyzer-result` and changed the topic, the transform and the filter, exactly as predicted |
 | **Gateway timer script** `06-poll` | `ignition/timer/06-poll/` | **built** — created empty in the Gateway UI to learn the schema, then given its body and its 30 s cadence as files + `scan`. § *The timer* |
@@ -309,8 +309,10 @@ everything else in the table, the timer's real body included, was written on dis
 which is the second time that shortcut has paid (§ 6 of
 [`03-opcua-analyzer-playbook.md`](03-opcua-analyzer-playbook.md) records the first).
 
-The tag path mirrors the topic exactly, which is why pattern 6 moved into `qc/analyzers` on
-2026-08-25 — every other pattern has that property.
+The tag path mirrors the topic exactly — every other pattern has that property, and it is the
+one constraint both of pattern 6's moves preserved: into `qc/analyzers` on 2026-08-25, out to
+`env_monitoring` on 2026-09-13. The device id is the **last** segment, so `particle-counter-01`
+survived both untouched and `em.reading` — which keys on it — noticed neither.
 
 ### The UDT
 
@@ -630,7 +632,7 @@ and the name. The `ignition.gatewayEvent` source and the Transmission handler ar
 ```json
   "handlers": [{ "type": "com.cirruslink.mqtt.transmission.gateway.mqtt.handler",
     "config": { "serverName": "chariot_broker",
-                "topic": "icc26/site1/qc/analyzers/particle-counter-01/result",
+                "topic": "icc26/site1/env_monitoring/particle-counter-01/result",
                 "qos": 1, "retained": false } }],
   "filter":    { "enabled": true, "userCode": "\treturn bool(event.data)\n" },
   "transform": { "enabled": true, "userCode": "\treturn particle_counter_poll.build_document(event.data)\n" }
@@ -701,7 +703,7 @@ Watcher in its own terminal:
 
 ```powershell
 docker run --rm -it --network icc26 eclipse-mosquitto:2 `
-  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/qc/analyzers/particle-counter-01/result' -v
+  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/env_monitoring/particle-counter-01/result' -v
 ```
 
 0. `python tasks.py health` — the `sim-particle-counter` line reports SAMPLING and a non-zero buffer.
@@ -871,5 +873,6 @@ unspecified store left in its way.
 | 2026-08-23 | Pattern 6 re-sourced: a particle counter HTTP API in `qc/analyzers`, not Modbus. Excursion flag added to the design |
 | 2026-08-25 | Moved from `upstream/br-201` to `qc/analyzers`, so tag path and topic stay identical |
 | 2026-08-29 | Vendor API arrived as [`../reference/particle_counter_sim.md`](../reference/particle_counter_sim.md). Eight decisions taken and this spec written. **Nothing built** |
-| 2026-08-29 | **Built and broker-verified, same day, everything but the timer.** `services/sim-particle-counter` (GraphQL over HTTPS + the :8089 touchscreen), the `em` schema and `migrate-07`, the `particle_counter` UDT and instance, `particle_counter_poll`, and Event Stream `06_poll/particle-counter-result`. 96 analyses → 96 `em.reading` rows → 96 messages on `icc26/site1/qc/analyzers/particle-counter-01/result`, `status` correct on both polarities, the stale-cursor trap reproduced twice and recovered by clearing one tag, and a real token expiry drove a re-auth mid-poll. `tasks.py health` gained the buffer check the spec asked for. **Three predictions in this document were wrong** — `publishEvent` refuses a dict, value persistence is a provider setting, and `sequence_number` is not a usable dedupe key — and all three are corrected inline above rather than quietly. The one predicted to cost an afternoon, `httpClient` against a self-signed cert, cost nothing. Four durable Ignition 8.3.8 facts went to [`../00-architecture.md`](../00-architecture.md) instead of here, because 07 will want them |
+| 2026-08-29 | **Built and broker-verified, same day, everything but the timer.** `services/sim-particle-counter` (GraphQL over HTTPS + the :8089 touchscreen), the `em` schema and `migrate-07`, the `particle_counter` UDT and instance, `particle_counter_poll`, and Event Stream `06_poll/particle-counter-result`. 96 analyses → 96 `em.reading` rows → 96 messages on `icc26/site1/env_monitoring/particle-counter-01/result`, `status` correct on both polarities, the stale-cursor trap reproduced twice and recovered by clearing one tag, and a real token expiry drove a re-auth mid-poll. `tasks.py health` gained the buffer check the spec asked for. **Three predictions in this document were wrong** — `publishEvent` refuses a dict, value persistence is a provider setting, and `sequence_number` is not a usable dedupe key — and all three are corrected inline above rather than quietly. The one predicted to cost an afternoon, `httpClient` against a self-signed cert, cost nothing. Four durable Ignition 8.3.8 facts went to [`../00-architecture.md`](../00-architecture.md) instead of here, because 07 will want them |
+| 2026-09-13 | **Moved out of `qc/analyzers` to its own area: `icc26/site1/env_monitoring/particle-counter-01/result`.** A particle counter watches a room against a cleanroom limit; it does not run analyses on samples, and in `qc/analyzers` it was the only device on that branch nobody drew a sample for. Four runtime files: the Event Stream handler topic, `BASE` in `particle_counter_poll`, the UDT instance moved to `tag-definition/default/icc26/site1/env_monitoring/udts.json`, and a new Engine namespace `icc26-env-monitoring` split off `icc26-analyzers`. **No ACL change** — the publish goes out as `ign-transmission`, which holds `icc26/#` — and **no database change**: `device_id` is the last path segment, so it is still `particle-counter-01` and `em.reading`'s `UNIQUE (device_id, analysis_id)` is untouched. The move also took the counter out of `lims-bridge`'s `qc/analyzers/+/result` wildcard, where every particle count had been arriving at the LIMS, failing the `values.sample_id` check and being dropped — three warnings per poll for a reader that never wanted them. The cost is that `env_monitoring` is a programme, not a place, so the area set now has one member that breaks the rule it is built on; named as such in [`../00-architecture.md`](../00-architecture.md) § *Topic namespace* |
 | 2026-08-29 | **The gateway timer, and pattern 6 goes hands-off.** `ignition/timer/06-poll/` — schema learned from an empty resource created in the Gateway UI, then body and cadence written as files and applied with `scan`, `lastModificationSignature` deleted and not written back. First poll drained a 10-hour, 500-record backlog over 10 pages; steady state is 3 analyses per 30 s with a 7.2 / 17.2 / 27.2 s lag sawtooth. **CP1 and CP7 close, so all ten checkpoints are closed.** Found while closing them: `config/poll_interval_s` is decorative and cannot be made otherwise (open item 9), so the stall demo moved to `config/enabled` and three files that claimed the tag drives the cadence were corrected. The MQTT hop was re-observed after the trial was restarted, and it measured something the hand-driven run could not: **the three analyses of a poll do not leave the broker together.** The Event Stream's leading-edge 250 ms debounce puts the first on the wire in ~8 ms and the other two ~260 ms later, order preserved, newest last — five consecutive polls, identical every time. § *Event Stream* |

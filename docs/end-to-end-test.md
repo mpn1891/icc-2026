@@ -43,7 +43,7 @@ it was sampling an hour ago. On 2026-08-30 both were true at once and every chec
 Gateway UI at <http://localhost:8088> → Tag Explorer → clear this one tag:
 
 ```
-[default]icc26/site1/qc/analyzers/particle-counter-01/state/cursor
+[default]icc26/site1/env_monitoring/particle-counter-01/state/cursor
 ```
 
 Clear **only** that one — an empty cursor resets the `last_sequence` guard on the same poll. Leave

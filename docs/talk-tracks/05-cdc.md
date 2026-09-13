@@ -12,7 +12,7 @@
 | | |
 |---|---|
 | **Pattern** | 5 of 7 — change data capture, log tailing |
-| **Mechanism tag** | `meta.mechanism = "cdc"` |
+| **Mechanism tag** | **none** — `ts` + `values` only, since 2026-09-13 |
 | **New container** | `debezium` — Debezium Server, pgoutput, slot `icc26_debezium` |
 | **Surface** | Tag Explorer. There is no screen, on purpose |
 | **Depends on** | the `ICC26` datasource and the Gateway Scripting Project. Nothing else |
@@ -96,7 +96,7 @@ thing in a demo whose claim is that a subscriber cannot tell.** The LSN is still
                             ▼
                        Transmission
                             ▼
-        icc26/site1/upstream/br-201/batch/event   (mechanism: cdc, retain false)
+        icc26/site1/upstream/br-201/batch/event   (retain false)
 ```
 
 **Retain is false**, and for the reason that recurs across this repo: a retained batch event
@@ -134,7 +134,7 @@ version of the segment's claim — put this message beside pattern 1's valve doc
 nothing in either one that tells you a write-ahead log was involved in one of them.
 
 **The latency is still machine-speed; it just is not in the message any more.** `meta.ingest_ts`
-carried it until the narrowing, and the number now lives in `bes_cdc`'s gateway log line and in
+carried it until the 2026-09-13 narrowing, and the number now lives in `bes_cdc`'s gateway log line and in
 Debezium's. Worth one sentence on stage either way: this is the one pattern in the stack where
 the gap is small, because nothing in the path waits for a person or a clock. Set it beside
 pattern 4's minutes and pattern 6's tens of seconds — three mechanisms, three completely
@@ -162,7 +162,7 @@ that was not running when the value changed has no way to learn it ever did.
 > with their original LSNs. Nobody re-ran anything. The scripted version above had not been run
 > yet.
 
-**The negative check is worth thirty seconds too.** `bes.batch_event` is append-only, so an
+**The amendment beat is worth thirty seconds too.** `bes.batch_event` is append-only, so an
 `UPDATE` reaching the sink means somebody is editing history:
 
 ```bash
@@ -170,8 +170,9 @@ docker exec icc26-postgres psql -U icc26 -d icc26 -c \
   "UPDATE bes.batch_event SET batch_id = batch_id WHERE id = 1;"
 ```
 
-`200`, `"published": false, "op": "u"`, and **nothing on the wire.** Rejecting it visibly is a
-better answer on stage than filtering it away.
+`200`, `"published": true, "op": "u"` — and it lands on `icc26/site1/audit/bes/batch-event`
+carrying the `before` image, **not** on the operational topic. An edit is not a batch event, and
+an amendment nobody can see is worse than one anybody can.
 
 ## The risk beat — four things measured, not asserted
 
@@ -193,7 +194,7 @@ the dangerous one:
 | Left at its default | What happens |
 |---|---|
 | `snapshot.mode` | `initial` replays **every existing row** as an insert on first connect — a rehearsal's worth of batch history on the topic the moment the container starts |
-| `publication.autocreate.mode` | Debezium creates a `FOR ALL TABLES` publication when it cannot find one, putting every LIMS write on the backbone as `mechanism=cdc` |
+| `publication.autocreate.mode` | Debezium creates a `FOR ALL TABLES` publication when it cannot find one, putting every LIMS write on the backbone |
 | offsets on a container filesystem | The container forgets its WAL position on restart, and the stop-click-restart demo above produces nothing instead of catching up |
 
 `tasks.py health` asserts the publication names `bes.batch_event` and nothing else, because it
@@ -223,8 +224,8 @@ it is.
 instead, because pattern 7's rehearsal needs the reactor parked in `GROWTH` when the valve is
 badged and then parked outside it for the second run. A timer makes that a waiting game on stage.
 
-**No `unwrap` transform.** Keeping `op` and `source.lsn` is what lets the sink reject an `UPDATE`
-rather than republish edited history — see the negative check above.
+**No `unwrap` transform.** Keeping `op` and `source.lsn` is what lets the sink route an `UPDATE`
+to the audit topic instead of the operational one — see the amendment beat above.
 
 **No `plant.batch` integration.** `batch_id` is minted by `bes_batch` on the first advance out of
 `IDLE` and cleared at `batch_end`, with no foreign key and no validation. Fine for a demo, wrong
@@ -249,8 +250,8 @@ Tag Explorer, on `[default]icc26/site1/upstream/bioreactors/br-201/batch_data/`:
 | The row behind the message | `SELECT id, event_type, operation, payload, occurred_at FROM bes.batch_event ORDER BY id;` | The table says `operation`, which is the word you just used |
 | **The silence** | `docker stop icc26-debezium`, click twice | Rows land. Nothing on the wire. Nothing alarms |
 | **The catch-up** | `docker start icc26-debezium` | Both missed changes arrive, in order, with their original LSNs |
-| Editing history is refused | `UPDATE bes.batch_event …` | `200`, `"published": false, "op": "u"`, nothing on the wire |
-| Nothing says how it arrived | Read the topic aloud to somebody who did not watch the build | `icc26/site1/upstream/br-201/batch/event`. `meta.mechanism` is the only tell |
+| Editing history is published, elsewhere | `UPDATE bes.batch_event …` | `200`, `"published": true, "op": "u"`, on `…/audit/bes/batch-event` with the `before` image. Operational topic silent |
+| Nothing says how it arrived | Read the topic aloud to somebody who did not watch the build | `icc26/site1/upstream/br-201/batch/event`. Nothing in the topic or the payload tells them |
 
 **Leave `br-201` in `GROWTH` when you are done.** Pattern 7's positive beat needs a sample drawn
 inside the qualified window, and walking the reactor back around costs four clicks —
