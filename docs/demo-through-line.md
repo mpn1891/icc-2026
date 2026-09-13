@@ -90,7 +90,7 @@ addressed as `cell-analyzer-01`
 - Ignition 8.3 Event Streams story
 
 **Signal contributed:** Viable cell density / viability reading, timestamped as the sample
-instant pattern 7 keys off (`meta.correlation_id` = `sample_id`)
+instant pattern 7 keys off (`values.sample_id`)
 
 **GxP hook:** Qualified system read by a platform, one-way.
 
