@@ -1,0 +1,13 @@
+{
+  "scope": "A",
+  "version": 1,
+  "restricted": false,
+  "overridable": true,
+  "files": [
+    "config.json"
+  ],
+  "attributes": {
+    "description": "Pattern 7's own output, read back in as tags. Engine as one consumer among several; nothing reads these tags at runtime.",
+    "enabled": true
+  }
+}

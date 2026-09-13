@@ -2,11 +2,11 @@
   "scope": "A",
   "version": 1,
   "restricted": false,
-  "overridable": false,
+  "overridable": true,
   "files": [
     "config.json"
   ],
   "attributes": {
-    "uuid": "af980189-dcc1-41b0-b866-8add789132bc"
+    "enabled": true
   }
 }
