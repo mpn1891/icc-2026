@@ -177,7 +177,7 @@ class Config:
         # exactly as pattern 1 does, so this env var is the factory default, not the value
         # a restart reads.
         self.telemetry_enabled = _env_bool("TELEMETRY_ENABLED", True)
-        self.scan_interval_s = _env_float("SCAN_INTERVAL_S", 90.0)
+        self.scan_interval_s = _env_float("SCAN_INTERVAL_S", 0.0)
 
         # The assembly's own condition, identical to pattern 1's because valve.py is
         # identical. AIR_SUPPLY_SAG_BAR ships between valve.AIR_SUPPLY_SEAT_BAR (4.5) and

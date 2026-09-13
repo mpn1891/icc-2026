@@ -361,9 +361,9 @@ services:
       # a quiet topic tree. The config page's mute is persisted to the volume below, so once
       # somebody has touched it that saved value wins and this is only what `nuke` restores.
       TELEMETRY_ENABLED: ${VALVE_TELEMETRY_ENABLED:-true}
-      # Background badge traffic so the firehose is not empty between triggers.
-      # Set to 0 for a scripted stage run where the only scan should be yours.
-      SCAN_INTERVAL_S: ${VALVE_SCAN_INTERVAL_S:-90}
+      # 0 -- the only badge scan on the wire is the one you press. Set a positive
+      # number for free-running background traffic, which no stage run wants.
+      SCAN_INTERVAL_S: ${VALVE_SCAN_INTERVAL_S:-0}
       LOG_LEVEL: ${VALVE_LOG_LEVEL:-INFO}
       TZ: ${TZ:-America/Chicago}
     ports:
@@ -429,7 +429,7 @@ services:
       # Same as pattern 1: the page's mute is persisted to the volume below, so this is
       # the fresh-volume default rather than what a restart reads.
       TELEMETRY_ENABLED: ${VALVE_SPB_TELEMETRY_ENABLED:-true}
-      SCAN_INTERVAL_S: ${VALVE_SCAN_INTERVAL_S:-90}
+      SCAN_INTERVAL_S: ${VALVE_SCAN_INTERVAL_S:-0}
       LOG_LEVEL: ${VALVE_SPB_LOG_LEVEL:-INFO}
       TZ: ${TZ:-America/Chicago}
     ports:

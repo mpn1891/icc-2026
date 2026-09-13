@@ -157,7 +157,7 @@ class Config:
         self.telemetry_enabled = _env_bool("TELEMETRY_ENABLED", True)
         # 0 disables free-running scans -- use that for a scripted stage run where the only
         # traffic should be the badge you present yourself.
-        self.scan_interval_s = _env_float("SCAN_INTERVAL_S", 90.0)
+        self.scan_interval_s = _env_float("SCAN_INTERVAL_S", 0.0)
 
         # The assembly's own condition. AIR_SUPPLY_SAG_BAR ships between
         # valve.AIR_SUPPLY_SEAT_BAR (4.5) and valve.AIR_SUPPLY_STROKE_BAR (2.5), so the

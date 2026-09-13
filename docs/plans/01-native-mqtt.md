@@ -393,10 +393,10 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
   mosquitto_sub -h chariot -u observer -P observer -t 'icc26/#' -v
 ```
 
-> **Turn the auto-scanner off first.** `VALVE_SCAN_INTERVAL_S=0`, then `python tasks.py up`.
-> The device badges **itself every 90 seconds** by default (`valve.py:346-359`,
-> `docker-compose.yml:348-350`), one scan in five with the unknown badge. Left on, it
-> invalidates every step below. **On stage, leave it on.**
+> **The auto-scanner is off by default** (`VALVE_SCAN_INTERVAL_S=0`), so every step below
+> is reachable as written and the only scan on the wire is yours. Setting it to a positive
+> number makes the device badge itself on that interval, one scan in five with the unknown
+> badge (`valve.py:515-528`), which invalidates every step below. Leave it off.
 
 **1 — Both pages answer.** <http://localhost:8085> and <http://localhost:8086>.
 
