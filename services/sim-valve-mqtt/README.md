@@ -133,7 +133,7 @@ the old retained documents sit at the old topics until something clears them —
 | `AIR_SUPPLY_BAR` | `5.5` | nominal actuator supply |
 | `AIR_SUPPLY_SAG_BAR` | `3.2` | what the page's sag button drops it to; between the seat threshold (4.5) and the stroke threshold (2.5), so it produces `failed-to-seat`. Below 2.5 the same button produces `stroke-timeout` |
 | `ENCLOSURE_TEMPERATURE_C` | `31.5` | |
-| `SCAN_INTERVAL_S` | `90` | free-running background scans; **`0` disables them** for a scripted stage run |
+| `SCAN_INTERVAL_S` | `0` | **off** -- the only scan is the badge button you press. A positive number turns on free-running background scans |
 | `UI_PORT` | `8080` | container-side; compose maps it to 8085 |
 | `CONFIG_PATH` | `/data/config.json` | commissioned settings (`base_topic`, `qos`, `retain`) plus the staged telemetry mute under `stage`, on a named volume |
 
