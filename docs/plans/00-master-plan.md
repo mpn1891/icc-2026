@@ -131,7 +131,7 @@ vendor ships a licensed OPC UA server; we transcribed its real tag list. Address
 **the vendor's**, flat `OPCSystemObjects` / `OPCSystemCommands`. Completion signal **none
 vendor-side** — Ignition publishes off `HistoricalSampleResults/SampleTime`;
 `ICC26Extensions` remains in the address space but is not the MQTT trigger. Actions are
-**command bits only, no methods**. Ignition UDT `cell_analyzer`, 57 bound tags.
+**command bits only, no methods**. Ignition UDT `cell_analyzer`, 52 bound tags.
 
 This is what vendors actually ship, and it is the one we would have to integrate: a 2024
 vendor product with 104 writable bits and zero methods, because a SCADA tag write cannot

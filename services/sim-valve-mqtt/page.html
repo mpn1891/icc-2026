@@ -8,7 +8,7 @@
   here the topic is a text box, the QoS is a dropdown and Retained is a checkbox you can
   tick. There, none of the three can be touched.
 
-  Skin: Alfa Laval Unique Sampling Valve Type 10 double-seat with ThinkTop V50 —
+  Skin: Alfa Laval Unique Sampling Valve Type 10 double-seat with ThinkTop V50 -
   stacked wordmark, brand blue, 360° light guide (green de-energised, white energised,
   red not-OK). No external assets of any kind -- the demo has to run with networking disabled.
 -->
@@ -113,17 +113,33 @@
   .led.on { background: var(--ok); }
 
   main { padding: 1.25rem 1.5rem; }
-  section {
+  /* `details.fold` is a section that starts closed. It shares every rule below with a
+     plain section on purpose -- the two pages are screenshotted side by side, so a folded
+     panel has to read as the same object as an open one, just shut. The panels that get
+     this treatment are reference material rather than controls; leaving them open pushed
+     the simulator off the first screen. */
+  section, details.fold {
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: 2px;
     margin-bottom: 1rem;
     box-shadow: 0 1px 0 rgba(6,20,40,.06);
   }
-  section > h2 {
+  section > h2, details.fold > summary {
     font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: #fff;
     margin: 0; padding: .65rem 1rem; background: var(--al-blue); font-weight: 700;
   }
+  details.fold > summary {
+    cursor: pointer; list-style: none; display: flex; align-items: center; gap: .5rem;
+    user-select: none;
+  }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary::before {
+    content: "▸"; font-size: .78rem; line-height: 1;
+    transition: transform .12s ease;
+  }
+  details.fold[open] > summary::before { transform: rotate(90deg); }
+  details.fold > summary:focus-visible { outline: 2px solid var(--sim); outline-offset: -2px; }
   .body { padding: 1rem 1.1rem 1.15rem; }
   .grid { display: grid; grid-template-columns: 1fr 8rem 8rem; gap: .9rem; align-items: end; }
   @media (max-width: 640px) {
@@ -244,9 +260,9 @@
           <div>
             <label for="qos">QoS</label>
             <select id="qos" name="qos">
-              <option value="0">0 &mdash; at most once</option>
-              <option value="1">1 &mdash; at least once</option>
-              <option value="2">2 &mdash; exactly once</option>
+              <option value="0">0 - at most once</option>
+              <option value="1">1 - at least once</option>
+              <option value="2">2 - exactly once</option>
             </select>
           </div>
           <div>
@@ -261,51 +277,13 @@
     </div>
   </section>
 
-  <section>
-    <h2>What this produces</h2>
-    <div class="body">
-      <table>
-        <thead><tr><th>Message</th><th>Topic</th><th>QoS</th><th>Retained</th>
-          <th>What it is</th></tr></thead>
-        <tbody id="plan"></tbody>
-      </table>
-      <p class="sim-note" style="margin:.9rem 0 0">
-        One topic, one QoS and one retained flag apply to all four. This page cannot tell a
-        badge scan apart from a temperature reading, so whichever setting is right for one of
-        them is wrong for another &mdash; and nothing here will warn you. Retained is right
-        for <code>status</code> and leaves stale events on the broker for the next subscriber
-        to mistake for live ones.
-      </p>
-    </div>
-  </section>
-
-  <section>
-    <h2>Last will</h2>
-    <div class="body">
-      <dl class="kv">
-        <dt>Topic</dt><dd id="will-topic">&hellip;</dd>
-        <dt>QoS / retained</dt><dd id="will-qos">&hellip;</dd>
-        <dt>Payload</dt><dd id="will-payload">&hellip;</dd>
-      </dl>
-      <p class="sim-note" style="margin:.9rem 0 0">
-        One topic, two messages: the device publishes <code>online</code> itself as its first
-        message after connecting, and the broker publishes <code>offline</code> from this will
-        if the session ever breaks without a proper disconnect. Registered in the CONNECT
-        packet, so its timestamp is when this session <em>started</em>, not when it ended.
-        Nothing on the backbone knows this topic means &ldquo;death&rdquo; unless it was told
-        separately &mdash; and untick Retained above and the pair is worth nothing at all,
-        because whoever subscribes tomorrow is told neither.
-      </p>
-    </div>
-  </section>
-
   <section class="sim">
-    <h2>Simulator controls — not part of the device</h2>
+    <h2>Simulator controls - not part of the device</h2>
     <div class="body">
       <p class="sim-note">A real assembly has an RFID reader here, and a plant air header
         behind the actuator. The first two buttons stand in for both. The third stands in
-        for nothing at all &mdash; no device ships a switch that mutes its own instruments
-        &mdash; and is here only so the topic tree can be quietened while something else is
+        for nothing at all - no device ships a switch that mutes its own instruments
+        - and is here only so the topic tree can be quietened while something else is
         on screen. It stops the publishing, not the physics: the air still sags, the sample
         still fails to seat, and nothing on the backbone says so.</p>
       <div class="badges" id="badges"></div>
@@ -328,13 +306,51 @@
           <div class="state-line" id="last-scan" style="margin-top:.45rem"></div>
           <p class="sim-note" style="margin:.7rem 0 0">
             Green on the ThinkTop is the de-energised (closed) seat; white is the main valve energised.
-            The stem beside this line is on <em>no topic</em> — a subscriber watching the
+            The stem beside this line is on <em>no topic</em> - a subscriber watching the
             broker sees the badge scan, then fifteen seconds of nothing, then the completed sample.
           </p>
         </div>
       </div>
     </div>
   </section>
+
+  <details class="fold">
+    <summary>What this produces</summary>
+    <div class="body">
+      <table>
+        <thead><tr><th>Message</th><th>Topic</th><th>QoS</th><th>Retained</th>
+          <th>What it is</th></tr></thead>
+        <tbody id="plan"></tbody>
+      </table>
+      <p class="sim-note" style="margin:.9rem 0 0">
+        One topic, one QoS and one retained flag apply to all four. This page cannot tell a
+        badge scan apart from a temperature reading, so whichever setting is right for one of
+        them is wrong for another - and nothing here will warn you. Retained is right
+        for <code>status</code> and leaves stale events on the broker for the next subscriber
+        to mistake for live ones.
+      </p>
+    </div>
+  </details>
+
+  <details class="fold">
+    <summary>Last will</summary>
+    <div class="body">
+      <dl class="kv">
+        <dt>Topic</dt><dd id="will-topic">&hellip;</dd>
+        <dt>QoS / retained</dt><dd id="will-qos">&hellip;</dd>
+        <dt>Payload</dt><dd id="will-payload">&hellip;</dd>
+      </dl>
+      <p class="sim-note" style="margin:.9rem 0 0">
+        One topic, two messages: the device publishes <code>online</code> itself as its first
+        message after connecting, and the broker publishes <code>offline</code> from this will
+        if the session ever breaks without a proper disconnect. Registered in the CONNECT
+        packet, so its timestamp is when this session <em>started</em>, not when it ended.
+        Nothing on the backbone knows this topic means &ldquo;death&rdquo; unless it was told
+        separately - and untick Retained above and the pair is worth nothing at all,
+        because whoever subscribes tomorrow is told neither.
+      </p>
+    </div>
+  </details>
 
   <footer>icc-2026 &middot; docs/plans/01-native-mqtt.md &middot; Alfa Laval Unique Sampling Valve / ThinkTop V50</footer>
 </main>
@@ -413,20 +429,20 @@ function renderRuntime(s) {
   $("v-state").textContent = v.state;
   $("v-pos").textContent = v.position_pct;
   $("v-cycles").textContent = v.cycle_count;
-  $("v-cycle-result").textContent = s.runtime.last_cycle_result || "—";
+  $("v-cycle-result").textContent = s.runtime.last_cycle_result || "-";
   $("v-air").textContent = t.air_supply_bar;
   $("v-temp").textContent = t.enclosure_temperature_c;
   $("v-pub").textContent = s.runtime.published;
 
   airSagged = s.runtime.air_sagged;
   $("air-supply").textContent = airSagged
-    ? "Air supply sagging — click to restore it (next sample seats normally)"
-    : "Air supply nominal — click to sag it (next sample fails to seat)";
+    ? "Air supply sagging - click to restore it (next sample seats normally)"
+    : "Air supply nominal - click to sag it (next sample fails to seat)";
 
   telemetryOn = s.runtime.telemetry_enabled;
   $("telemetry").textContent = telemetryOn
-    ? "Telemetry publishing — click to mute it (and clear the retained document, so the topic leaves the tree)"
-    : "Telemetry muted — click to resume it (badge scans, samples and status are unaffected)";
+    ? "Telemetry publishing - click to mute it (and clear the retained document, so the topic leaves the tree)"
+    : "Telemetry muted - click to resume it (badge scans, samples and status are unaffected)";
 
   paintTvis(v, s.runtime.last_cycle_result);
 

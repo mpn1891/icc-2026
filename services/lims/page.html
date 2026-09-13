@@ -1,9 +1,19 @@
 <!DOCTYPE html>
 <!--
-  QC result-review screen, served by this container rather than Perspective:
-  a LIMS has to look like a LIMS. Chrome is LabWare-web (navy app bar, explorer,
-  worklist, e-sign, status bar); the canvas is closer to a modern ELN so it
-  does not read as a 2003 thick client. No external assets.
+  QC result-review screen, served by this container rather than Perspective.
+
+  It used to carry a full LabWare-web shell: a navy app bar with a search box
+  that searched nothing, a File/Sample/Test/Reports menu bar, an explorer
+  sidebar of nine destinations that were not destinations, and a status bar.
+  That chrome was deliberate once -- a LIMS has to look like a LIMS -- and it
+  came off on 2026-09-12, because on a projector it reads as nine things the
+  demo is about to do and never does. What is left is the one screen this
+  container actually implements, and only controls that do something when
+  pressed.
+
+  The three lab-utility controls moved here from the foot of that sidebar. They
+  are not decoration: pausing the outbound interface is how pattern 4 shows a
+  release queueing rather than vanishing. No external assets.
 -->
 <html lang="en">
 <head>
@@ -13,8 +23,6 @@
 <style>
   :root {
     --navy: #0b365c;
-    --navy-2: #124a78;
-    --menu: #0e3f6b;
     --link: #0b5cab;
     --teal: #0f6e68;
     --canvas: #d7dee5;
@@ -33,7 +41,6 @@
     --sans: "Segoe UI", Tahoma, Arial, sans-serif;
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
   body {
     margin: 0;
     background: var(--canvas);
@@ -45,173 +52,17 @@
   a:hover { text-decoration: underline; }
 
   .app {
-    min-height: 100%;
-    display: grid;
-    grid-template-rows: 48px 28px 1fr 24px;
-    grid-template-columns: 232px 1fr;
-    grid-template-areas:
-      "top top"
-      "menubar menubar"
-      "nav main"
-      "status status";
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 18px 18px 28px;
   }
 
-  .top {
-    grid-area: top;
-    background: var(--navy);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    padding: 0 14px;
-  }
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 218px;
-  }
-  .mark {
-    width: 26px; height: 26px;
-    border: 1.5px solid #8ec4e8;
-    display: grid;
-    place-items: center;
-    font: 700 12px/1 var(--sans);
-    letter-spacing: .02em;
-  }
-  .brand-name { font-size: 14px; font-weight: 600; }
-  .brand-name span { display: block; font-size: 10px; font-weight: 400; color: #a9c7de; }
-  .search {
-    width: 240px;
-    height: 26px;
-    background: #082844;
-    border: 1px solid #2a5a84;
-    color: #d5e6f2;
-    padding: 0 8px;
-    font-size: 12px;
-  }
-  .search::placeholder { color: #7ea0b8; }
-  .top-meta {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    font-size: 12px;
-    color: #d5e6f2;
-  }
-  .env {
-    border: 1px solid #4a8bb0;
-    color: #cfe8f7;
-    padding: 2px 7px;
-    font-size: 11px;
-  }
-  .userchip {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .avatar {
-    width: 24px; height: 24px;
-    background: #1d6aa0;
-    display: grid; place-items: center;
-    font-size: 11px; font-weight: 600;
-  }
-
-  .menubar {
-    grid-area: menubar;
-    background: var(--menu);
-    color: #d7e6f2;
-    display: flex;
-    align-items: stretch;
-    padding: 0 8px;
-    border-bottom: 1px solid #082844;
-    font-size: 12px;
-  }
-  .menubar span {
-    padding: 0 12px;
-    display: inline-flex;
-    align-items: center;
-    cursor: default;
-  }
-  .menubar span.current {
-    background: #165585;
-    color: #fff;
-  }
-
-  nav {
-    grid-area: nav;
-    background: #eef2f5;
-    border-right: 1px solid var(--line);
-    display: flex;
-    flex-direction: column;
-    padding: 10px 0 0;
-  }
-  .nav-group {
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--muted);
-    padding: 10px 16px 4px;
-  }
-  .nav-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 16px;
-    color: var(--ink);
-    cursor: default;
-  }
-  .nav-item.current {
-    background: #d6e6f4;
-    box-shadow: inset 3px 0 0 var(--link);
-    font-weight: 600;
-  }
-  .nav-item .count {
-    margin-left: auto;
-    background: var(--navy);
-    color: #fff;
-    min-width: 18px;
-    text-align: center;
-    font-size: 11px;
-    padding: 0 5px;
-  }
-  .nav-foot {
-    margin-top: auto;
-    border-top: 1px solid var(--line);
-    padding: 10px 12px 12px;
-    background: #e6ebf0;
-  }
-  .nav-foot h3 {
-    margin: 0 0 8px;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--muted);
-  }
-  .nav-foot .if-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 12px;
-    margin-bottom: 8px;
-  }
-  .nav-foot form { margin: 0 0 4px; }
-  .nav-foot button { width: 100%; }
-
-  main {
-    grid-area: main;
-    overflow: auto;
-    padding: 14px 18px 24px;
-  }
-  .crumb {
-    color: var(--muted);
-    font-size: 12px;
-    margin-bottom: 8px;
-  }
-  .crumb b { color: var(--ink); font-weight: 600; }
   .pagehead {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
     gap: 16px;
+    flex-wrap: wrap;
     margin-bottom: 12px;
   }
   .pagehead h1 {
@@ -247,6 +98,23 @@
   }
   .signon input[type=text]:focus { outline: 1px solid var(--link); border-color: var(--link); }
 
+  /* The two interface lamps and the three controls that change them. Above the
+     panels rather than below, because pausing outbound is something you do
+     first and then watch the release queue. */
+  .utilbar {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 8px 10px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .utilbar .if { font-size: 12px; color: var(--muted); }
+  .utilbar .if b { color: var(--ink); font-weight: 600; }
+  .utilbar .actions { margin-left: auto; }
+
   .msg {
     margin: 0 0 12px;
     padding: 8px 10px;
@@ -271,6 +139,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
   }
   .panel > h2 .hint {
     margin-left: auto;
@@ -369,17 +238,6 @@
     background: #fff;
   }
 
-  .status {
-    grid-area: status;
-    background: #eceff2;
-    border-top: 1px solid var(--line);
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 0 12px;
-    font-size: 11px;
-    color: var(--muted);
-  }
   .dot {
     display: inline-block;
     width: 7px; height: 7px;
@@ -394,61 +252,88 @@
     color: var(--muted);
     padding: 0 12px 10px;
   }
+
+  /* Electronic signature dialog. Part 11 asks a signature to record who signed
+     and what the signing meant, so the dialog states both before it will accept
+     anything. The password is checked for presence and nothing else, and it is
+     deliberately never submitted: this container authenticates nobody, and
+     posting a credential that nothing verifies would be the one part of the
+     ceremony that is a lie rather than a demonstration. */
+  dialog#esign {
+    width: min(420px, calc(100vw - 32px));
+    padding: 0;
+    border: 1px solid var(--navy);
+    background: var(--panel);
+    color: var(--ink);
+    font: 13px/1.4 var(--sans);
+  }
+  dialog#esign::backdrop { background: rgba(11, 54, 92, .45); }
+  #esign h2 {
+    margin: 0;
+    padding: 9px 14px;
+    background: var(--navy);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  #esign .body { padding: 14px; }
+  #esign .subject { margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+  #esign .subject b { color: var(--ink); font-weight: 600; }
+  #esign .subject .sid { color: var(--link); }
+  #esign .meaning-line {
+    margin: 0 0 12px;
+    padding: 7px 9px;
+    background: var(--row);
+    border: 1px solid var(--line-2);
+    font-size: 12px;
+  }
+  #esign label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 3px;
+  }
+  #esign input {
+    width: 100%;
+    height: 28px;
+    border: 1px solid #9aa8b4;
+    padding: 0 8px;
+    background: #fff;
+    margin-bottom: 10px;
+  }
+  #esign input:focus { outline: 1px solid var(--link); border-color: var(--link); }
+  #esign .err {
+    margin: 0 0 10px;
+    padding: 6px 9px;
+    background: var(--bad-bg);
+    border: 1px solid #e3b6b2;
+    color: var(--bad);
+    font-size: 12px;
+  }
+  #esign .actions { justify-content: flex-end; }
 </style>
 </head>
 <body>
 <div class="app">
 
-  <header class="top">
-    <div class="brand">
-      <div class="mark">L</div>
-      <div class="brand-name">LIMS Web<span>ICC Biologics · Site 1</span></div>
+  <div class="pagehead">
+    <div>
+      <h1>Result review</h1>
+      <p>Sampling and in-process chemistry · sample valve BR-201 · cell analyzer · batch release to manufacturing</p>
     </div>
-    <input class="search" type="search" placeholder="Search samples, batches, tests…" aria-label="Search">
-    <div class="top-meta">
-      <span class="env">Production</span>
-      <span>Quality Control</span>
-      <div class="userchip">
-        <div class="avatar">@@ANALYST_INITIALS@@</div>
-        <div>@@ANALYST@@<br><span style="color:#a9c7de">QC Reviewer</span></div>
+    <form method="get" action="/" class="signon">
+      <div>
+        <label for="analyst">Signed on as</label>
+        <input id="analyst" name="analyst" type="text" value="@@ANALYST@@" autocomplete="username">
       </div>
-    </div>
-  </header>
-
-  <div class="menubar">
-    <span>File</span>
-    <span>Sample</span>
-    <span>Test</span>
-    <span class="current">Results</span>
-    <span>Reports</span>
-    <span>Window</span>
-    <span>Help</span>
+      <button type="submit" class="ghost">Change user</button>
+    </form>
   </div>
 
-  <nav>
-    <div class="nav-group">Sample management</div>
-    <div class="nav-item">Sample login</div>
-    <div class="nav-item">Sample browse</div>
-    <div class="nav-group">Testing</div>
-    <div class="nav-item">Worklist</div>
-    <div class="nav-item">Result entry</div>
-    <div class="nav-group">Quality</div>
-    <div class="nav-item current">Result review <span class="count">@@PENDING_COUNT@@</span></div>
-    <div class="nav-item">Unmatched results <span class="count">@@UNMATCHED_COUNT@@</span></div>
-    <div class="nav-item">Certificates of analysis</div>
-    <div class="nav-group">Lab</div>
-    <div class="nav-item">Instruments</div>
-    <div class="nav-item">Inventory</div>
-    <div class="nav-foot">
-      <h3>Lab utilities</h3>
-      <div class="if-row">
-        <span>Instrument I/F</span>
-        <span><i class="dot @@MQTT_LED@@"></i>@@MQTT_LABEL@@</span>
-      </div>
-      <div class="if-row">
-        <span>Outbound I/F</span>
-        <span><i class="dot @@DRAINER_LED@@"></i>@@DRAINER_LABEL@@</span>
-      </div>
+  <div class="utilbar">
+    <span class="if"><i class="dot @@MQTT_LED@@"></i>Instrument I/F <b>@@MQTT_LABEL@@</b></span>
+    <span class="if"><i class="dot @@DRAINER_LED@@"></i>Outbound I/F <b>@@DRAINER_LABEL@@</b></span>
+    <div class="actions">
       <form method="post" action="/webhook/disable"><button class="danger" type="submit">Pause outbound</button></form>
       <form method="post" action="/webhook/enable"><button class="ok" type="submit">Resume outbound</button></form>
       <form method="post" action="/trigger">
@@ -456,48 +341,116 @@
         <button class="ghost" type="submit">Manual sample login</button>
       </form>
     </div>
-  </nav>
+  </div>
 
-  <main>
-    <div class="crumb">Home / Quality Control / <b>Result Review</b></div>
-    <div class="pagehead">
-      <div>
-        <h1>Result review</h1>
-        <p>Sampling and in-process chemistry · sample valve BR-201 · cell analyzer · batch release to manufacturing</p>
-      </div>
-      <form method="get" action="/" class="signon">
-        <div>
-          <label for="analyst">Signed on as</label>
-          <input id="analyst" name="analyst" type="text" value="@@ANALYST@@" autocomplete="username">
-        </div>
-        <button type="submit" class="ghost">Change user</button>
-      </form>
-    </div>
+  @@FLASH@@
 
-    @@FLASH@@
+  <section class="panel">
+    <h2>Open samples <span class="hint">@@PENDING_SHOWN@@ · @@AWAITING_COUNT@@ awaiting analysis · e-sign required before release</span></h2>
+    @@PENDING@@
+  </section>
 
-    <section class="panel">
-      <h2>Open samples <span class="hint">@@PENDING_SHOWN@@ · @@AWAITING_COUNT@@ awaiting analysis · e-sign required before release</span></h2>
-      @@PENDING@@
-    </section>
+  <section class="panel">
+    <h2>Unmatched results <span class="hint">@@UNMATCHED_COUNT@@ · reported against a sample id no open entry carries</span></h2>
+    @@UNMATCHED@@
+  </section>
 
-    <section class="panel">
-      <h2>Unmatched results <span class="hint">@@UNMATCHED_COUNT@@ · reported against a sample id no open entry carries</span></h2>
-      @@UNMATCHED@@
-    </section>
+  <section class="panel">
+    <h2>Release transmissions <span class="hint">@@OUTBOX_COUNT@@ · MES / historian interface</span></h2>
+    @@OUTBOX@@
+  </section>
 
-    <section class="panel">
-      <h2>Release transmissions <span class="hint">@@OUTBOX_COUNT@@ · MES / historian interface</span></h2>
-      @@OUTBOX@@
-    </section>
-  </main>
-
-  <footer class="status">
-    <span>@@ANALYST@@ · QC Reviewer</span>
-    <span>ICC Site 1 · Production</span>
-    <span>LIMS Web 8.4</span>
-    <span style="margin-left:auto">Instrument I/F <i class="dot @@MQTT_LED@@"></i> · Outbound <i class="dot @@DRAINER_LED@@"></i></span>
-  </footer>
 </div>
+
+<dialog id="esign" aria-labelledby="esign-title">
+  <h2 id="esign-title">Electronic signature</h2>
+  <div class="body">
+    <p class="subject">
+      <b id="esign-verb">Release</b> &middot; sample <b class="sid" id="esign-sample"></b>
+    </p>
+    <p class="meaning-line" id="esign-meaning"></p>
+    <p class="err" id="esign-err" hidden>Enter a user id and a password to sign.</p>
+    <label for="esign-user">User ID</label>
+    <input id="esign-user" type="text" autocomplete="username" spellcheck="false">
+    <label for="esign-pass">Password</label>
+    <input id="esign-pass" type="password" autocomplete="current-password">
+    <div class="actions">
+      <button type="button" class="ghost" id="esign-cancel">Cancel</button>
+      <button type="button" class="ok" id="esign-sign">Sign</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  // The signature ceremony. Clicking e-Sign & release / e-Sign & reject does not
+  // post the form; it opens this dialog, and the dialog posts the form once a
+  // user id and a password have been entered. The user id typed here replaces
+  // the analyst the page was rendered with, so the name on the record is the
+  // name that signed rather than whoever the browser was left signed on as.
+  //
+  // The password never leaves this function. Nothing in this container verifies
+  // one, and submitting it would suggest otherwise.
+  (function () {
+    var dlg = document.getElementById("esign");
+    if (!dlg || typeof dlg.showModal !== "function") return;  // forms post as before
+
+    var MEANING = {
+      release: "Approved. Results reviewed and released to manufacturing.",
+      reject: "Rejected. Results reviewed and not released."
+    };
+    var verb = document.getElementById("esign-verb");
+    var sample = document.getElementById("esign-sample");
+    var meaning = document.getElementById("esign-meaning");
+    var err = document.getElementById("esign-err");
+    var user = document.getElementById("esign-user");
+    var pass = document.getElementById("esign-pass");
+    var pending = null;
+
+    document.addEventListener("submit", function (event) {
+      var form = event.target;
+      if (!form.classList || !form.classList.contains("esign")) return;
+      event.preventDefault();
+      pending = form;
+      var kind = form.getAttribute("data-verb");
+      verb.textContent = kind === "reject" ? "Reject" : "Release";
+      sample.textContent = form.getAttribute("data-sample") || "";
+      meaning.textContent = MEANING[kind] || "";
+      err.hidden = true;
+      var analyst = form.querySelector('input[name="analyst"]');
+      user.value = analyst ? analyst.value : "";
+      pass.value = "";
+      dlg.showModal();
+      pass.focus();
+    });
+
+    function close() {
+      pending = null;
+      pass.value = "";
+      dlg.close();
+    }
+
+    function sign() {
+      if (!pending) return;
+      if (!user.value.trim() || !pass.value) {
+        err.hidden = false;
+        return;
+      }
+      var analyst = pending.querySelector('input[name="analyst"]');
+      if (analyst) analyst.value = user.value.trim();
+      var form = pending;
+      pending = null;
+      pass.value = "";
+      dlg.close();
+      form.submit();   // .submit() skips the submit event, so no second dialog
+    }
+
+    document.getElementById("esign-cancel").addEventListener("click", close);
+    document.getElementById("esign-sign").addEventListener("click", sign);
+    dlg.addEventListener("cancel", function () { pending = null; pass.value = ""; });
+    dlg.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") { event.preventDefault(); sign(); }
+    });
+  })();
+</script>
 </body>
 </html>

@@ -42,6 +42,14 @@ than about topics:
 > or scans it into this one. Everything downstream — the analyzer result, the LIMS entry it
 > appends to, the released document — turns on those characters matching.
 
+**Vessel ID joined it on 2026-09-12**, pre-filled with `BR-201` and editable. The result document
+publishes `values.vessel_id`, and with no field on the screen the vendor node stayed empty, so
+every run fell through to the instrument's fallback and put `BRX-2000-A` on the wire — a startup
+constant travelling as though the analyzer had measured which vessel it sampled. It is the same
+objection that took `batch_id` off the result on 2026-09-09; the difference is that a vessel is
+something the person at the sample port does know, so this one is answered with a field rather
+than a deletion. Default, not assertion: it can be typed wrong, exactly like the id above.
+
 An Ignition tag write into `cell_analyzer/command/sample_id` would do the same job and could not
 be typed wrong. **That is why it is not what we built.** Pattern 1's GxP claim is *the record
 originates at the point of action; no transcription, no intermediary*, and this screen is the
@@ -61,8 +69,18 @@ because it is inside the instrument.
 **The instrument no longer free-runs.** `SAMPLE_INTERVAL_S` and `FIRST_SAMPLE_DELAY_S` default
 to 0, and `run()` treats a non-positive interval as "wait for a trigger, indefinitely" — a zero
 timeout would expire immediately and spin the loop hot. A self-driving analyzer invents sample
-ids nobody transcribed, and every result it produced would park unmatched in the LIMS. QC rode
-on free-running cycles, so it moved to a button on the same page.
+ids nobody transcribed, and every result it produced would park unmatched in the LIMS.
+
+QC rode on those free-running cycles too. It briefly had its own button on this page and lost it
+on 2026-09-12, along with its three Ignition tags: the screen exists to show one transcription,
+and a second button beside Run is a second thing to explain for a path the demo never walks.
+**The instrument's QC machinery is untouched** — `ChemistryQcLevel1`/`Level2`/`GasQcLevel1` are
+still writable vendor bits, `_run_qc` still runs, `QcCompleteCounter` still increments, and
+`QC_EVERY_N` still fires a control run if you set a non-zero sample interval. What went is
+Ignition's view of it: `command/gas_qc_level1`, `qc_complete_counter` and `qc_result_json` are no
+longer bound, so QC is reachable from an OPC client and not from the tag browser. The manual's
+§9 warning — a client watching sample results silently misses every control run — is now a thing
+this repo says in prose rather than one you can watch a counter demonstrate.
 
 ## The contract
 
@@ -134,7 +152,7 @@ that is undocumented; set `COMMAND_AUTO_CLEAR=false` to find out the hard way.
 | `HTTP_PORT` | `8087` | The sample-login touchscreen |
 | `FIRST_SAMPLE_DELAY_S` | **`0`** | `0` = never start one by itself. Non-zero for the old behaviour |
 | `SAMPLE_INTERVAL_S` | **`0`** | `0` = runs only when asked. See *The sample-login screen* above |
-| `QC_EVERY_N` | `6` | Every Nth **free-running** cycle runs QC instead. Never fires at interval `0` — use the page's Run QC button. `0` disables |
+| `QC_EVERY_N` | `6` | Every Nth **free-running** cycle runs QC instead. Never fires at interval `0`, and since 2026-09-12 there is no Ignition tag to trigger or observe one — an OPC client is the only way in. `0` disables |
 | `SENSOR_ERROR_RATE` | `0.0` | Per-analyte. Sample still completes and still counts |
 | `FAILURE_RATE` | `0.0` | Whole-analysis dispense timeout. Counter does **not** move |
 | `COMMAND_AUTO_CLEAR` | `true` | Whether command bits are one-shot |
@@ -247,10 +265,17 @@ Factor only if a third analyzer appears.
 `node_sep` as a parameter is the point: the one genuine unknown in the whole model is confined to
 a single UDT parameter and a single environment variable.
 
-57 OPC tags — the 12 analyte results, cell density, calculated results, sample metadata, the
-module-used flags, the extension counters and state, and nine ESM command tags. All 57 verified
-to resolve against a running server before Ignition was pointed at it; 56 read Good and the one
-Bad is `result/osmo`, which is the point.
+52 OPC tags — the 12 analyte results, cell density, calculated results, sample metadata, the
+module-used flags, the extension counters and state, and eight ESM command tags. All were
+verified to resolve against a running server before Ignition was pointed at it; every one reads
+Good except `result/osmo`, which is the point.
+
+**It was 57 until 2026-09-12.** Five came out together, for one reason: a bound tag is a claim
+that something reads it. `command/batch_id` and `result/batch_id` had been inert since the field
+left the screen and the result document on 2026-09-09, and `command/gas_qc_level1`,
+`qc_complete_counter` and `qc_result_json` went with the QC button the same day this line was
+written. All five nodes still exist on the instrument — they are the vendor's address space, and
+`QcCompleteCounter` is our extension branch — but nothing in Ignition subscribes to them now.
 
 Per-analyte `ErrorStatus` is deliberately **not** tagged: a failed sensor already shows as **Bad
 quality on the result tag itself**, and `result/errors` carries the text. The quality *is* the
@@ -261,10 +286,12 @@ subscriptions that never change is what §10 of the model doc argues against. Th
 browsable on the server.
 
 To run an analysis from the tag browser: set `command/sample_id`, then write `true` to
-`command/esm_schedule_analysis`. (`command/batch_id` and `command/vessel_id` still exist and are
-still writable — they are the vendor's tags. Since 2026-09-09 nothing sets them: they came off the
-sample-login screen and out of the published result, because the instrument does not know a batch.
-See `opcua_event/code.py` and docs/plans/07-sample-chain.md decision 2.)
+`command/esm_schedule_analysis`. `command/vessel_id` is writable the same way and the
+sample-login screen sets it on every run; leave it alone and the tag-browser path takes the
+instrument's `BRX-2000-A` fallback, which is the vendor's behaviour and not a bug to fix here.
+BatchID is no longer reachable from here at all: the vendor node is still in the address space
+and still writable by an OPC client, but it has no Ignition tag, because the instrument does not
+know a batch. See `opcua_event/code.py` and docs/plans/07-sample-chain.md decision 2.
 
 ### Two things Ignition 8.3 requires, learned on the Countess
 

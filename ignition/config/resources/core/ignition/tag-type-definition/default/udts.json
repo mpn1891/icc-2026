@@ -46,20 +46,6 @@
         "tags": [
           {
             "dataType": "String",
-            "name": "batch_id",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMScheduleAnalysis{node_sep}SampleInformation{node_sep}BatchID"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "String",
             "name": "cell_type",
             "opcItemPath": {
               "bindType": "parameter",
@@ -94,21 +80,6 @@
             "opcItemPath": {
               "bindType": "parameter",
               "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}ESMTerminate{node_sep}ESMTerminate"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "Boolean",
-            "documentation": "Runs an onboard pH/Gas Level 1 control. Increments qc_complete_counter only.",
-            "name": "gas_qc_level1",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemCommands{node_sep}GasQcLevel1{node_sep}GasQcLevel1"
             },
             "opcServer": {
               "bindType": "parameter",
@@ -192,52 +163,9 @@
         "valueSource": "opc"
       },
       {
-        "dataType": "Int8",
-        "documentation": "Increments on an onboard QC analysis, which never touches sample_complete_counter. A client watching only sample results silently misses every control run - which is the manual\u0027s own warning at the top of section 9.",
-        "name": "qc_complete_counter",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}QcCompleteCounter"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc"
-      },
-      {
-        "dataType": "String",
-        "name": "qc_result_json",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003dICC26Extensions{node_sep}QcResultJson"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
-        "tagType": "AtomicTag",
-        "valueSource": "opc"
-      },
-      {
         "name": "result",
         "tagType": "Folder",
         "tags": [
-          {
-            "dataType": "String",
-            "name": "batch_id",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003dOPCSystemObjects{node_sep}HistoricalSampleResults{node_sep}StartTags{node_sep}SampleInformation{node_sep}BatchID"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
           {
             "name": "calculated",
             "tagType": "Folder",

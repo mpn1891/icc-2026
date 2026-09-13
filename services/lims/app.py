@@ -1088,15 +1088,6 @@ def _fmt_display_ts(value) -> str:
     return dt.astimezone(timezone.utc).strftime("%d-%b-%Y %H:%M")
 
 
-def _initials(name: str) -> str:
-    parts = [p for p in (name or "").replace(".", " ").split() if p]
-    if not parts:
-        return "?"
-    if len(parts) == 1:
-        return parts[0][:2].upper()
-    return (parts[0][0] + parts[-1][0]).upper()
-
-
 def _esc(value) -> str:
     return html.escape("" if value is None else str(value), quote=True)
 
@@ -1164,10 +1155,7 @@ def create_app(cfg: Config, store: Store, ingest: MqttIngest, drainer: Drainer,
                 flash = "Postgres is unreachable."
                 flash_ok = False
         page = _read_page()
-        page = page.replace("@@TOPIC@@", _esc(cfg.result_topic))
-        page = page.replace("@@VALVE_TOPIC@@", _esc(cfg.valve_event_topic))
         page = page.replace("@@ANALYST@@", _esc(analyst))
-        page = page.replace("@@ANALYST_INITIALS@@", _esc(_initials(analyst)))
         page = page.replace("@@MQTT_LED@@", "on" if ingest.connected else "")
         page = page.replace("@@MQTT_LABEL@@", "Online" if ingest.connected else "Offline")
         page = page.replace("@@DRAINER_LED@@", "on" if drainer.enabled.is_set() else "warn")
@@ -1182,7 +1170,6 @@ def create_app(cfg: Config, store: Store, ingest: MqttIngest, drainer: Drainer,
                  if pending_total > len(pending) else "%s sample(s)" % pending_total)
         page = page.replace("@@PENDING_SHOWN@@", shown)
         # The nav badge is the whole queue, capped or not.
-        page = page.replace("@@PENDING_COUNT@@", str(pending_total))
         page = page.replace("@@AWAITING_COUNT@@", str(awaiting_total))
         page = page.replace("@@UNMATCHED_COUNT@@", str(len(unmatched)))
         page = page.replace("@@OUTBOX_COUNT@@", str(len(outbox)))
@@ -1484,18 +1471,27 @@ def _actions_html(sample: dict, analyst: str, reviewable: bool, span: int) -> st
             '<td class="action-cell" rowspan="%s">'
             '<span class="chip pending">Not yet reviewable</span></td>' % span
         )
+    # `esign` and the two data attributes are what the page's signature dialog
+    # binds to. Nothing server-side reads them, and a browser with the dialog
+    # unavailable submits these forms exactly as it did before the dialog
+    # existed -- the signature ceremony is a front-end gesture, and the record
+    # it produces is the same record either way.
     return (
         '<td class="action-cell" rowspan="%s"><div class="actions">'
-        '<form method="post" action="/samples/%s/approve">'
+        '<form method="post" action="/samples/%s/approve"'
+        ' class="esign" data-verb="release" data-sample="%s">'
         '<input type="hidden" name="analyst" value="%s">'
         '<button class="ok" type="submit">e-Sign &amp; release</button></form>'
-        '<form method="post" action="/samples/%s/reject">'
+        '<form method="post" action="/samples/%s/reject"'
+        ' class="esign" data-verb="reject" data-sample="%s">'
         '<input type="hidden" name="analyst" value="%s">'
-        '<button class="danger" type="submit">Return to lab</button></form>'
+        '<button class="danger" type="submit">e-Sign &amp; reject</button></form>'
         "</div></td>" % (
             span,
             _esc(sample["sample_id"]),
+            _esc(sample["sample_id"]),
             _esc(analyst),
+            _esc(sample["sample_id"]),
             _esc(sample["sample_id"]),
             _esc(analyst),
         )

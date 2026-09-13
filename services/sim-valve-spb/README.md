@@ -115,10 +115,10 @@ protobuf-runtime version guard, and the service does not need protobuf at runtim
 | `BADGE_ROSTER` | same three badges as the twin | |
 | `SAMPLE_WINDOW_S` / `VALVE_STROKE_S` | `12` / `1.5` | |
 | `TELEMETRY_INTERVAL_S` | `5` | |
-| `TELEMETRY_ENABLED` | `true` | whether the stream is running at startup; toggled live on the config page, not persisted |
+| `TELEMETRY_ENABLED` | `true` | whether the stream is running on a **fresh volume**; the config page's mute is persisted, so once touched the saved value wins |
 | `SCAN_INTERVAL_S` | `90` | **`0` disables** free-running scans for a scripted stage run |
 | `UI_PORT` | `8080` | container-side; compose maps it to 8086 |
-| `CONFIG_PATH` | `/data/config.json` | commissioned ids, on a named volume |
+| `CONFIG_PATH` | `/data/config.json` | commissioned ids plus the staged telemetry mute under `stage`, on a named volume |
 
 ## Verify
 
