@@ -14,9 +14,11 @@ Seven data-transaction/event patterns on Ignition 8.3.8 + Cirrus 5.0.4 + Chariot
 config-as-code via bind-mounted `ignition/config` + `ignition/projects`. Two or three teammates
 clone, run, and collaborate via push/pull. Conference is ~4 weeks out.
 
-All seven `meta.mechanism` values still have exactly one user each. Patterns 1–6 each carry a
-different signal; pattern 7 is the join of several of them into one composite document. The
-namespace still must not leak the mechanism.
+Patterns 1–6 each carry a different signal; pattern 7 is the join of several of them into one
+composite document. The namespace still must not leak the mechanism. **`meta.mechanism` is no
+longer how that is demonstrated** — the envelope came off every remaining pattern on 2026-09-13
+and the field is gone from the backbone entirely, so provenance is the topic a message arrived
+on and nothing else. See [`../00-architecture.md`](../00-architecture.md) § *Payload envelope*.
 
 Locked in: GitHub private repo under Matt's account; mixed Windows + macOS/Linux team; FastAPI
 stub for LIMS; demo-grade committed credentials are acceptable.
@@ -232,8 +234,8 @@ key off it directly.
 
 An Ignition gateway timer polls that API. On a new analysis, the script submits the payload to
 an Event Stream (`06_poll/particle-counter-result`), which publishes through Transmission to
-`icc26/site1/qc/analyzers/particle-counter-01/result` with `mechanism=poll`. Same relay
-shape as pattern 3; the acquisition is the poll.
+`icc26/site1/qc/analyzers/particle-counter-01/result` as `ts` + `values`. Same relay shape as
+pattern 3 and, since 2026-09-13, the same payload shape too; the acquisition is the poll.
 
 **GxP hook:** a characterized detection gap. Not fatal on its own, but it goes in the
 assessment — show the polling interval, then ask what could have happened between polls.
@@ -339,10 +341,17 @@ After the final risk segment (pattern 7's):
 3. **The composite event itself.** Force `outside_qualified_window` and `environmental_excursion`
    both `true` in one rehearsal run and confirm the aggregate payload reads exactly as the
    through line states it. This is the one verification step the audience's payoff depends on.
-4. End-to-end: all seven mechanisms firing → one `mosquitto_sub -t 'icc26/#'` shows seven
-   distinct `meta.mechanism` values; one sample's
-   valve → analyzer → LIMS review → aggregate on the same `correlation_id`. Run once with
-   networking disabled to prove offline viability.
+4. End-to-end: all seven mechanisms firing → one `mosquitto_sub -t 'icc26/#'` shows **seven
+   topics carrying seven different signals**; one sample's valve → analyzer → LIMS review →
+   aggregate under the same `values.sample_id`. Run once with networking disabled to prove
+   offline viability.
+
+   > **Rewritten 2026-09-13.** This step used to say "seven distinct `meta.mechanism` values"
+   > and "the same `correlation_id`". Neither is countable any more: no pattern publishes an
+   > envelope, and `meta.correlation_id` was always a copy of `values.sample_id`,
+   > which patterns 3, 4 and 7 carry anyway. The step now asserts what it was always really
+   > testing — that the seven mechanisms are distinguishable by what they carry, not by a field
+   > announcing which one ran.
 5. **A subscriber cannot tell how anything arrived.** Read the topic list to somebody who has not
    seen the build and ask them which patterns use CDC. That, not the old switch-over, is now how
    the namespace claim gets tested.

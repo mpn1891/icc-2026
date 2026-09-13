@@ -82,9 +82,11 @@ waiting on them.
 **Two pieces of that implementation were kept, and one of them is not retired at all.**
 
 - **`icc26-native` is the sample valve's Engine namespace, not the vibration gateway's.** Its
-  subscription is `icc26/site1/upstream/br-201/sample-valve-01/#`. It was repurposed when
-  pattern 1 became the valve, and earlier revisions of this document wrongly listed it as part
-  of the retired set. **Deleting it breaks pattern 1.**
+  subscription is `icc26/site1/upstream/#` as of 2026-09-13 — the valve plus pattern 5's batch
+  event. It was repurposed when pattern 1 became the valve, and earlier revisions of this
+  document wrongly listed it as part of the retired set. **Deleting it breaks pattern 1.**
+  It is now one of three custom namespaces; see *Engine's subscriptions must not cover an
+  Event Stream's topic* below.
 - The `vibration_sensor` UDT and `br-201`'s `asset_data/agitator_vibration` member are now
   orphaned, but `tag-type-definition/default/udts.json` has to be opened anyway to give the
   `bioreactor` type its phase tag. Remove them with pattern 5's spec rather than in a second
@@ -406,9 +408,11 @@ and the next start. Pattern 7 also has to tie-break on `id`, since both rows sha
 almost always and wrong exactly at the boundary the demo is about.
 
 All three are `values` fields. None appears in a topic: the namespace must not leak the
-mechanism, and it must not leak the verdict either. Pattern 5's `meta` does carry `op` and `lsn`
-(added 2026-08-26) — the log position is the one thing on the wire no other mechanism can
-produce, and `mosquitto_sub` is now the whole demo surface.
+mechanism, and it must not leak the verdict either. Pattern 5 does publish `op` and `lsn`, but in
+`values` and only on the audit topic (`icc26/site1/audit/bes/batch-event`), where the database
+operation is what the message is *about*. The operational topic carries neither — and since
+2026-09-13 carries no envelope either, so `mosquitto_sub`, which is the whole demo surface,
+shows nothing that identifies the mechanism.
 
 ### `operation`, not `phase`
 
@@ -446,16 +450,15 @@ precisely why it is not what we built.
 The analyzer no longer free-runs (`SAMPLE_INTERVAL_S=0`). It cannot: a self-driving instrument
 invents sample ids nobody transcribed, and every result it produced would park unmatched.
 
-**Which field carries it is per-pattern, and that is deliberate as of 2026-08-23.** Patterns 3
-and 4 stamp `meta.correlation_id` and keep it — it is built, verified and carried through a
-review workflow and a Postgres outbox. **Pattern 1 does not have the field**; its id travels as
-`values.sample_id`, inside the record it belongs to, where an Ignition tag binding or a column
-mapping reaches it without crossing into a sibling folder. Pattern 7 therefore reads two shapes,
-and can, because it has no spec yet to be broken by it.
+**One field carries it everywhere, as of 2026-09-13: `values.sample_id`.** Pattern 1 mints it at
+the valve and it travels inside the record it belongs to, where an Ignition tag binding or a
+column mapping reaches it without crossing into a sibling folder. Patterns 3, 4 and 7 all carry
+the same string.
 
-The cost is named rather than hidden: a consumer joining across all seven patterns no longer has
-one field in one place. If that becomes painful, the fix is additive — adding `meta.correlation_id`
-to pattern 1 later breaks no consumer — so nothing here is load-bearing on the choice.
+This was settled the other way between 2026-08-23 and 2026-09-13, when patterns 3, 4 and 7 also
+stamped a `meta.correlation_id` copy of it and pattern 1 did not — so pattern 7 had to read two
+shapes. Dropping the envelope from 4 and 7 collapsed that back to one field in one place, which
+is what the cost paragraph here used to say was worth wanting.
 
 This matters more than it looks. Both of pattern 7's derived flags are evaluated **at the
 sample-open instant** — which phase was running when the valve opened, which particle-count
@@ -472,40 +475,62 @@ deliberately; see [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md).
 
 ### Payload envelope
 
-Every non-Sparkplug payload **that Ignition publishes** — patterns 3, 4, 5, 6 and 7:
+**Nothing carries it any more** (narrowed three times on 2026-09-13 — see below). The shape it
+had, for reading older payloads and older revisions of these docs:
 
 ```json
 {
   "ts": "2026-08-07T14:03:22.145Z",
-  "seq": 1041,
-  "source": { "id": "cell-analyzer-01", "type": "analyzer" },
-  "meta": { "mechanism": "cdc", "ingest_ts": "…", "correlation_id": "…" },
+  "seq": 4471,
+  "source": { "id": "bioreactor-201", "type": "batch-engine" },
+  "meta": { "mechanism": "cdc", "ingest_ts": "…" },
   "values": { }
 }
 ```
 
-`meta.mechanism` ∈ `opcua-event | webhook | cdc | poll | aggregate`. The two field-device
-patterns are absent by construction: pattern 2 is Sparkplug and carries no envelope, and
-pattern 1 carries no `meta`. **Neither of the two patterns that most need a mechanism tag can
-be given one** — which is the honest version of what this field buys.
+**Every pattern now publishes `ts` and `values` and nothing else** — no `seq`, no `source`, no
+`meta`, and `meta.mechanism` is gone from the backbone entirely. Pattern 1 got there first
+(2026-08-25) and the argument was about bought hardware: a device somebody purchased ships whatever its firmware author decided, not your
+site's metadata conventions. Pattern 3 followed on the same reasoning — an analyzer result is
+the instrument's document, not the site's.
 
-**Pattern 1 does not use this envelope at all** (2026-08-25). Its documents are `ts` and
-`values` and nothing else — no `seq`, no `source`, no `meta`. That is not an oversight to be
-tidied up later: pattern 1 is a device somebody *bought*, and a bought device ships whatever
-its firmware author decided, not your site's metadata conventions. Everything a consumer knows
-about where a pattern-1 message came from, it knows from the topic string typed into a text
-box. See [`plans/01-native-mqtt.md § Payload contracts`](plans/01-native-mqtt.md).
+**Patterns 4, 5, 6 and 7 followed on 2026-09-13, and the argument is different.** Those four
+*are* site software, so the bought-device reasoning never applied to them; they dropped the
+envelope because a document that has to name its own mechanism is a document whose address is
+not doing its job. The topic already says what a message is. Three of the four kept the instants
+the envelope was carrying, moved into `values` where they are measured facts about the sample
+rather than metadata: pattern 4's approval instant is `values.verified_at`, pattern 7's
+assembly instant is `values.assessed_at`, pattern 6's ingest instant is `values.ingest_ts`. The
+stage beat those numbers exist for — the gap against `ts` — is unchanged; it is just read one
+level shallower. **Pattern 6 is the one where that beat is the whole segment**, so moving the
+number rather than dropping it was the condition of the change, not a courtesy.
 
-The envelope is therefore the house standard for **the patterns we write**, which is exactly
-the set that can be held to one. `meta.correlation_id` is **optional** within it — patterns 3,
-4 and 7 carry it, patterns 5 and 6 have nothing to correlate to.
+**Pattern 5 kept nothing, and that is the one place the narrowing cost something.** Its
+`ingest_ts` was a fact about the pipeline rather than about the batch — there is no
+`values.verified_at` equivalent to move it into — so the CDC latency is no longer on the wire.
+It is still in `bes_cdc`'s gateway log line and in Debezium's, which is where the talk track now
+sends you for the number. If that gap is wanted back on stage, `values.ingest_ts` is the
+one-field version and pattern 6 is the precedent for spelling it that way.
 
-This field is how a mechanism stays legible without the namespace leaking it. It used to have a
-second job — the Perspective firehose coloured by it — and that view is **cut as of
-2026-08-25**. What remains is the wire itself: `mosquitto_sub -t 'icc26/#' -v` shows every
-mechanism side by side, and `meta.mechanism` is the field that tells them apart in the output
-**for the five patterns that carry it**. The verification that matters is unchanged, and is now
-the only one: a subscriber reading the topic list cannot tell which pattern used CDC.
+**Pattern 6 also dropped a `seq` that had a reader.** Its top-level `seq` was the instrument's
+`sequenceNumber`, and unlike the rest of the envelope that number is a fact somebody diffing a
+replay wants. It survives as `values.sequence_number`, where it already was — the envelope had
+been publishing it twice.
+
+**`meta.correlation_id` is gone from the backbone entirely.** It was always a copy of
+`values.sample_id`, which patterns 3, 4 and 7 all carry anyway, so one sample is still findable
+under every topic it touched in a single `mosquitto_sub`. Pattern 5 never had anything to
+correlate to, and neither did 6 — it never sees a sample id, and pattern 7 finds its reading by
+time rather than by key.
+
+`meta.mechanism` was how a mechanism stayed legible without the namespace leaking it. It used
+to have a second job — the Perspective firehose coloured by it — and that view is **cut as of
+2026-08-25**. Pattern 6's departure left it with one carrier, which already meant it told
+nothing apart: a field with a single possible value on a single topic is documentation, not
+data. **Pattern 5 gave it up the same day**, which retires the field rather than leaving it as
+a one-user relic to explain on stage. The verification that matters never depended on it: a
+subscriber reading the topic list cannot tell which pattern used CDC, and now neither can a
+subscriber reading the payloads.
 
 ### Two things that become talk content
 
@@ -536,13 +561,14 @@ you silently disarm the death certificate for everyone not already listening.
 properties. Nothing in the demo currently needs them: every pattern is one-way. Patterns 1 and
 2 are publish-only field devices, and patterns 3–7 are Ignition publishing outward. If a
 request/response pattern is ever added, this is the constraint it will run into first, and
-`meta.correlation_id` is the field already reserved in the envelope for it.
+a correlation field would have to be reintroduced for it — nothing on the wire carries one now.
 
-**`meta.correlation_id` has a working first user in pattern 4.** The analyzer envelope stamps
-`sample_id` into it; the LIMS carries it through review and the webhook republishes it under
-`mechanism=webhook`. Pattern 7 reuses the same id on the aggregate, so one sample is
-traceable from the analyzer through the LIMS review to the sample-chain document. That still does
-not need MQTT 5 response-topic properties — pattern 7 is a subscriber, not a requester.
+**`meta.correlation_id` no longer exists on the wire** (2026-09-13). Patterns 4 and 7 were its
+only users and both now publish `ts` and `values` alone. Nothing was lost: the id it carried was
+`values.sample_id`, which the analyzer result, the LIMS review and the sample-chain document all
+still carry, so one sample remains traceable across all three in one `mosquitto_sub`. If a
+request/response pattern is ever added, the field is still the natural place to reserve — but it
+would be reintroduced, not reused.
 
 ### MQTT Engine has two ingest surfaces, and they produce different things
 
@@ -564,6 +590,56 @@ between them is most of patterns 1 and 2. Verified 2026-08-17.
 rebuild them at runtime from whatever traffic that machine happened to see, so committing them
 means every gateway churns another machine's leftovers into every diff. The anchored paths
 leave the static `MQTT Engine/Engine Info/Edge Nodes/` folder tracked, as it should be.
+
+### Engine's subscriptions must not cover an Event Stream's topic
+
+**Measured 2026-09-13.** An Event Stream whose source is
+`com.cirruslink.mqtt.engine.gateway.mqtt.source` does **not** open its own MQTT client. Engine
+has exactly one server connection (`server/Chariot SCADA` → `tcp://chariot:1883`, one
+`Default Set`), every namespace is bound to it, and the Event Stream source rides it too — the
+gateway log lists the stream's topic in the same `Subscribing on topic:` run as the namespaces.
+Transmission is a separate module with its own connection, which is why 07 subscribes on one
+client and publishes on another.
+
+The consequence: **if a namespace filter and an Event Stream source filter both match the same
+topic, and the two filter strings differ, the broker delivers one copy per subscription and the
+stream's transform runs twice.** MQTT 3.1.1 §3.8.4 permits exactly this; MQTT 5 added
+subscription identifiers to disambiguate it, and Chariot has no `clientId` set here so the
+connection is 3.1.1-shaped.
+
+Measured, one variable, everything else held:
+
+| `icc26-native` subscription | matches `qc/lims/sample-result`? | identical to the stream's filter? | deviations per review |
+|---|---|---|---|
+| `icc26/#` | yes | no | **2** |
+| `icc26/site1/qc/#` | yes | no | **2** |
+| `icc26/site1/qc/lims/sample-result` | yes | **yes** | 1 |
+| `icc26/site1/upstream/#` | no | — | 1 |
+
+Identical filters collapse because a SUBSCRIBE carrying a filter a client already holds
+*replaces* that subscription rather than adding one. Breadth is irrelevant; a broad disjoint
+filter is fine.
+
+**This is why there are three custom namespaces and not one `icc26/#`.** MQTT has no exclusion
+operator, so "everything except one topic" is necessarily more than one subscription:
+
+| Namespace | Subscription | Covers |
+|---|---|---|
+| `icc26-native` | `icc26/site1/upstream/#` | patterns 1 and 5 |
+| `icc26-analyzers` | `icc26/site1/qc/analyzers/#` | patterns 3 and 6 |
+| `icc26-deviation` | `icc26/site1/qc/deviation` | pattern 7's own output, read back as tags |
+| — | *(deliberately uncovered)* | `icc26/site1/qc/lims/sample-result` — pattern 7's Event Stream source, and nothing else |
+
+`icc26/#` was set on 2026-09-12 to make Engine "one consumer among several". That argument is
+about Engine versus the LIMS and survives the split intact; the catch-all was never load-bearing
+for it. A `#` at the root is incompatible with **any** Engine-source Event Stream beneath it,
+because no topic such a stream could read is left unmatched.
+
+Adding a custom namespace by hand costs four files — `custom-namespace/<name>/{config,resource}.json`
+and `namespace-server-set/<name>-Default Set/{config,resource}.json`. The gateway creates the
+matching `custom-namespace-convert/<uuid>/` itself on first sight (the `.`→`_` tag-name rule) and
+logs one `PushConflictException` for the server-set binding it tried to create and found already
+written. That error is one-time, not per-restart, and the binding works.
 
 A caveat that costs an hour if you meet it cold: **a MANAGED provider's tag tree is only
 partially on disk.** Ignition persists a tag definition only where the config is non-default, so
