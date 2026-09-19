@@ -2,6 +2,10 @@
   {
     "name": "cell-analyzer-01",
     "parameters": {
+      "Relationships": {
+        "dataType": "String",
+        "value": "[{\"type\":\"AnalyzesSamplesFrom\",\"reverse\":\"SamplesAnalyzedBy\",\"targets\":[\"[default]icc26/site1/upstream/bioreactors/br-201\",\"[default]icc26/site1/upstream/bioreactors/br-202\"]}]"
+      },
       "device_id": {
         "dataType": "String",
         "value": "CELL-ANALYZER-01"

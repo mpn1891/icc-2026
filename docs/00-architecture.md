@@ -1048,11 +1048,20 @@ Pattern 5's `bes_batch` writes `bes.batch_event` through an Ignition datasource 
 → `jdbc:postgresql://postgres:5432/icc26`, user `icc26`. Created UI-first, then committed from
 what `git status` reveals under `ignition/database-connection/`.
 
-**There is already a `database-connection/pg_db` in the repo, and it is not that.** It points at
-the **`postgres` database as user `ignition`** — wrong database, wrong user. It will pass a
-glance in the datasource dropdown and then write nowhere useful, and nothing about the failure
-says "you picked the wrong connection". `pg_db` is still there and still selectable; deleting it
-is an open item on [`plans/05-cdc-batch-event.md`](plans/05-cdc-batch-event.md).
+**There is already a `database-connection/pg_db` in the repo, and it is not that.** It is the
+historian's own store — the **`ignition` database as user `ignition`**, holding `sqlth_*` and
+`sqlt_data_*` and nothing this project writes. It will pass a glance in the datasource dropdown
+and then write nowhere useful, and nothing about the failure says "you picked the wrong
+connection". `pg_db` is load-bearing and must **not** be deleted: `pg-historian` and
+`System/Gateway/StoreAndForward/pg_db/Pipelines/TagHistory` are both bound to it.
+
+**It pointed at the `postgres` database until 2026-09-18, and stored nothing the whole time.**
+The connection validated (`SELECT 1` passes, CONNECT is granted) so it read green in the gateway,
+but PostgreSQL 15+ no longer grants CREATE on `public` to PUBLIC, so the SqlHistorian could never
+create its `sqlth_*` tables and every tag's history went to store-and-forward instead. Repointing
+it at `ignition` — a database the `ignition` role owns, so CREATE is its by ownership — drained the
+backlog with its original timestamps. A historian that stores nothing looks exactly like a tag
+that is not historised; check for `sqlth_te` rows before touching UDT history config.
 
 **`bes.batch_event` is the only table in the `icc26_cdc` publication**, as of 2026-08-26.
 `lims.sample_result` used to be in it too, from the abandoned design where patterns 4, 5 and 6

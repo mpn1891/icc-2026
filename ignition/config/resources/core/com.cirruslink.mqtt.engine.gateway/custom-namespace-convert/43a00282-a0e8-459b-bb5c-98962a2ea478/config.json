@@ -1,0 +1,7 @@
+{
+  "customNamespace": "icc26-lims",
+  "orderIndex": 0,
+  "regex": false,
+  "replacement": "_",
+  "source": "."
+}

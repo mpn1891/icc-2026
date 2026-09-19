@@ -1,0 +1,148 @@
+[
+  {
+    "documentation": "Dissolved oxygen, percent of air saturation. Inherits pv and the nested limits object from process_value; exists as its own type so the Explorer shows an InheritsFrom edge and a typed object, not a bare tag. Sets the units parameter and pv\u0027s engUnit to match. The pv entry is deliberately explicit: a subtype whose override list drops pv can lose pv on its instances when the definition is reloaded (seen 2026-09-18 on pressure and do), so every subtype restates it, and restates its history config with it so history cannot go the same way.",
+    "name": "dissolved_oxygen",
+    "parameters": {
+      "NamespaceUri": {
+        "dataType": "String",
+        "value": "https://icc26.example/equipment"
+      },
+      "units": {
+        "dataType": "String",
+        "value": "%"
+      }
+    },
+    "tagType": "UdtType",
+    "typeId": "biorx_components/process_value",
+    "tags": [
+      {
+        "engUnit": "%",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "pv",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag"
+      }
+    ]
+  },
+  {
+    "documentation": "Vessel headspace pressure, bar gauge. Inherits from process_value; sets the units parameter and pv\u0027s engUnit to match, and restates pv\u0027s history config -- see dissolved_oxygen.",
+    "name": "pressure",
+    "parameters": {
+      "NamespaceUri": {
+        "dataType": "String",
+        "value": "https://icc26.example/equipment"
+      },
+      "units": {
+        "dataType": "String",
+        "value": "bar"
+      }
+    },
+    "tagType": "UdtType",
+    "typeId": "biorx_components/process_value",
+    "tags": [
+      {
+        "engUnit": "bar",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "pv",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag"
+      }
+    ]
+  },
+  {
+    "documentation": "The band a process value is held to by the running operation. Its own type, nested in process_value as \u0027limits\u0027, because the i3X server re-sends an object\u0027s whole value document on any member change: kept as members of process_value, both limits would ride along with every pv tick. As a nested instance they are a HasComponent child of the process value, streamed as their own element only when the band moves, and a consumer that registers the parent with maxDepth 1 hears pv alone. Same engineering unit as the parent\u0027s pv; the unit is a parameter on the parent, read once from metadata. Not alarm limits; nothing evaluates them.",
+    "name": "process_limits",
+    "parameters": {
+      "NamespaceUri": {
+        "dataType": "String",
+        "value": "https://icc26.example/equipment"
+      }
+    },
+    "tagType": "UdtType",
+    "typeId": null,
+    "tags": [
+      {
+        "dataType": "Float8",
+        "documentation": "Upper bound of the band the running operation allows. Written by process_sim from the operation profile when the operation changes, so it is history alongside pv and the Explorer can draw the band the value was held to at any time.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "high_limit",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "Float8",
+        "documentation": "Lower bound of the band the running operation allows. See high_limit.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "low_limit",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      }
+    ]
+  },
+  {
+    "documentation": "A measured process value as an i3X object. Its value document is {pv} and nothing else, on purpose: the server ships the whole document on every member change, so the only member that may change at pv\u0027s cadence is pv. Anything slower is either a nested component (limits, which change per operation) or a parameter (units, fixed at design time and served under the object\u0027s metadata rather than its value). Subtypes restate pv with its engUnit and its history config, and set the units parameter to match.",
+    "name": "process_value",
+    "parameters": {
+      "NamespaceUri": {
+        "dataType": "String",
+        "value": "https://icc26.example/equipment"
+      },
+      "units": {
+        "dataType": "String",
+        "value": ""
+      }
+    },
+    "tagType": "UdtType",
+    "typeId": null,
+    "tags": [
+      {
+        "documentation": "The band this value is held to. A nested object so it streams on its own cadence; see process_limits.",
+        "name": "limits",
+        "tagType": "UdtInstance",
+        "typeId": "biorx_components/process_limits"
+      },
+      {
+        "dataType": "Float8",
+        "documentation": "Process value. Simulated by process_sim on the process-sim timer: it settles toward the running operation\u0027s target with a little noise, so an advance is visible here as a ramp. Memory tag; no instrument behind it, and nothing in the stack reads it -- it exists so the vessel\u0027s i3X object carries something that moves. Subtypes set engUnit here and the units parameter to the same string: engUnit is what the tag carries, the parameter is what the i3X object serves in metadata.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "pv",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      }
+    ]
+  },
+  {
+    "documentation": "Vessel temperature, degrees C. Inherits from process_value; sets the units parameter and pv\u0027s engUnit to match, and restates pv\u0027s history config -- see dissolved_oxygen.",
+    "name": "temperature",
+    "parameters": {
+      "NamespaceUri": {
+        "dataType": "String",
+        "value": "https://icc26.example/equipment"
+      },
+      "units": {
+        "dataType": "String",
+        "value": "degC"
+      }
+    },
+    "tagType": "UdtType",
+    "typeId": "biorx_components/process_value",
+    "tags": [
+      {
+        "engUnit": "degC",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "pv",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag"
+      }
+    ]
+  }
+]

@@ -1,7 +1,138 @@
 [
   {
+    "name": "bioreactor",
+    "parameters": {
+      "NamespaceUri": {
+        "dataType": "String",
+        "value": "https://icc26.example/equipment"
+      }
+    },
+    "tagType": "UdtType",
+    "typeId": null,
+    "tags": [
+      {
+        "name": "asset_data",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "dataType": "String",
+            "documentation": "The identifier this reactor is known by on the wire and in every record: the topic form, lowercase -- br-201, br-202. Pattern 7 keys both of its lookups on this, as a literal against bes.batch_event.equipment_id and em.reading.equipment_id, and pattern 1\u0027s valve event carries it to the LIMS so a sample knows which vessel it came from. NOT plant.equipment\u0027s \u0027BR-201\u0027 -- that table is deliberately not on pattern 7\u0027s path and its casing does not match anything else in the stack. A memory tag for now; the obvious next step is a SQL lookup against an asset register, which is why it lives in its own folder rather than beside the process values.",
+            "name": "equipment_identifier",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          }
+        ]
+      },
+      {
+        "name": "batch_data",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "dataType": "String",
+            "documentation": "The batch this reactor is running. Minted by bes_batch on the first advance out of IDLE and cleared when the batch ends -- not typed. A hand-typed id is how four conventions ended up live at once. Pattern 7 takes batch identity from bes.batch_event, which is where this is stamped on every row, NOT from the LIMS review message: every sample pattern 1 has actually minted carries an empty batch_id. Historised on change to pg-historian, which is what lets pattern 7 answer the same question over i3X: POST /objects/history on this reactor, last row at or before the sample instant, instead of a SELECT against bes.batch_event. Same fact, read through the vendor-neutral interface rather than through this gateway\u0027s own datasource.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
+            "name": "batch_id",
+            "sampleMode": "OnChange",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "String",
+            "documentation": "The bes.batch_event event_type of the INCOMING row of the last advance: operation_start, or batch_end on the advance that closes the batch. The outgoing operation_end row is deliberately not mirrored here -- both rows of an advance share one occurred_at and only the incoming one describes what is running now. Written by bes_batch AFTER the database commit, alongside operation, so the tag never leads the record. Exists only because bes.batch_event has it and the tag model did not: over i3X pattern 7 reads batch identity from history, and without this it cannot tell a live operation from the IDLE that a batch_end leaves behind.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
+            "name": "event_type",
+            "sampleMode": "OnChange",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Boolean",
+            "documentation": "THE trigger for pattern 5. Click it true in Tag Explorer and the reactor steps to its next ISA-88 operation: two rows into bes.batch_event in one transaction, and nothing onto MQTT. Debezium tails the table out of band and the message appears without this gateway asking for it -- which is the entire pattern. bes_batch resets this to false when it is done.",
+            "eventScripts": [
+              {
+                "eventid": "valueChanged",
+                "script": "\t# Pattern 5: one manual operation advance, on the rising edge only.\n\t# bes_batch resets this flag when it is finished, and that falling edge\n\t# re-enters here and returns at the third guard.\n\tif initialChange:\n\t\treturn\n\tif currentValue is None or currentValue.value is None:\n\t\treturn\n\tif not currentValue.value:\n\t\treturn\n\tbes_batch.advance(tagPath.rsplit(\"/\", 1)[0])\n"
+              }
+            ],
+            "name": "manual_advance",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "String",
+            "documentation": "The ISA-88 operation currently running: IDLE | CIP | SIP | INOC | GROWTH | HARVEST. Written by bes_batch AFTER the database commit, so the tag never leads the record. An *operation*, not a phase -- a phase is the smallest process action (\"Add Water\", \"Agitate\"); CIP/SIP/INOC/GROWTH/HARVEST are one level up. The batch protocol qualifies sampling for GROWTH only, and that rule lives in bes_batch, not here. Historised on change, so \"what was running at time T\" is answerable from the tag model as well as from the table -- the history rows are the reactor\u0027s operation timeline, and the Explorer draws them without knowing Postgres exists.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
+            "name": "operation",
+            "sampleMode": "OnChange",
+            "tagType": "AtomicTag",
+            "value": "IDLE",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Boolean",
+            "documentation": "Whether the batch protocol qualifies sampling in the operation now running -- the same flag bes_batch stamps into bes.batch_event.payload for the incoming row, mirrored here so it can be read back. Derived from bes_batch.QUALIFIED, which stays THE ONLY COPY OF THE RULE: nothing downstream may test operation \u003d\u003d \"GROWTH\" for itself. False on every batch_end, because nothing is running between a batch\u0027s last operation_end and the next batch\u0027s first start. Historised because the payload jsonb is not in the tag model at all, and over i3X history is the only way pattern 7 can see this flag.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
+            "name": "qualified_window",
+            "sampleMode": "OnChange",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          }
+        ]
+      },
+      {
+        "name": "process_data",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "name": "do",
+            "tagType": "UdtInstance",
+            "typeId": "biorx_components/dissolved_oxygen"
+          },
+          {
+            "name": "pressure",
+            "tagType": "UdtInstance",
+            "typeId": "biorx_components/pressure"
+          },
+          {
+            "name": "sample_valve",
+            "tagType": "UdtInstance",
+            "typeId": "sample_valve"
+          },
+          {
+            "name": "temperature",
+            "tagType": "UdtInstance",
+            "typeId": "biorx_components/temperature"
+          }
+        ]
+      },
+      {
+        "name": "qc_data",
+        "tagType": "Folder",
+        "tags": [
+          {
+            "name": "last_review",
+            "tagType": "UdtInstance",
+            "typeId": "lims_review"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "name": "cell_analyzer",
     "parameters": {
+      "NamespaceUri": {
+        "dataType": "String",
+        "value": "https://icc26.example/equipment"
+      },
+      "Relationships": {
+        "dataType": "String",
+        "value": "[]"
+      },
       "device_id": {
         "dataType": "String",
         "value": "CELL-ANALYZER-01"
@@ -173,6 +304,8 @@
               {
                 "dataType": "Float8",
                 "documentation": "The vendor manual names and types this but never defines it. Treat with care.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "co2_saturation",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -182,12 +315,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "Bicarbonate, mmol/L.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "hco3",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -197,11 +333,14 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "o2_saturation",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -211,11 +350,14 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "pco2_corrected",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -225,12 +367,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "Corrected to command/vessel_temperature. Equals ph at the default 37 C.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "ph_corrected",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -240,11 +385,14 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "po2_corrected",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -254,6 +402,7 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               }
@@ -265,6 +414,8 @@
             "tags": [
               {
                 "dataType": "Float8",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "avg_live_diameter_um",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -274,12 +425,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Int4",
                 "documentation": "How many images the density result was actually computed from - the closest thing the analyzer publishes to a confidence figure.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "good_image_count",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -289,11 +443,14 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Int4",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "total_cell_count",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -303,12 +460,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "10^6 cells/mL.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "total_density",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -318,11 +478,14 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Int4",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "total_live_count",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -332,11 +495,14 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "viability_percent",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -346,12 +512,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "10^6 cells/mL.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "viable_density",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -361,6 +530,7 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               }
@@ -368,6 +538,8 @@
           },
           {
             "dataType": "String",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "cell_type",
             "opcItemPath": {
               "bindType": "parameter",
@@ -377,6 +549,7 @@
               "bindType": "parameter",
               "binding": "{opc_server}"
             },
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "opc"
           },
@@ -387,6 +560,8 @@
               {
                 "dataType": "Float8",
                 "documentation": "mmol/L.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "ca",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -396,12 +571,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "Glutamine, mmol/L.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "gln",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -411,12 +589,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "Glutamate, mmol/L.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "glu",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -426,12 +607,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "Glucose, g/L - mass, not molar.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "gluc",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -441,12 +625,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "mmol/L.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "k",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -456,12 +643,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "Lactate, g/L - mass, not molar.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "lac",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -471,12 +661,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "mmol/L.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "na",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -486,12 +679,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "Ammonium, mmol/L.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "nh4",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -501,6 +697,7 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               }
@@ -509,6 +706,8 @@
           {
             "dataType": "String",
             "documentation": "Free text, empty when clean. Per-analyte failures also show up as Bad quality on the individual result tag below - the quality IS the error signal, which is the argument for OPC UA over a CSV that can only write a number.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "errors",
             "opcItemPath": {
               "bindType": "parameter",
@@ -518,6 +717,7 @@
               "bindType": "parameter",
               "binding": "{opc_server}"
             },
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "opc"
           },
@@ -528,6 +728,8 @@
               {
                 "dataType": "Float8",
                 "documentation": "mmHg.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "pco2",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -537,12 +739,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "Unitless.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "ph",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -552,12 +757,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Float8",
                 "documentation": "mmHg.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "po2",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -567,6 +775,7 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               }
@@ -575,6 +784,8 @@
           {
             "dataType": "DateTime",
             "documentation": "Not sample_time. Runs later if CDV images are reanalyzed or the result is edited after the fact - so a result CAN change after you have already read it. With no vendor completion counter that is a second reason polling cannot be trusted.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "modified_time",
             "opcItemPath": {
               "bindType": "parameter",
@@ -584,6 +795,7 @@
               "bindType": "parameter",
               "binding": "{opc_server}"
             },
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "opc"
           },
@@ -593,6 +805,8 @@
             "tags": [
               {
                 "dataType": "Boolean",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "cdv",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -602,11 +816,14 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Boolean",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "chemistry",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -616,11 +833,14 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Boolean",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "gas",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -630,12 +850,15 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               },
               {
                 "dataType": "Boolean",
                 "documentation": "The vendor\u0027s own absent-vs-zero mechanism, and the reason this folder is worth publishing: False here is Good and true - \u0027the osmometer did not take part in this analysis\u0027 - while result/osmo alongside it is Bad_NoData. Without this a consumer cannot tell \u0027not measured\u0027 from \u0027lost in transit\u0027.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
                 "name": "osmo",
                 "opcItemPath": {
                   "bindType": "parameter",
@@ -645,6 +868,7 @@
                   "bindType": "parameter",
                   "binding": "{opc_server}"
                 },
+                "sampleMode": "OnChange",
                 "tagType": "AtomicTag",
                 "valueSource": "opc"
               }
@@ -652,6 +876,8 @@
           },
           {
             "dataType": "String",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "operator",
             "opcItemPath": {
               "bindType": "parameter",
@@ -661,12 +887,15 @@
               "bindType": "parameter",
               "binding": "{opc_server}"
             },
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "opc"
           },
           {
             "dataType": "Float8",
             "documentation": "mOsm/kg. Bad_NoData whenever the osmometer is unfitted, which is the demo default. Bad is the correct answer here, not 0 - and modules_used/osmo says False, Good, beside it. See docs/reference/novaflex2-opcua-model.md section 8.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "osmo",
             "opcItemPath": {
               "bindType": "parameter",
@@ -676,11 +905,14 @@
               "bindType": "parameter",
               "binding": "{opc_server}"
             },
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "opc"
           },
           {
             "dataType": "String",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "sample_id",
             "opcItemPath": {
               "bindType": "parameter",
@@ -690,12 +922,15 @@
               "bindType": "parameter",
               "binding": "{opc_server}"
             },
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "opc"
           },
           {
             "dataType": "String",
             "documentation": "Which sampling path produced this - Manual, ESM, OLS, EXT_OLS.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "sample_source",
             "opcItemPath": {
               "bindType": "parameter",
@@ -705,6 +940,7 @@
               "bindType": "parameter",
               "binding": "{opc_server}"
             },
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "opc"
           },
@@ -717,6 +953,8 @@
                 "script": "\t# Pattern 3: one MQTT publish per HistoricalSampleResults SampleTime change.\n\t# Vendor field, not ICC26Extensions. The event stream reads the historical siblings.\n\tif initialChange:\n\t\treturn\n\tif currentValue is None or currentValue.value is None:\n\t\treturn\n\ttry:\n\t\tif not currentValue.quality.isGood():\n\t\t\treturn\n\texcept:\n\t\treturn\n\tbase \u003d tagPath.rsplit(\"/\", 1)[0]\n\tsystem.eventstream.publishEvent(\"icc-2026\", \"03_opcua/cell-analyzer-result\", str(base), False)\n"
               }
             ],
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "sample_time",
             "opcItemPath": {
               "bindType": "parameter",
@@ -726,11 +964,14 @@
               "bindType": "parameter",
               "binding": "{opc_server}"
             },
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "opc"
           },
           {
             "dataType": "String",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "sample_type",
             "opcItemPath": {
               "bindType": "parameter",
@@ -740,11 +981,14 @@
               "bindType": "parameter",
               "binding": "{opc_server}"
             },
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "opc"
           },
           {
             "dataType": "String",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "vessel_id",
             "opcItemPath": {
               "bindType": "parameter",
@@ -754,6 +998,7 @@
               "bindType": "parameter",
               "binding": "{opc_server}"
             },
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "opc"
           }
@@ -836,811 +1081,313 @@
     ]
   },
   {
-    "name": "bioreactor",
-    "tagType": "UdtType",
-    "typeId": null,
-    "tags": [
-      {
-        "name": "asset_data",
-        "tagType": "Folder",
-        "tags": [
-          {
-            "dataType": "String",
-            "documentation": "The identifier this reactor is known by on the wire and in every record: the topic form, lowercase -- br-201, br-202. Pattern 7 keys both of its lookups on this, as a literal against bes.batch_event.equipment_id and em.reading.equipment_id, and pattern 1\u0027s valve event carries it to the LIMS so a sample knows which vessel it came from. NOT plant.equipment\u0027s \u0027BR-201\u0027 -- that table is deliberately not on pattern 7\u0027s path and its casing does not match anything else in the stack. A memory tag for now; the obvious next step is a SQL lookup against an asset register, which is why it lives in its own folder rather than beside the process values.",
-            "name": "equipment_identifier",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          }
-        ]
-      },
-      {
-        "name": "batch_data",
-        "tagType": "Folder",
-        "tags": [
-          {
-            "dataType": "String",
-            "documentation": "The batch this reactor is running. Minted by bes_batch on the first advance out of IDLE and cleared when the batch ends -- not typed. A hand-typed id is how four conventions ended up live at once. Pattern 7 takes batch identity from bes.batch_event, which is where this is stamped on every row, NOT from the LIMS review message: every sample pattern 1 has actually minted carries an empty batch_id.",
-            "name": "batch_id",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
-            "dataType": "Boolean",
-            "documentation": "THE trigger for pattern 5. Click it true in Tag Explorer and the reactor steps to its next ISA-88 operation: two rows into bes.batch_event in one transaction, and nothing onto MQTT. Debezium tails the table out of band and the message appears without this gateway asking for it -- which is the entire pattern. bes_batch resets this to false when it is done.",
-            "eventScripts": [
-              {
-                "eventid": "valueChanged",
-                "script": "\t# Pattern 5: one manual operation advance, on the rising edge only.\n\t# bes_batch resets this flag when it is finished, and that falling edge\n\t# re-enters here and returns at the third guard.\n\tif initialChange:\n\t\treturn\n\tif currentValue is None or currentValue.value is None:\n\t\treturn\n\tif not currentValue.value:\n\t\treturn\n\tbes_batch.advance(tagPath.rsplit(\"/\", 1)[0])\n"
-              }
-            ],
-            "name": "manual_advance",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
-            "dataType": "String",
-            "documentation": "The ISA-88 operation currently running: IDLE | CIP | SIP | INOC | GROWTH | HARVEST. Written by bes_batch AFTER the database commit, so the tag never leads the record. An *operation*, not a phase -- a phase is the smallest process action (\"Add Water\", \"Agitate\"); CIP/SIP/INOC/GROWTH/HARVEST are one level up. The batch protocol qualifies sampling for GROWTH only, and that rule lives in bes_batch, not here.",
-            "name": "operation",
-            "tagType": "AtomicTag",
-            "value": "IDLE",
-            "valueSource": "memory"
-          }
-        ]
-      },
-      {
-        "name": "process_data",
-        "tagType": "Folder",
-        "tags": [
-          {
-            "name": "sample_valve",
-            "tagType": "UdtInstance",
-            "typeId": "sample_valve"
-          },
-          {
-            "name": "vessel_do",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
-            "name": "vessel_pressure",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
-            "name": "vessel_temperature",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "name": "cell_counter",
+    "name": "deviation",
     "parameters": {
-      "device_id": {
+      "NamespaceUri": {
         "dataType": "String",
-        "value": "Countess-01"
-      },
-      "namespace_uri": {
-        "dataType": "String",
-        "value": "http://icc26.demo/UA/Countess3FL/"
-      },
-      "opc_server": {
-        "dataType": "String",
-        "value": "cell_counter"
-      },
-      "uns_path": {
-        "dataType": "String",
-        "value": null
+        "value": "https://icc26.example/equipment"
       }
     },
     "tagType": "UdtType",
     "typeId": null,
     "tags": [
       {
-        "name": "command",
-        "tagType": "Folder",
-        "tags": [
-          {
-            "dataType": "String",
-            "documentation": "Name applied to the NEXT triggered count. Left empty, the instrument auto-names it SAMPLE-nnnn. Read back the as-run name from result/sample_name, not from here - this one is just the request.",
-            "name": "sample_name",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/Command/SampleName"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "Boolean",
-            "documentation": "Write true to run a new analysis. The instrument clears it back to false as soon as it accepts the request, so this is a one-shot: a client that never resets the bit still gets exactly one count per write. Ignored (and logged) if a count is already running - check state first. Set sample_name before writing this, not after.",
-            "name": "start_request",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/Command/StartRequest"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          }
-        ]
-      },
-      {
-        "dataType": "Int8",
-        "documentation": "THE trigger. Monotonic, written last by the instrument after every result field and after state - so when this changes, the whole result branch is settled and consistent. Subscribe to this one tag; do not drive anything off the individual result values. A failed count does NOT increment it. UInt32 on the wire, so Int8 here: it does not fit an Int4.",
-        "name": "count_completed_counter",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/CountCompletedCounter"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
+        "dataType": "String",
+        "documentation": "values.analyst -- who signed the review this assessment was made from.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "analyst",
+        "sampleMode": "OnChange",
         "tagType": "AtomicTag",
-        "valueSource": "opc"
+        "valueSource": "memory"
       },
       {
-        "name": "optics",
-        "tagType": "Folder",
-        "tags": [
-          {
-            "dataType": "Float8",
-            "documentation": "Live setting, writable. Write it, run a count, and the result\u0027s frozen Settings snapshot shows the new value - which is why a result carries its settings at all.",
-            "name": "brightfield_light_intensity",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Brightfield/LightIntensity"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "Boolean",
-            "name": "cube1_installed",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Cube1/Installed"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "Float8",
-            "name": "cube1_light_intensity",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Cube1/LightIntensity"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "String",
-            "name": "cube1_name",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Cube1/CubeName"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "Boolean",
-            "documentation": "False by default. Set it true and the cube2 result tags come alive on the next count - the cheapest way to show absent-vs-zero live.",
-            "name": "cube2_installed",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/FunctionSet/Cube2/Installed"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          }
-        ]
+        "dataType": "DateTime",
+        "documentation": "values.assessed_at -- when sample_chain ran the assessment. ts against this is how old the fact was at the moment it was judged.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "assessed_at",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
       },
       {
         "dataType": "String",
-        "documentation": "The protocol the instrument is set to NOW, and writable. result/protocol/name is the one the last count actually ran under - they differ the moment somebody changes protocols between counts.",
-        "name": "protocol_name",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ProgramManager/ActiveProgram/ProtocolName"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
+        "documentation": "values.batch_id -- the batch from bes.batch_event, never from the review message, which carries none at all. Empty after a batch_end: the sample was drawn with no batch running, and that is worth recording rather than papering over.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "batch_id",
+        "sampleMode": "OnChange",
         "tagType": "AtomicTag",
-        "valueSource": "opc"
-      },
-      {
-        "name": "result",
-        "tagType": "Folder",
-        "tags": [
-          {
-            "dataType": "DateTime",
-            "documentation": "Acquisition instant, not write time. Every leaf of a result carries this same SourceTimestamp - that is how you prove a set of reads is one count and not a mixture of two.",
-            "name": "acquisition_time",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/AcquisitionTime"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "Float8",
-            "documentation": "Cells in an aggregate vs total cell count.",
-            "name": "aggregation_percent",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/AggregationPercent"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "name": "brightfield",
-            "tagType": "Folder",
-            "tags": [
-              {
-                "dataType": "Float8",
-                "name": "dead_average_size_um",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/DeadAverageSize"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Int8",
-                "name": "dead_cells_counted",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/DeadCellsCounted"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Float8",
-                "name": "dead_concentration",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/DeadConcentration"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Float8",
-                "name": "live_average_size_um",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/LiveAverageSize"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Int8",
-                "name": "live_cells_counted",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/LiveCellsCounted"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Float8",
-                "name": "live_concentration",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/LiveConcentration"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Float8",
-                "documentation": "Trypan-blue viability as the instrument computed it. Derivable from the live/dead counts, but publish this one - a QC record that disagrees with the instrument printout is worse than no record.",
-                "name": "viability_percent",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Brightfield/ViabilityPercent"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              }
-            ]
-          },
-          {
-            "dataType": "Int8",
-            "name": "count_id",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/CountId"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "dataType": "Int4",
-            "documentation": "0 BrightfieldBased, 1 FluorescenceBased. On a 0, every fluorescence tag below goes Bad_NoData - the cube was fitted but not used.",
-            "name": "count_mode",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/CountMode"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          },
-          {
-            "name": "fluorescence",
-            "tagType": "Folder",
-            "tags": [
-              {
-                "name": "combined",
-                "tagType": "Folder",
-                "tags": [
-                  {
-                    "dataType": "Int8",
-                    "name": "cells_counted",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Combined/CellsCounted"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Float8",
-                    "documentation": "Union of both channels, not their sum - a double-positive cell is counted once. Absent unless both cubes are fitted. Never synthesize this from cube1 + cube2.",
-                    "name": "concentration",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Combined/Concentration"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Float8",
-                    "name": "percent_of_brightfield",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Combined/PercentOfBrightfield"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  }
-                ]
-              },
-              {
-                "name": "cube1",
-                "tagType": "Folder",
-                "tags": [
-                  {
-                    "dataType": "Float8",
-                    "name": "average_size_um",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/AverageSize"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Int8",
-                    "name": "cells_counted",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/CellsCounted"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Float8",
-                    "name": "concentration",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/Concentration"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "String",
-                    "name": "cube_name",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/CubeName"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Float8",
-                    "name": "percent_of_brightfield",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube1/PercentOfBrightfield"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  }
-                ]
-              },
-              {
-                "name": "cube2",
-                "tagType": "Folder",
-                "tags": [
-                  {
-                    "dataType": "Float8",
-                    "name": "average_size_um",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/AverageSize"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Int8",
-                    "name": "cells_counted",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/CellsCounted"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Float8",
-                    "name": "concentration",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/Concentration"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "String",
-                    "documentation": "Bad_NoData whenever slot 2 is empty, which is the demo default. Bad is the correct answer here, not 0 - see docs/reference/countess-3fl-opcua-model.md section 8.",
-                    "name": "cube_name",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/CubeName"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  },
-                  {
-                    "dataType": "Float8",
-                    "name": "percent_of_brightfield",
-                    "opcItemPath": {
-                      "bindType": "parameter",
-                      "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Fluorescence/Cube2/PercentOfBrightfield"
-                    },
-                    "opcServer": {
-                      "bindType": "parameter",
-                      "binding": "{opc_server}"
-                    },
-                    "tagType": "AtomicTag",
-                    "valueSource": "opc"
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "name": "protocol",
-            "tagType": "Folder",
-            "tags": [
-              {
-                "dataType": "String",
-                "documentation": "The protocol this count ran under. Compare with the instance-level protocol_name, which is what the instrument is set to now.",
-                "name": "name",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Protocol/ProtocolName"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "String",
-                "documentation": "As-run firmware revision. Differs from the device\u0027s current revision across an update - which is exactly when the result-level one matters.",
-                "name": "software_revision",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Protocol/SoftwareRevision"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              }
-            ]
-          },
-          {
-            "name": "sample",
-            "tagType": "Folder",
-            "tags": [
-              {
-                "dataType": "Boolean",
-                "name": "pre_dilution_correction_applied",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/PreDilutionCorrectionApplied"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Boolean",
-                "name": "stain_correction_applied",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/StainCorrectionApplied"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Int8",
-                "name": "total_cells_counted",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/TotalCellsCounted"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Float8",
-                "documentation": "cells/mL. Instrument range is 1e4 to 1e7 (Appendix B); outside it the value is out of spec, not misscaled.",
-                "name": "total_concentration",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/TotalConcentration"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              },
-              {
-                "dataType": "Int4",
-                "documentation": "0 Brightfield, 1 Fluorescence.",
-                "name": "type",
-                "opcItemPath": {
-                  "bindType": "parameter",
-                  "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/Sample/Type"
-                },
-                "opcServer": {
-                  "bindType": "parameter",
-                  "binding": "{opc_server}"
-                },
-                "tagType": "AtomicTag",
-                "valueSource": "opc"
-              }
-            ]
-          },
-          {
-            "dataType": "String",
-            "name": "sample_name",
-            "opcItemPath": {
-              "bindType": "parameter",
-              "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/SampleName"
-            },
-            "opcServer": {
-              "bindType": "parameter",
-              "binding": "{opc_server}"
-            },
-            "tagType": "AtomicTag",
-            "valueSource": "opc"
-          }
-        ]
+        "valueSource": "memory"
       },
       {
         "dataType": "String",
-        "documentation": "The whole result as one JSON document, written in the same transaction as the leaves below. Read this instead of 33 tags when assembling the MQTT payload: it cannot tear across two counts, and it is one OPC read rather than 33.",
-        "name": "result_json",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/ResultSet/LastResult/ResultJson"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
+        "documentation": "values.batch_context.operation -- the ISA-88 operation that was running at ts, from bes.batch_event or, with sample_chain.CONTEXT_SOURCE set to \"i3x\", from this reactor\u0027s own batch_data history. Null when no batch context could be resolved, and document carries the reason.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "batch_operation",
+        "sampleMode": "OnChange",
         "tagType": "AtomicTag",
-        "valueSource": "opc"
+        "valueSource": "memory"
       },
       {
-        "dataType": "Int8",
-        "name": "session_id",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/SessionId"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
+        "dataType": "String",
+        "documentation": "values.disposition -- the analyst\u0027s verdict on the sample, pass | fail, carried through from the review. A deviation can exist on a pass; a fail is one violation among several.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "disposition",
+        "sampleMode": "OnChange",
         "tagType": "AtomicTag",
-        "valueSource": "opc"
+        "valueSource": "memory"
       },
       {
-        "dataType": "Int4",
-        "documentation": "0 Idle, 1 Running, 2 Completed, 3 Aborted, 4 Error. Error and Aborted leave count_completed_counter untouched, which is the point of the counter.",
-        "name": "state",
-        "opcItemPath": {
-          "bindType": "parameter",
-          "binding": "nsu\u003d{namespace_uri};s\u003d{device_id}/CellCounter/State"
-        },
-        "opcServer": {
-          "bindType": "parameter",
-          "binding": "{opc_server}"
-        },
+        "dataType": "String",
+        "documentation": "The whole pattern 7 envelope as sample_chain.build assembled it, system.util.jsonEncode\u0027d, exactly as it went onto icc26/site1/qc/deviation. The scalars below flatten the parts a consumer queries on; the violations array and the full batch_context and environment blocks survive only here. Written by model_feed.write_deviation off the broker, NOT by pattern 7 itself -- 07 still publishes and nothing more, and its output reaches the typed model the same way any other i3X consumer\u0027s would.",
+        "name": "document",
         "tagType": "AtomicTag",
-        "valueSource": "opc"
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "Float8",
+        "documentation": "values.environment.age_s -- how far the nearest cleanroom reading sat from ts, in seconds. Tens of seconds is the demo case; a large number means the room was last measured a long way from the sample, and the deviation says so instead of hiding it. Null when no reading was in range at all.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "environment_age_s",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "String",
+        "documentation": "values.environment.status -- normal | excursion for the cleanroom reading nearest ts, as particle_counter_poll computed it against config/excursion_threshold. Pattern 7 does no arithmetic of its own here. Null when no reading was in range.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "environment_status",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "String",
+        "documentation": "values.equipment_id -- the vessel, topic form (br-201). This object is one fixed instance rather than one per vessel: a deviation is an event, and the vessel it happened on is a field of it.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "equipment_id",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "String",
+        "documentation": "values.equipment_identifier -- the vessel\u0027s own asset_data/equipment_identifier, read back out of the tag model at assessment time. Identical to equipment_id today and deliberately kept as a second field: one is what the message said, the other is what the model says, and a mismatch between them is exactly the thing worth seeing. Null when the read failed, which is not itself a violation.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "equipment_identifier",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "Boolean",
+        "documentation": "values.batch_context.qualified_window -- whether the batch protocol qualified sampling in that operation. Read, never recomputed: bes_batch.QUALIFIED is the only copy of the rule and pattern 7 does not hold a second one. Null when no batch context could be resolved.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "qualified_window",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "String",
+        "documentation": "values.sample_id -- the sample this deviation is about, the identifier pattern 1\u0027s valve minted. Every other record of this event joins on it.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "sample_id",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "DateTime",
+        "documentation": "The envelope\u0027s ts -- the acquisition instant of the sample, carried unchanged from the review. Not when the assessment ran; that is assessed_at.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "ts",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "String",
+        "documentation": "values.violations[*].code, comma-joined, in the order sample_chain raised them. Each code\u0027s detail lives in full in document; this is the queryable form, so \"every deviation that cited the room\" is one history query rather than a scan through JSON strings.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "violation_codes",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
       }
     ]
   },
   {
-    "name": "git_test",
+    "name": "lims_review",
+    "parameters": {
+      "NamespaceUri": {
+        "dataType": "String",
+        "value": "https://icc26.example/equipment"
+      }
+    },
     "tagType": "UdtType",
-    "typeId": null
+    "typeId": null,
+    "tags": [
+      {
+        "dataType": "String",
+        "documentation": "values.analyst -- who approved or rejected it, as the LIMS recorded them. A LIMS login, not a gateway user, and not the person who badged the valve; see badge_holder.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "analyst",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "String",
+        "documentation": "values.collection.badge_holder -- who badged the sample valve in pattern 1. Two people, two systems, one sample: this one drew it, analyst signed for it.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "badge_holder",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "DateTime",
+        "documentation": "values.collected_at -- when the LIMS recorded the sample as collected.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "collected_at",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "String",
+        "documentation": "values.collection.cycle_result -- the valve\u0027s own outcome for the cycle that drew this sample: normal, failed-to-seat, stroke-timeout. Pattern 7 raises a violation on anything but normal.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "cycle_result",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "String",
+        "documentation": "values.disposition -- pass | fail, the analyst\u0027s verdict on the sample. Pattern 7 treats a fail as one violation among several; a failed review is not by itself the deviation.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "disposition",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "String",
+        "documentation": "The whole pattern 4 review envelope, system.util.jsonEncode\u0027d, exactly as it arrived on icc26/site1/qc/lims/sample-result. The scalars below are a flattened index into this string, not a replacement for it: a consumer that reads this one tag has everything the MQTT subscriber had, which is what makes the i3X path equivalent to the broker path rather than merely similar to it.",
+        "name": "document",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "String",
+        "documentation": "values.equipment_id -- the vessel this review is about, topic form (br-201). It is also what routed the review here: model_feed.write_review turns this id into a path under [default]icc26/site1/upstream/bioreactors and writes qc_data/last_review beneath it. REVIEWED, not raw: the LIMS resolved the vessel from pattern 1\u0027s topic, whereas the analyzer\u0027s own result knows it only from what somebody typed on the sample-login screen.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "equipment_id",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "Float8",
+        "documentation": "values.results[analyte \u003d\u003d \"glucose\"].value, g/L -- mass, not molar, matching the analyzer\u0027s Chem/Gluc. Written as None when the analyte is absent, never skipped: the object\u0027s shape is fixed so a consumer can tell \"not measured\" from \"never populated\".",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "glucose_g_l",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "Float8",
+        "documentation": "values.results[analyte \u003d\u003d \"lactate\"].value, g/L -- mass, not molar. None when absent; see glucose_g_l.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "lactate_g_l",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "Float8",
+        "documentation": "values.results[analyte \u003d\u003d \"osmolality\"].value, mOsm/kg. Usually None, and honestly so: the osmometer is unfitted in this demo, the analyzer reports Bad_NoData for it, and the LIMS has nothing to review. See glucose_g_l.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "osmolality_mosm_kg",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "DateTime",
+        "documentation": "values.collection.sample_completion -- the valve\u0027s own completion time from pattern 1, carried through the LIMS unchanged. The same instant this vessel\u0027s process_data/sample_valve/last_sample_time holds, which is how the two ends of the chain are shown to agree without either end having been asked.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "sample_completion",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "String",
+        "documentation": "values.sample_id -- the identifier pattern 1\u0027s valve minted and every hop since has carried unchanged. The join key back to lims.sample and to this same vessel\u0027s process_data/sample_valve/last_sample_id.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "sample_id",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "DateTime",
+        "documentation": "The envelope\u0027s ts: the acquisition instant this review is about, not when the review was typed -- that is verified_at. Pattern 7 keys both of its context lookups on this instant.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "ts",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      },
+      {
+        "dataType": "DateTime",
+        "documentation": "values.verified_at -- when the analyst pressed approve. ts against this is how long the sample sat between acquisition and verdict.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
+        "name": "verified_at",
+        "sampleMode": "OnChange",
+        "tagType": "AtomicTag",
+        "valueSource": "memory"
+      }
+    ]
   },
   {
     "name": "particle_counter",
+    "parameters": {
+      "NamespaceUri": {
+        "dataType": "String",
+        "value": "https://icc26.example/equipment"
+      }
+    },
     "tagType": "UdtType",
     "typeId": null,
     "tags": [
@@ -1649,11 +1396,11 @@
         "tagType": "Folder",
         "tags": [
           {
-            "dataType": "Int4",
-            "documentation": "Seconds between polls -- DOCUMENTATION ONLY. Nothing reads this tag. The cadence really lives in the 06-poll gateway timer\u0027s attributes.delay (30000 ms), because a timer\u0027s delay is fixed at resource load and no tag can change it live. Kept because the number is half of pattern 6\u0027s argument: the detection gap is the sample duration plus this, worst case, and it belongs on screen. Change it here and in ignition/timer/06-poll/resource.json together. For the stall demo use config/enabled, which the poll DOES read -- widening this tag does nothing.",
-            "name": "poll_interval_s",
+            "dataType": "Boolean",
+            "documentation": "The stall demo. Uncheck it and particle_counter_poll returns immediately: the instrument keeps sampling on its own clock and the backbone goes silent, with nothing failing and nothing alarming. Re-enable it and the cursor walk drains the whole backlog in one burst -- hasMore, visible on the wire.",
+            "name": "enabled",
             "tagType": "AtomicTag",
-            "value": 30,
+            "value": true,
             "valueSource": "memory"
           },
           {
@@ -1665,11 +1412,11 @@
             "valueSource": "memory"
           },
           {
-            "dataType": "Boolean",
-            "documentation": "The stall demo. Uncheck it and particle_counter_poll returns immediately: the instrument keeps sampling on its own clock and the backbone goes silent, with nothing failing and nothing alarming. Re-enable it and the cursor walk drains the whole backlog in one burst -- hasMore, visible on the wire.",
-            "name": "enabled",
+            "dataType": "Int4",
+            "documentation": "Seconds between polls -- DOCUMENTATION ONLY. Nothing reads this tag. The cadence really lives in the 06-poll gateway timer\u0027s attributes.delay (30000 ms), because a timer\u0027s delay is fixed at resource load and no tag can change it live. Kept because the number is half of pattern 6\u0027s argument: the detection gap is the sample duration plus this, worst case, and it belongs on screen. Change it here and in ignition/timer/06-poll/resource.json together. For the stall demo use config/enabled, which the poll DOES read -- widening this tag does nothing.",
+            "name": "poll_interval_s",
             "tagType": "AtomicTag",
-            "value": true,
+            "value": 30,
             "valueSource": "memory"
           }
         ]
@@ -1679,86 +1426,158 @@
         "tagType": "Folder",
         "tags": [
           {
-            "dataType": "DateTime",
-            "documentation": "completedAt from the instrument -- the acquisition instant, not the instant we found out about it. state/last_poll_ts is the other half of that pair, and the distance between them is the detection gap.",
-            "name": "ts",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
-            "dataType": "Int8",
-            "documentation": "The instrument\u0027s own monotonic counter for this analysis. Published as the envelope\u0027s `seq`, exactly as pattern 5 publishes bes.batch_event.id -- the source system\u0027s number, never one we invent. It restarts at 1 when the simulator restarts, which is what makes the stale-cursor trap possible; see state/cursor.",
-            "name": "sequence_number",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
-            "dataType": "String",
-            "documentation": "normal | excursion. THE FLAG. Computed by particle_counter_poll at ingest from current/ch_0_5 against config/excursion_threshold, stored in em.reading.status and published as values.status. The instrument does not produce it and must never be asked to: the cleanroom limit is Ignition\u0027s rule and has exactly one home. Pattern 7 reads this flag and does no arithmetic of its own -- docs/00-architecture.md, \u0027Derived flags travel with the fact that produced them\u0027.",
-            "name": "status",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
-            "dataType": "String",
-            "documentation": "The operator\u0027s sample point, typed on the instrument\u0027s touchscreen at :8089 and carried in the vendor record\u0027s deviceName. The vendor record has no location field; this is that overload, named rather than hidden. If the vendor API ever grows a real location field, move it and delete this sentence.",
-            "name": "location",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
-            "dataType": "String",
-            "documentation": "Who the instrument says ran the analysis. The instrument\u0027s claim, not a gateway login.",
-            "name": "operator",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
-            "dataType": "Float8",
-            "documentation": "Litres actually drawn by this analysis (about 4.717 L at 28.3 LPM for 10 s). Every raw count in this folder means something only against this number, which is why it goes on the wire too: a consumer can normalise to counts per cubic metre even though we did not.",
-            "name": "total_volume_l",
-            "tagType": "AtomicTag",
-            "valueSource": "memory"
-          },
-          {
             "dataType": "Int8",
             "documentation": "Raw particle count in the 0.3 um and larger channel for the last analysis. Raw, not normalised -- see config/excursion_threshold for what that binds the number to.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "ch_0_3",
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "memory"
           },
           {
             "dataType": "Int8",
             "documentation": "Raw particle count in the 0.5 um and larger channel for the last analysis. Raw, not normalised -- see config/excursion_threshold for what that binds the number to.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "ch_0_5",
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "memory"
           },
           {
             "dataType": "Int8",
             "documentation": "Raw particle count in the 1.0 um and larger channel for the last analysis. Raw, not normalised -- see config/excursion_threshold for what that binds the number to.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "ch_1_0",
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "memory"
           },
           {
             "dataType": "Int8",
             "documentation": "Raw particle count in the 3.0 um and larger channel for the last analysis. Raw, not normalised -- see config/excursion_threshold for what that binds the number to.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "ch_3_0",
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "memory"
           },
           {
             "dataType": "Int8",
             "documentation": "Raw particle count in the 5.0 um and larger channel for the last analysis. Raw, not normalised -- see config/excursion_threshold for what that binds the number to.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "ch_5_0",
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "memory"
           },
           {
             "dataType": "Int8",
             "documentation": "Raw particle count in the 10.0 um and larger channel for the last analysis. Raw, not normalised -- see config/excursion_threshold for what that binds the number to.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
             "name": "ch_10_0",
+            "sampleMode": "OnChange",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "name": "conditions",
+            "tagType": "Folder",
+            "tags": [
+              {
+                "dataType": "Float8",
+                "documentation": "Average flow rate over the analysis, LPM, from the vendor record\u0027s results.environment.flowRate.average. Nominal is 28.3 LPM and current/total_volume_l is this times the sample duration, so a drift here is what makes one analysis\u0027s raw counts mean something different from the next one\u0027s. Already stored in em.reading.environment and already on the wire; this folder is the third place, and it exists because POST /objects/history is the composite read path over i3X and a tag that is not in the model is a null column in every row.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
+                "name": "flow_rate_lpm",
+                "sampleMode": "OnChange",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Average relative humidity over the analysis, percent, from results.environment.humidity.average. Context, not a threshold -- see temperature_c.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
+                "name": "humidity_pct",
+                "sampleMode": "OnChange",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              },
+              {
+                "dataType": "Float8",
+                "documentation": "Average room temperature over the analysis, degrees C, from results.environment.temperature.average. Context, not a threshold: nothing in this stack compares it to anything, and config/excursion_threshold is the only cleanroom rule we hold. Here so an i3X consumer reading this object gets the same environment block the MQTT subscriber gets.",
+                "historyEnabled": true,
+                "historyProvider": "pg-historian",
+                "name": "temperature_c",
+                "sampleMode": "OnChange",
+                "tagType": "AtomicTag",
+                "valueSource": "memory"
+              }
+            ]
+          },
+          {
+            "dataType": "String",
+            "documentation": "The operator\u0027s sample point, typed on the instrument\u0027s touchscreen at :8089 and carried in the vendor record\u0027s deviceName. The vendor record has no location field; this is that overload, named rather than hidden. If the vendor API ever grows a real location field, move it and delete this sentence.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
+            "name": "location",
+            "sampleMode": "OnChange",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "String",
+            "documentation": "Who the instrument says ran the analysis. The instrument\u0027s claim, not a gateway login.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
+            "name": "operator",
+            "sampleMode": "OnChange",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Int8",
+            "documentation": "The instrument\u0027s own monotonic counter for this analysis. Published as the envelope\u0027s `seq`, exactly as pattern 5 publishes bes.batch_event.id -- the source system\u0027s number, never one we invent. It restarts at 1 when the simulator restarts, which is what makes the stale-cursor trap possible; see state/cursor.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
+            "name": "sequence_number",
+            "sampleMode": "OnChange",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "String",
+            "documentation": "normal | excursion. THE FLAG. Computed by particle_counter_poll at ingest from current/ch_0_5 against config/excursion_threshold, stored in em.reading.status and published as values.status. The instrument does not produce it and must never be asked to: the cleanroom limit is Ignition\u0027s rule and has exactly one home. Pattern 7 reads this flag and does no arithmetic of its own -- docs/00-architecture.md, \u0027Derived flags travel with the fact that produced them\u0027.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
+            "name": "status",
+            "sampleMode": "OnChange",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "Float8",
+            "documentation": "Litres actually drawn by this analysis (about 4.717 L at 28.3 LPM for 10 s). Every raw count in this folder means something only against this number, which is why it goes on the wire too: a consumer can normalise to counts per cubic metre even though we did not.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
+            "name": "total_volume_l",
+            "sampleMode": "OnChange",
+            "tagType": "AtomicTag",
+            "valueSource": "memory"
+          },
+          {
+            "dataType": "DateTime",
+            "documentation": "completedAt from the instrument -- the acquisition instant, not the instant we found out about it. state/last_poll_ts is the other half of that pair, and the distance between them is the detection gap.",
+            "historyEnabled": true,
+            "historyProvider": "pg-historian",
+            "name": "ts",
+            "sampleMode": "OnChange",
             "tagType": "AtomicTag",
             "valueSource": "memory"
           }
@@ -1776,11 +1595,10 @@
             "valueSource": "memory"
           },
           {
-            "dataType": "Int8",
-            "documentation": "The highest sequenceNumber this gateway has already stored and published. The dedupe guard: the poll skips anything at or below it, which is what makes re-reading a page after a mid-page failure safe and what stops a stale-cursor replay from publishing an analysis twice. Per-record, not per-page, deliberately. Persists with state/cursor and is cleared with it.",
-            "name": "last_sequence",
+            "dataType": "String",
+            "documentation": "Whatever the last poll hit -- the 401, the timeout, the connection refused -- or empty on success. **The stale-cursor failure writes nothing here**, and that is the whole point of it: the poll is working.",
+            "name": "last_error",
             "tagType": "AtomicTag",
-            "value": 0,
             "valueSource": "memory"
           },
           {
@@ -1791,10 +1609,11 @@
             "valueSource": "memory"
           },
           {
-            "dataType": "String",
-            "documentation": "Whatever the last poll hit -- the 401, the timeout, the connection refused -- or empty on success. **The stale-cursor failure writes nothing here**, and that is the whole point of it: the poll is working.",
-            "name": "last_error",
+            "dataType": "Int8",
+            "documentation": "The highest sequenceNumber this gateway has already stored and published. The dedupe guard: the poll skips anything at or below it, which is what makes re-reading a page after a mid-page failure safe and what stops a stale-cursor replay from publishing an analysis twice. Per-record, not per-page, deliberately. Persists with state/cursor and is cleared with it.",
+            "name": "last_sequence",
             "tagType": "AtomicTag",
+            "value": 0,
             "valueSource": "memory"
           }
         ]
@@ -1804,6 +1623,10 @@
   {
     "name": "sample_valve",
     "parameters": {
+      "NamespaceUri": {
+        "dataType": "String",
+        "value": "https://icc26.example/equipment"
+      },
       "cycle_result_path": {
         "dataType": "String",
         "value": null
@@ -1823,7 +1646,10 @@
       {
         "dataType": "String",
         "documentation": "The valve cycle outcome: normal, failed-to-seat, or stroke-timeout.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
         "name": "last_cycle_result",
+        "sampleMode": "OnChange",
         "sourceTagPath": {
           "bindType": "parameter",
           "binding": "{cycle_result_path}"
@@ -1842,7 +1668,10 @@
       {
         "dataType": "String",
         "documentation": "The identifier minted by the sample valve and carried unchanged into downstream analysis.",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
         "name": "last_sample_id",
+        "sampleMode": "OnChange",
         "sourceTagPath": {
           "bindType": "parameter",
           "binding": "{sample_id_path}"
@@ -1854,7 +1683,10 @@
         "dataType": "DateTime",
         "documentation": "Completion time normalized to DateTime. Plain MQTT sends ISO-8601 text; Sparkplug B sends a typed DateTime.",
         "expression": "if(\n\tisNull({[.]last_sample_time_raw}),\n\tnull,\n\tif(\n\t\ttypeOf({[.]last_sample_time_raw}) \u003d \"String\",\n\t\ttoDate(\n\t\t\tsubstring({[.]last_sample_time_raw}, 0, 4) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 5, 7) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 8, 10) + \".\" +\n\t\t\tsubstring({[.]last_sample_time_raw}, 11, 13) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 14, 16) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 17, 19) +\n\t\t\tsubstring({[.]last_sample_time_raw}, 20, 23) + \"+0000\"\n\t\t),\n\t\ttoDate({[.]last_sample_time_raw})\n\t)\n)",
+        "historyEnabled": true,
+        "historyProvider": "pg-historian",
         "name": "last_sample_time",
+        "sampleMode": "OnChange",
         "tagType": "AtomicTag",
         "valueSource": "expr"
       },

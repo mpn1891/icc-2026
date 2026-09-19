@@ -62,9 +62,10 @@ USERNAME = "admin"
 PASSWORD = "password"
 HTTP_TIMEOUT_MS = 10000
 
-# NOT `pg_db`. That one points at the `postgres` database as user `ignition` --
-# wrong database, wrong user -- and it will pass a glance in the dropdown and
-# then write nowhere useful. docs/00-architecture.md is emphatic about this.
+# NOT `pg_db`. That one is the historian's own store -- the `ignition` database
+# as user `ignition`, holding sqlth_*/sqlt_data_* and nothing this project
+# writes -- so it will pass a glance in the dropdown and then write nowhere useful.
+# docs/00-architecture.md is emphatic about this.
 DATASOURCE = "ICC26"
 
 PROJECT = "icc-2026"
@@ -275,6 +276,21 @@ def _build(sample, device_id, threshold):
     }
 
 
+def _environment(record):
+    """The three conditions the analysis was drawn under, under one set of names.
+
+    One dict, two sinks: `em.reading.environment` as jsonb and
+    `current/conditions/*` as tags. Pattern 7 rebuilds the published block from
+    whichever of the two it read, so the key names have to match on both sides
+    -- and this is the only place they are written down.
+    """
+    return {
+        "flow_rate_lpm": record["flow_rate_lpm"],
+        "temperature_c": record["temperature_c"],
+        "humidity_pct": record["humidity_pct"],
+    }
+
+
 def _store(record):
     """INSERT INTO em.reading. Returns the number of rows written: 1 or 0.
 
@@ -288,11 +304,6 @@ def _store(record):
     run collide with the previous run's rows and be dropped in silence, which is
     precisely the failure the stale-cursor demo is supposed to recover FROM.
     """
-    environment = {
-        "flow_rate_lpm": record["flow_rate_lpm"],
-        "temperature_c": record["temperature_c"],
-        "humidity_pct": record["humidity_pct"],
-    }
     return system.db.runPrepUpdate(
         _INSERT,
         [record["device_id"],
@@ -303,18 +314,35 @@ def _store(record):
          record["status"],
          record["total_volume_l"],
          system.util.jsonEncode(record["channels"]),
-         system.util.jsonEncode(environment),
+         system.util.jsonEncode(_environment(record)),
          _parse_iso(record["completed_at"])],
         database=DATASOURCE)
 
 
 def _write_current(base, record):
-    """The live view. Overwritten by every published analysis, historised by none.
+    """The live view. Overwritten by every published analysis, and historised.
 
-    No tag historian is enabled on any of these: an analysis is one row with six
-    channel counts, a status, a location and an operator, and tag history would
-    store it as a dozen independent scalar series that merely share a timestamp.
-    The history is `em.reading`, and pattern 7 reads that.
+    **History on this folder was off until 2026-09-18, and the reason it was off
+    was a good one**: an analysis is one row -- six channel counts, a status, a
+    location, an operator, a volume and three conditions -- and tag history
+    stores it as a dozen independent scalar series that merely share a
+    timestamp. `em.reading` held the analysis whole, and pattern 7 read that.
+
+    It is on now because pattern 7 can be asked to take its context over i3X
+    instead, and there `POST /objects/history` is the composite read path: no
+    join, no query language, one call per object over a time range. The
+    objection is answered by the server's own behaviour. It returns flat rows
+    keyed by leaf tag name and **forward-fills** them -- last observation
+    carried forward, null only before a tag's first point in the range -- so the
+    dozen scattered series come back as one row per instant with all dozen
+    columns populated. The analysis is reassembled at read time instead of being
+    kept whole at write time.
+
+    The consequence is that a tag which is not historised is a null column in
+    every one of those rows. So this is **all** of `current/`, `operator` and
+    `conditions/` included, and **none** of `state/` or `config/`: those two
+    describe the poll, not the analysis, and nothing reading an environmental
+    reading wants our cursor in the row.
     """
     paths = [base + "/current/ts",
              base + "/current/sequence_number",
@@ -328,6 +356,11 @@ def _write_current(base, record):
               record["location"],
               record["operator"],
               record["total_volume_l"]]
+    # The same three values `_store` puts in em.reading.environment, under the
+    # same names, so whichever source pattern 7 reads it rebuilds one block.
+    for name, value in _environment(record).items():
+        paths.append(base + "/current/conditions/" + name)
+        values.append(value)
     for channel in record["channels"]:
         paths.append(base + "/current/" + _channel_tag(channel["size_um"]))
         values.append(channel["count"])

@@ -1,0 +1,53 @@
+{
+  "enabled": true,
+  "source": {
+    "type": "com.cirruslink.mqtt.engine.gateway.mqtt.source",
+    "config": {
+      "topic": "icc26/site1/qc/deviation",
+      "qos": 1
+    }
+  },
+  "sourceEncoder": {
+    "type": "ignition.string",
+    "properties": {
+      "encoding": "UTF-8"
+    }
+  },
+  "handlers": [
+    {
+      "enabled": true,
+      "type": "ignition.script",
+      "config": {
+        "userCode": "\tfor event in events:\n\t\tmodel_feed.write_deviation(event.data)\n"
+      },
+      "failureStrategy": {
+        "type": "ABORT",
+        "retryPolicy": null
+      }
+    }
+  ],
+  "batch": {
+    "debounceMs": 250,
+    "maxWaitMs": 1000,
+    "maxQueueSize": 0,
+    "overflow": "DROP_OLDEST"
+  },
+  "filter": {
+    "enabled": true,
+    "userCode": "\treturn bool(event.data)\n"
+  },
+  "transform": {
+    "enabled": false,
+    "userCode": ""
+  },
+  "transformEncoder": {
+    "type": "ignition.string",
+    "properties": {
+      "encoding": "UTF-8"
+    }
+  },
+  "onError": {
+    "enabled": false,
+    "userCode": ""
+  }
+}

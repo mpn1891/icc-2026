@@ -11,6 +11,13 @@ no `meta.mechanism` stamped on the way past. Pattern 4's envelope is `ts` and
 mechanism off the topic it subscribed to. This module authenticates and
 deduplicates; it does not author.
 
+**It also lands the review in the typed tag model**, by calling
+`model_feed.write_review` after the publish. That is not this module authoring
+anything -- the document is unchanged and already on the wire when the call is
+made -- it is where the model feed had to go once MQTT Engine turned out to
+register one Event Stream source per topic string, 07's `lims-review` stream
+being the one that holds this topic. See `model_feed`.
+
 Dedupe is a module-level bounded dict (last ~500 keys), not a table. A gateway
 restart loses the window, which is honest and acceptable; a durable version
 needs the ICC26 JDBC datasource, which does not exist yet.
@@ -127,4 +134,17 @@ def handle(request):
     payload = system.util.jsonEncode(envelope)
     system.cirruslink.transmission.publish(BROKER, TOPIC, payload, 1, False)
     logger.infof("lims webhook published %s to %s", key, TOPIC)
+
+    # The typed tag model, after the publish and never before it: the model must
+    # not hold a review that did not reach the wire. `model_feed` documents that
+    # it never raises, and this is the belt -- a throw here would be a 500, which
+    # the outbox answers by POSTing again, republishing the review and firing 07
+    # a second time. A bare except because a Java throwable is not a Python one.
+    try:
+        model_feed.write_review(envelope)
+    except:
+        import traceback
+        logger.warnf("lims webhook published %s but the model feed failed: %s",
+                     key, traceback.format_exc().splitlines()[-1])
+
     return _json(request, 200, {"ok": True, "key": key, "topic": TOPIC})

@@ -32,9 +32,10 @@ from java.util import Date
 
 LOGGER_NAME = "bes_batch"
 
-# NOT `pg_db`. That one points at the `postgres` database as user `ignition` --
-# wrong database, wrong user -- and it will pass a glance in the dropdown and
-# then write nowhere useful. docs/00-architecture.md is emphatic about this.
+# NOT `pg_db`. That one is the historian's own store -- the `ignition` database
+# as user `ignition`, holding sqlth_*/sqlt_data_* and nothing this project
+# writes -- so it will pass a glance in the dropdown and then write nowhere useful.
+# docs/00-architecture.md is emphatic about this.
 DATASOURCE = "ICC26"
 
 # ISA-88 operations, in the order the protocol runs them. These are *operations*,
@@ -131,12 +132,24 @@ def advance(base):
     operation the database does not have. Resets manual_advance on every exit
     path, including the refusals -- a button that stays stuck down is worse than
     one that did nothing.
+
+    `operation`, `event_type` and `qualified_window` are all taken from the
+    incoming row, in one write, so the three tags are one consistent view of it
+    rather than three that can disagree.
     """
     logger = system.util.getLogger(LOGGER_NAME)
 
     batch_tag = base + "/batch_id"
     operation_tag = base + "/operation"
     flag_tag = base + "/manual_advance"
+
+    # Added 2026-09-18. These two exist only in bes.batch_event -- event_type as
+    # a column, qualified_window inside the payload jsonb -- and pattern 7 could
+    # only ever see them by querying that table. Over i3X it reads batch context
+    # from tag history instead, and a fact that is not in the tag model is a
+    # null column in every history row the server returns.
+    event_type_tag = base + "/event_type"
+    qualified_tag = base + "/qualified_window"
 
     values = system.tag.readBlocking([batch_tag, operation_tag])
     batch_id = values[0].value
@@ -226,16 +239,29 @@ def advance(base):
 
     # Only now. The record exists; the tags may follow it.
     new_operation = next_operation if next_operation is not None else IDLE
+
+    # The INCOMING row, which `rows` always ends with: an operation_start, or
+    # the batch_end that closes the batch. The outgoing operation_end is not
+    # mirrored into tags -- both rows carry the same occurred_at and only this
+    # one is still true a second later. qualified_window comes from the same
+    # tuple that fed `_payload`, so the tag and the WAL cannot disagree, and
+    # QUALIFIED above stays the only copy of the rule.
+    new_event_type, _, new_qualified = rows[-1]
+
     if next_operation is None:
         # Batch over: clear the id so the next advance mints a fresh one rather
         # than silently reusing this batch's.
-        system.tag.writeBlocking([operation_tag, flag_tag, batch_tag],
-                                 [new_operation, False, ""])
+        system.tag.writeBlocking(
+            [operation_tag, event_type_tag, qualified_tag, flag_tag, batch_tag],
+            [new_operation, new_event_type, new_qualified, False, ""])
     elif minted:
-        system.tag.writeBlocking([operation_tag, flag_tag, batch_tag],
-                                 [new_operation, False, batch_id])
+        system.tag.writeBlocking(
+            [operation_tag, event_type_tag, qualified_tag, flag_tag, batch_tag],
+            [new_operation, new_event_type, new_qualified, False, batch_id])
     else:
-        system.tag.writeBlocking([operation_tag, flag_tag], [new_operation, False])
+        system.tag.writeBlocking(
+            [operation_tag, event_type_tag, qualified_tag, flag_tag],
+            [new_operation, new_event_type, new_qualified, False])
 
     logger.infof("%s %s: %s -> %s (%d rows)",
                  equipment_id, batch_id, current, new_operation, len(rows))
