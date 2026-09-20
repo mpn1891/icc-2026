@@ -296,15 +296,6 @@
   <section class="sim">
     <h2>Simulator controls - not part of the device</h2>
     <div class="body">
-      <p class="sim-note">A real assembly has an RFID reader here, and a plant air header
-        behind the actuator. The first two buttons stand in for both, and they are the same
-        two the plain-MQTT page offers, because it is the same device. The third stands in
-        for nothing - no device ships a switch that mutes its own instruments -
-        and is here only so the topic tree can be quietened while something else is on
-        screen. It stops the publishing, not the physics: the air still sags and the sample
-        still fails to seat, and the difference from pattern 1 is that this device leaves
-        no retained document behind to clear, and still declares every muted metric in
-        DBIRTH.</p>
       <div class="badges" id="badges"></div>
       <button type="button" class="ghost" id="air-supply" style="margin-top:1rem"></button>
       <button type="button" class="ghost" id="telemetry" style="margin-top:.5rem"></button>
