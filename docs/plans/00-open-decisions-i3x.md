@@ -8,6 +8,13 @@
 > phases and contracts; this file is the questions it cannot answer by itself. The answers go
 > back into that file. **Branch: `i3x`.** Phase 5 (docs) has not landed, so the rest of `docs/`
 > is still silent about i3X — this is the first file in here that mentions it.
+>
+> **Split 2026-09-19, later the same day.** These six were raised as one set and are being executed
+> one pattern at a time. The **analyzer's** slice of questions 3, 4, 5 and 6 — plus two
+> sub-decisions none of them reach — now lives in
+> [`03-opcua-analyzer-i3x.md`](03-opcua-analyzer-i3x.md), which is the file to work from for
+> `cell-analyzer-01`. What is left here and unsplit is the **particle counter**: questions 1 and 2,
+> and the counter's half of 5. Question 6 is shared and lands with whichever pass runs first.
 
 ## What this is about
 

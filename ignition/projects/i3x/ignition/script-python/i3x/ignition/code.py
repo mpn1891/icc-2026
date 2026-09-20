@@ -11,17 +11,46 @@ UaCoreUri = "http://opcfoundation.org/UA/"
 DATE_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
 # Name of the alarm journal profile used for alarm history. Set this to match
 # the gateway's configured journal; if none exists, alarm history returns empty.
-ALARM_JOURNAL = "Journal"
-# Local fork (icc-2026). The one UDT type whose history comes from an event
-# store instead of the tag historian, and the datasource that holds it. A review
-# is written to its 13 members from a single MQTT message, so the members have
-# no independent cadence and the historian's per-member series has to be
+# Local fork (icc-2026): upstream ships "Journal". This gateway's journal is
+# icc26_alarm, on pg_db -- the same connection pg-historian writes to.
+ALARM_JOURNAL = "icc26_alarm"
+# Local fork (icc-2026).
+# The UDT type suffixes whose history comes from an event store, and the
+# datasource holding those stores. `i3x.handlers` turns these into a dispatch
+# table (`_EVENT_HISTORY`); a type named here is matched by SUFFIX, because a
+# typeId carries its provider ("[default]_types_/lims_review").
+#
+# `lims_review`: thirteen members written from a single MQTT message, so they
+# have no independent cadence and the historian's per-member series has to be
 # forward-filled back into object states -- which invents states the object was
-# never in. lims.review_event keeps the member document whole. Objects whose
-# members DO move independently (a process value and its limits) stay on the
-# historian, where forward-fill is the correct semantics.
+# never in. `lims.review_event` keeps the member document whole.
+#
+# `cell_analyzer`: the same disease from the other ingestion. One analysis is
+# ~38 OPC nodes the instrument writes as one batch; `result_json` -- the
+# vendor's own payload, and the member that makes a row whole -- is not
+# historised at all, and five leaf names collide once the historian flattens the
+# folders (`sample_id`, `sample_type`, `vessel_id` and `cell_type` exist under
+# both `command/` and `result/`, and `osmo` is both the Float8 reading and the
+# Boolean module flag). Distinct paths in a stored document cannot collide.
+# `qc.analyzer_result` keeps it whole, in the shape /objects/value returns.
+#
+# Objects whose members DO move independently (a process value and its limits)
+# stay on the historian, where forward-fill is the correct semantics.
 REVIEW_TYPE = "_types_/lims_review"
-LIMS_DATASOURCE = "ICC26"
+ANALYZER_TYPE = "_types_/cell_analyzer"
+# One Ignition datasource, both stores -- the `ICC26` connection, which is the
+# icc26 database as the icc26 role. NOT `pg_db`, which is the historian's own
+# store and will pass a glance in the dropdown before reading nowhere useful.
+# Named for what it holds rather than for the first store that used it: it was
+# LIMS_DATASOURCE until the analyzer store joined it on 2026-09-19.
+EVENT_STORE_DATASOURCE = "ICC26"
+# The UDT parameter the analyzer store is keyed by. **The parameter, not the
+# instance name**: the instance is `cell-analyzer-01` and its device_id is
+# `CELL-ANALYZER-01`. The writer (`opcua_event._device_id`) reads the same
+# parameter, so the two sides cannot key on different strings -- get this wrong
+# and every query returns [] quietly. Read the same way `_coalesceMillis` reads
+# COALESCE_PARAM.
+DEVICE_ID_PARAM = "device_id"
 # Local fork (icc-2026). This gateway also carries the MQTT Engine, MQTT
 # Transmission, MQTT Distributor, pm-sensors and System providers. None of them
 # holds a UDT instance the API should expose, so browsing them only adds chaff
@@ -45,6 +74,23 @@ BUILTIN_RELATIONSHIP_IDS = ("HasParent", "HasChildren", "HasComponent", "Compone
 # them hold a list. Declared pairs are added to copies of these per build.
 BUILTIN_REVERSE = {"HasParent":"HasChildren", "HasChildren":"HasParent", "HasComponent":"ComponentOf", "ComponentOf":"HasComponent", "HasAlarm":"AlarmOf", "AlarmOf":"HasAlarm"}
 BUILTIN_TO_MANY = ("HasChildren", "HasComponent", "HasAlarm")
+# Local fork (icc-2026). Members written by one message do not necessarily reach
+# the historian on one timestamp. Sparkplug carries a payload timestamp that
+# Engine applies to every metric in the message, so those members land together;
+# a custom namespace has nowhere to put one, so Engine stamps each key as it
+# walks the document. Measured 2026-09-19: br-202's valve (Sparkplug) answers one
+# sample with one row, br-201's (custom namespace) answers with three rows 10 ms
+# apart, the first two holding states the valve was never in -- a sample id with
+# no result, then a result with no completion time.
+#
+# A UDT instance may declare, through an Int8 parameter of this name, the window
+# in milliseconds within which distinct stored timestamps are ONE write. It is a
+# claim about that instance's writer, which is why it belongs on the instance:
+# br-201 and br-202 are the same type reached by different ingestion. 0 -- the
+# default, and every object that does not declare it -- keeps upstream's
+# behaviour exactly: one row per distinct timestamp. Forward-fill BETWEEN windows
+# is untouched, and stays correct. See _queryHistory and PROVENANCE.md.
+COALESCE_PARAM = "HistoryCoalesceMs"
 
 def getTagProviders():
 	# Names of the tag providers the API exposes (the top level of the address

@@ -54,9 +54,9 @@ upstream indentation throughout the script library — are untouched.
 
 ## Local edits
 
-Three. The first is a constant; the second and third are features, and they are the reason this
-folder is now a fork rather than a copy. The third has since been extended once; its own section
-says what changed and why.
+Four. The first two are constants retuned for this gateway; the third and fourth are features, and
+they are the reason this folder is now a fork rather than a copy. The fourth has since been
+extended once; its own section says what changed and why.
 
 ### `ignition/script-python/i3x/ignition/code.py` — `PROVIDERS`
 
@@ -72,6 +72,17 @@ and they are browsed by the structural build in `getUdtInstances`, which queries
 UDT instances and alarm status and is expensive enough that upstream hides it behind a 5 s cache in
 `i3x.utils`. Narrowing the browse makes the first uncached request after any tag change faster, and
 the address space honest.
+
+### `ignition/script-python/i3x/ignition/code.py` — `ALARM_JOURNAL`
+
+Added 2026-09-19. Changed `ALARM_JOURNAL` from upstream's `"Journal"` to `"icc26_alarm"`.
+
+Not a behaviour change — upstream's own comment on the constant says to set it to match the
+gateway's journal. It is recorded here only because it is a diff against upstream that a future
+merge will show. The journal was created for the `High Pressure` alarm on `biorx_components/pressure`
+and writes to `pg_db`, the connection `pg-historian` already uses. The mismatch is silent by design:
+`_historyValue` catches the failed `queryJournal` and returns empty history with a warning under
+`i3x.objects`, so a wrong name here looks exactly like an alarm that has never fired.
 
 ### `i3x/ignition/code.py` and `i3x/handlers/code.py` — declared relationships
 
@@ -126,7 +137,7 @@ one real row reported `glucose_g_l: 0.0`, forward-filled from initialisation, wh
 the LIMS both said `5.92`. Nothing errored; the object simply lied.
 
 A UDT type named in `REVIEW_TYPE` is now served from `lims.review_event` instead
-(`LIMS_DATASOURCE`, migrate-11), keyed to the vessel through the object's nearest UDT ancestor.
+(`EVENT_STORE_DATASOURCE`, named `LIMS_DATASOURCE` until the analyzer store joined it; migrate-11), keyed to the vessel through the object's nearest UDT ancestor.
 `_reviewHistory` in `i3x/handlers/code.py` runs the query and `_historyValue` gains one branch
 ahead of the generic one, in the same position and shape as upstream's own `ignition-alarm` branch
 — which is the precedent for all of this: upstream already serves alarm history from the alarm
@@ -159,10 +170,144 @@ rather than the raw message, and it is the first thing to re-check if either sid
 Objects whose members genuinely move independently stay on the historian. `process_value` and its
 nested `process_limits` are the reference case and were verified unchanged by this edit.
 
+### `i3x/ignition/code.py` and `i3x/handlers/code.py` — event-store history for `cell_analyzer`
+
+Added 2026-09-19. The `lims_review` section above moved one event off the historian and left the
+test for it as an `elif`. This adds the second such type and turns the pair into a table.
+
+**Why the analyzer needs it.** Pattern 3 ingests and publishes but never stores, so
+`POST /objects/history` fell through to the tag historian, which was asked to reassemble one
+analysis out of ~38 OPC nodes. Three faults, all measured 2026-09-19 on `cell-analyzer-01`:
+
+| | |
+|---|---|
+| Rows | One analysis came back as many, the first of them reporting `sample_id: None` and `viability_percent: None` with `gluc` already set — states the object was never in. |
+| `result_json` | Null in every row. The vendor's own payload, the one member that makes a row whole, is not historised at all and cannot be. |
+| Collisions | 52 nested leaves flatten to 47 keys. `sample_id`, `sample_type`, `vessel_id` and `cell_type` each exist under both `command/` and `result/`; `osmo` is both the Float8 reading (`result/osmo`) and the Boolean module flag (`result/modules_used/osmo`), and history returned `osmo: 0` — the flag won. With the module on, the measurement is silently overwritten. |
+
+The burst is **not** a subscription artifact, which was worth establishing before blaming the
+ingestion. A subscription registered on the instance at `maxDepth 1` took one analysis as *one*
+push carrying all 29 changed members together — every `result/*` leaf, `result_json`,
+`sample_complete_counter` 1→2 and `state`→Completed — because Ignition coalesces the
+instrument's write batch into one UDT change event. No consumer ever observes a partial analysis.
+The disassembly happens on the way out of the historian, not on the way in.
+
+`qc.analyzer_result` (migrate-12) now holds the analysis, written from the
+`03_opcua/cell-analyzer-result` Event Stream transform before it publishes — store then publish,
+pattern 6's `poll` order. The stored `document` is the whole UDT instance value taken by a single
+`readBlocking` on the instance path, which is the same call and the same `toDict()` this server
+makes for `/objects/value`; `_analyzerHistory` hands it back untouched. That passthrough is sound
+only because nothing reshapes it on the way out: the `i3x` project cannot import `opcua_event`,
+neither project inheriting the other, so a mapping written here would be a second copy of the
+writer, free to drift. Same constraint, same answer, as `lims_review`.
+
+**The dispatch is now a table, `_EVENT_HISTORY`, and it is reader-only.** The plan for this pass
+proposed `type suffix -> (store reader, key rule)`. The key rule came out: each reader already
+scopes itself and nothing else consumes the rule, so a second tuple element would be a protocol
+with one consumer apiece. The scoping genuinely differs — a review hangs under the vessel it is
+about and keys on `parentUdt`; the analyzer is a standalone instrument that samples from several
+vessels (its `AnalyzesSamplesFrom` edges name `br-201` and `br-202`), its parent is the `analyzers`
+folder, which identifies nothing, so it keys on its own `device_id` parameter.
+
+**Matched by `endswith`, deliberately, and not by a dict lookup on `typeId`.** A `typeId` carries
+its provider — `[default]_types_/cell_analyzer` — so a dict keyed on the whole string would never
+match and `_historyValue` would fall through to the historian. An object silently served from the
+wrong store is exactly the failure the table exists to prevent, so the match stays a suffix test
+over a two-entry tuple.
+
+**The key is the `device_id` parameter on both sides.** `_analyzerHistory` reads
+`udtInstance["parameters"][DEVICE_ID_PARAM]`, the same place `_coalesceMillis` reads
+`HistoryCoalesceMs`, and the writer reads the same parameter through
+`opcua_event._device_id`. The instance is named `cell-analyzer-01` and its `device_id` is
+`CELL-ANALYZER-01`; taking the key from the display name, or from an upper-cased copy of it, makes
+every query return `[]` quietly. The `analyzer_id` *member* is the trap on the writer's side — it
+sits in the document and reads `CELL-ANALYZER-01` today, but it is OPC-bound to the instrument's
+own `Settings/AnalyzerID` node, so it is free to diverge and would split the store in two without
+erroring.
+
+**`uptime` is stored with the rest of the document.** It is a liveness tick frozen at write time
+and it is noise on a history row, but excluding it would make the stored document differ from what
+`/objects/value` returns, and that identity is the whole reason for storing pre-shaped. It is
+tied to the heartbeat-split decision and moves with it, not before.
+
+Touched, each marked `Local fork (icc-2026)` in a comment:
+
+- `i3x/ignition/code.py`: `REVIEW_TYPE` joined by `ANALYZER_TYPE` and `DEVICE_ID_PARAM`;
+  `LIMS_DATASOURCE` renamed `EVENT_STORE_DATASOURCE`, since one Ignition datasource now reaches
+  two stores and naming it after the first was misleading.
+- `i3x/handlers/code.py`: new `_analyzerHistory`; the `_EVENT_HISTORY` table and
+  `_eventHistoryReader`; `_historyValue`'s `elif` and its `childHistory` closure both go through
+  that one lookup, so the object cannot answer one way by id and another through its parent.
+
+Tag history on the 38 `result/` members is left **on** for now. `/objects/history` no longer reads
+it, and it has no other consumer in this project — no Perspective views, no scripted historian
+reads — but the event branch returns `[]` on a query failure rather than falling back, so turning
+it off converts a Postgres outage from degraded into total. Land, measure, then flip.
+
+### `i3x/ignition/code.py` and `i3x/handlers/code.py` — coalesced history windows
+
+Added 2026-09-19. The section above moves an *event* off the historian entirely. This one is the
+other half: the objects that stay on it, whose members are still written by one message.
+
+Upstream keys a history row on each distinct stored timestamp, unioned across the object's members.
+That is right when members move on their own cadences and wrong when they arrive together, and
+whether they arrive together is decided by the ingestion path, not by the equipment. Sparkplug
+carries a payload timestamp that Engine applies to every metric in the message, so those members
+land on one timestamp. A custom namespace has nowhere to put one, so Engine stamps each key as it
+walks the JSON document.
+
+Both valves are the same `sample_valve` UDT, and measuring one real sample on each, 2026-09-19,
+shows the difference is entirely the ingestion:
+
+| Instance | Bound to | Rows for one sample |
+|---|---|---|
+| `br-202` | `[MQTT Engine]Edge Nodes/…/SV-202/Sample/*` (Sparkplug) | 1 |
+| `br-201` | `[MQTT Engine]icc26/site1/upstream/…/sample-complete/values/*` (custom namespace) | 3, spanning 10 ms |
+
+br-201's first two rows hold states the valve was never in — a sample id with no cycle result, then
+a cycle result with no completion time — because forward-fill had nothing yet to carry for the
+members that had not been stamped.
+
+`_queryHistory` now groups the change timestamps into windows before walking them, and emits one row
+per window stamped with the window's **last** timestamp: the instant at which every value in the row
+genuinely held at once. A window opens at a timestamp and closes `coalesceMillis` later, anchored on
+the open rather than on the previous point — chained on the previous point, a steady stream half a
+window apart would merge into one unbounded row covering the whole request. Forward-fill *between*
+windows is untouched and stays correct: a member that did not change in this event still carries its
+value from the last one.
+
+**The window is declared per instance**, through the Int8 UDT parameter named in `COALESCE_PARAM`
+(`HistoryCoalesceMs`), read by `_coalesceMillis`. Per instance and not as a constant here, because
+br-201 and br-202 are the same type reached by different ingestion and no module-level number can
+tell them apart. The type declares `0`; br-201 overrides it to `2000`. 0 is also the default for
+every object that declares nothing, so every other object in the project returns exactly the history
+it returned before this edit. The precedent for configuring this server from a UDT parameter is
+`RELATIONSHIPS_PARAM` and `NamespaceUri`, both already read the same way.
+
+**2000 ms is chosen against two measurements, not by taste.** The observed spread is 10 ms, and the
+floor on genuine events is about 13.5 s — a sample must finish before the next can start
+(`SAMPLE_WINDOW_S` 12.0 plus `VALVE_STROKE_S` 1.5 in `services/sim-valve-mqtt`). 2 s sits 200× above
+the spread and 6.75× below the floor. It is not tighter because that 10 ms is not bounded by
+anything: it is how fast Engine happened to walk one document on an idle gateway, and it will
+stretch under load. It fails safe — if br-201 is ever rebound to Sparkplug, a 2 s window over
+identical timestamps is a no-op.
+
+**A window that is too wide reports itself.** If a *single* tag contributes more than one stored
+point to one window, that window absorbed a real change and the intermediate values are gone from
+the result. `_queryHistory` logs a warning naming the object, the window and the tags, because
+losing a change quietly is precisely the failure this edit exists to remove — replacing a loud wrong
+answer with a quiet one would be worse than leaving it alone. Bound points seeding the
+carry-forward are excluded from that count; only points at or after the window opened are changes it
+absorbed.
+
+Objects that declare no window are unaffected, including every single-member component: with one
+tag there is no union of timestamps to coalesce and every row was already whole.
+
 ## Updating from upstream
 
-Re-clone the repo at the new commit, re-copy the file list above, re-apply the `PROVIDERS` edit,
-the declared-relationships edit and the `lims_review` history edit (diff this commit's two
-`code.py` files against upstream's before overwriting; the two features are about ninety lines
-between them and land in the places named above), and update the commit row in this file. There is
-nothing else of ours in here.
+Re-clone the repo at the new commit, re-copy the file list above, re-apply the `PROVIDERS` and
+`ALARM_JOURNAL` edits, the declared-relationships edit, the two event-store history edits
+(`lims_review` and `cell_analyzer`, which share the `_EVENT_HISTORY` table) and the coalesced
+history windows — diff this commit's three `code.py` files (`i3x/ignition`, `i3x/handlers`,
+`i3x/utils`) against upstream's before overwriting; the features land in the places named above.
+Then update the commit row in this file. There is nothing else of ours in here.

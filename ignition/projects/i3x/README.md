@@ -59,10 +59,11 @@ and a user your clients can authenticate as.
 
 Alarm history — `POST /objects/history` on an alarm object — reads from an
 **alarm journal profile**. Configure one under **Config → Alarming → Journal**.
-Its name must match `i3x.ignition.ALARM_JOURNAL` (default `"Journal"`): either
-name the journal `Journal`, or change that constant. Without a matching journal,
-alarm history returns empty and logs a warning under the `i3x.objects` logger
-(it does not error the request).
+Its name must match `i3x.ignition.ALARM_JOURNAL`: either name the journal to
+match, or change that constant. Without a matching journal, alarm history
+returns empty and logs a warning under the `i3x.objects` logger (it does not
+error the request). Upstream ships `"Journal"`; this gateway's journal is
+`icc26_alarm`, on `pg_db`, and the constant is set to it.
 
 ### 4. Historize tags (for value history)
 

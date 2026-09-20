@@ -1065,7 +1065,7 @@
       },
       {
         "dataType": "String",
-        "documentation": "Vendor liveness tag. Section 6 of the analyzer OPC manual tells you to subscribe to this and to the analyzer clock to confirm the server is updating at all - it is the vendor\u0027s own acceptance test, so it is worth having as a tag.",
+        "documentation": "Vendor liveness tag. Section 6 of the analyzer OPC manual tells you to subscribe to this and to the analyzer clock to confirm the server is updating at all - it is the vendor\u0027s own acceptance test, so it is worth having as a tag. It is a plain member here and not a nested object, deliberately, and it is not free: it ticks every 5 s, the i3X server re-sends an object\u0027s whole value document on any member change, so an idle subscription on this analyzer takes about 4.8 kB every 5 s to carry it -- measured 2026-09-19 as 12 pushes over 45 s with it, and 0 without. Splitting it into a nested UDT was tried the same day and does not help: the nested instance is still a member of this UDT, so its tick still wakes the parent, and the server strips the child from the payload only afterwards -- an unchanged document with a fresh timestamp. The fix belongs in the subscription listener, which should not push a value equal to the one it last pushed. See docs/plans/03-opcua-analyzer-i3x.md.",
         "name": "uptime",
         "opcItemPath": {
           "bindType": "parameter",
@@ -1623,6 +1623,10 @@
   {
     "name": "sample_valve",
     "parameters": {
+      "HistoryCoalesceMs": {
+        "dataType": "Integer",
+        "value": 0
+      },
       "NamespaceUri": {
         "dataType": "String",
         "value": "https://icc26.example/equipment"

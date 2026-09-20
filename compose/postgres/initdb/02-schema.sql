@@ -131,6 +131,49 @@ CREATE TABLE lims.webhook_delivery (
 );
 CREATE INDEX ix_webhook_delivery_due ON lims.webhook_delivery (state, next_try_at);
 
+-- The review event store. **A review is an event, and this is where the event
+-- lives.** `lims.sample` above is a different writer's projection of the same
+-- review -- the LIMS workflow row, carrying `status` in {awaiting-analysis,
+-- rejected, verified}. That is not the analyst's `disposition`, it has no column
+-- for the acquisition instant `ts`, and it does not keep the message.
+--
+-- `document` is the review as the MODEL sees it: exactly the member document
+-- `model_feed.write_review` writes to `qc_data/last_review`, keys and all, with
+-- DateTime members as epoch milliseconds because that is how the i3X server
+-- encodes a DateTime on `/objects/value`. Storing it pre-shaped is what lets the
+-- i3X history branch hand the row straight back: the `i3x` project cannot import
+-- `model_feed`, so any mapping on the read side would be a second copy of the
+-- write side, free to drift.
+--
+-- Applied live as migrate-11 on 2026-09-18 and mirrored here 2026-09-19. It was
+-- missing from this file for a day, which meant a nuke-and-reseed came back
+-- without the review store and `_reviewHistory` answered every request with a
+-- warning and an empty list. migrate-12 landed in both files from the start.
+CREATE TABLE lims.review_event (
+    id           bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    sample_id    text        NOT NULL,
+    equipment_id text        NOT NULL,
+
+    -- `ts` is the acquisition instant and `verified_at` is when a person
+    -- clicked; the gap between them is the whole of pattern 4. Both are real
+    -- columns and not just keys inside `document`, because the history lookup
+    -- filters and orders on `ts` and a jsonb extract cannot use the index.
+    ts           timestamptz NOT NULL,
+    verified_at  timestamptz NOT NULL,
+
+    document     jsonb       NOT NULL,
+    stored_at    timestamptz NOT NULL DEFAULT now(),
+
+    -- The identity of a review is the sample plus the instant a person signed
+    -- it, so a redelivery is a no-op and a genuine re-review of the same sample
+    -- is still a second row.
+    CONSTRAINT uq_review_event UNIQUE (sample_id, verified_at)
+);
+
+-- One vessel, a time window, oldest first. Deliberately the same shape as
+-- ix_em_reading_lookup and ix_analyzer_result_lookup.
+CREATE INDEX ix_review_event_lookup ON lims.review_event (equipment_id, ts DESC, id DESC);
+
 -- ── bes: batch lifecycle events ──────────────────────────────────────────────
 -- Pattern 5's CDC source. The writer is an Ignition tag event script
 -- (`bes_batch`) fired by clicking `manual_advance` on the bioreactor UDT:
@@ -251,15 +294,59 @@ CREATE TABLE em.reading (
 --          status FROM em.reading ORDER BY id DESC LIMIT 10;
 CREATE INDEX ix_em_reading_lookup ON em.reading (device_id, occurred_at DESC, id DESC);
 
+-- ── qc: the cell analyzer's own result store ───────────────────────────
+-- Pattern 3's store, written from the `03_opcua/cell-analyzer-result` Event
+-- Stream transform before it publishes. The schema matches the tag path the
+-- object lives at, `icc26/site1/qc/analyzers/...`, the way `lims` matches the
+-- LIMS's tags and `em` matches environmental monitoring. `lims.sample_result` is
+-- the LIMS's per-analyte projection of the same run, not the analyzer's record.
+--
+-- Mirrored from migrate-12-analyzer-result.sql, which carries the full reasoning.
+CREATE SCHEMA IF NOT EXISTS qc AUTHORIZATION icc26;
+
+-- **An analysis is an event.** `document` is the analyzer instance as the i3X
+-- server serves it: the nested member document `POST /objects/value` returns,
+-- captured by one `readBlocking` at the instant the Event Stream fired, so the
+-- history branch can hand the row back untouched. It is also the only place
+-- `result_json` is kept -- that member is not historised, so it is null in every
+-- tag-historian row this store replaces.
+CREATE TABLE qc.analyzer_result (
+    id            bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    -- The instance's `device_id` PARAMETER ("CELL-ANALYZER-01"), never the
+    -- display name. The reader takes it from udtInstance["parameters"]; get the
+    -- case wrong and every history query returns an empty list quietly.
+    device_id     text        NOT NULL,
+    sample_id     text        NOT NULL,
+
+    -- `ts` is the acquisition instant (`result/sample_time`); `modified_time` is
+    -- when the result was last written. Same split lims.review_event draws.
+    ts            timestamptz NOT NULL,
+    modified_time timestamptz NOT NULL,
+
+    document      jsonb       NOT NULL,
+    stored_at     timestamptz NOT NULL DEFAULT now(),
+
+    -- **The unit is one analysis VERSION.** `result/modified_time` runs again if
+    -- CDV images are reanalyzed or the result is edited after the fact, so a
+    -- result can change after it has been read. Keyed on sample_id alone such a
+    -- revision is silently dropped; with modified_time in the key it lands as a
+    -- second row and a duplicate stream fire is still a no-op.
+    CONSTRAINT uq_analyzer_result UNIQUE (device_id, sample_id, modified_time)
+);
+
+-- One analyzer, a time window, oldest first.
+CREATE INDEX ix_analyzer_result_lookup ON qc.analyzer_result (device_id, ts DESC, id DESC);
+
 -- ── Grants ───────────────────────────────────────────────────────────────────
-GRANT USAGE ON SCHEMA lims, bes, plant, em TO icc26;
-GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA lims, bes, plant, em TO icc26;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA lims, bes, plant, em TO icc26;
+GRANT USAGE ON SCHEMA lims, bes, plant, em, qc TO icc26;
+GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA lims, bes, plant, em, qc TO icc26;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA lims, bes, plant, em, qc TO icc26;
 
 -- Debezium needs to read the tables it decodes, and to own a publication.
--- `em` is deliberately NOT granted here: the cdc role has no business reading
--- pattern 6's store, and a role that cannot SELECT it cannot accidentally end up
--- tailing it. See the em.reading comment above.
+-- `em` and `qc` are deliberately NOT granted here: the cdc role has no business
+-- reading pattern 6's or pattern 3's store, and a role that cannot SELECT one
+-- cannot accidentally end up tailing it. See the em.reading comment above.
 GRANT USAGE  ON SCHEMA lims, bes, plant TO cdc;
 GRANT SELECT ON ALL TABLES IN SCHEMA lims, bes, plant TO cdc;
 ALTER DEFAULT PRIVILEGES IN SCHEMA lims, bes, plant GRANT SELECT ON TABLES TO cdc;

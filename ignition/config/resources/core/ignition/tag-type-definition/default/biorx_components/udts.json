@@ -26,7 +26,7 @@
     ]
   },
   {
-    "documentation": "Vessel headspace pressure, bar gauge. Inherits from process_value; sets the units parameter and pv\u0027s engUnit to match, and restates pv\u0027s history config -- see dissolved_oxygen.",
+    "documentation": "Vessel headspace pressure, bar gauge. Inherits from process_value; sets the units parameter and pv\u0027s engUnit to match, and restates pv\u0027s history config -- see dissolved_oxygen. Also the only loop carrying an alarm, on pv -- see its notes.",
     "name": "pressure",
     "parameters": {
       "NamespaceUri": {
@@ -42,6 +42,15 @@
     "typeId": "biorx_components/process_value",
     "tags": [
       {
+        "alarms": [
+          {
+            "mode": "AboveValue",
+            "name": "High Pressure",
+            "notes": "Vessel headspace above 1.00 bar gauge. The one alarm in the model, and it exists so the i3X server has an alarm to serve: an alarm is a first-class i3X object, so this one appears under the vessel's pressure object as HasAlarm/AlarmOf, its value document is the alarm status, and a stream registered on it fires on state change. The setpoint sits in the gap between SIP (2.10 bar) and every other operation (0.50 bar and below), so it is driven entirely by batch_data/manual_advance -- step into SIP and it goes active, step out and it clears -- and never chatters on process_sim's noise. Deliberately NOT bound to limits/high_limit: those are the band the running operation holds the value to, nothing evaluates them, and an alarm on them would fire on every advance while pv lags toward the new target.",
+            "priority": "High",
+            "setpointA": 1.0
+          }
+        ],
         "engUnit": "bar",
         "historyEnabled": true,
         "historyProvider": "pg-historian",

@@ -394,7 +394,7 @@ def _currentValue(udtInstance, udtInstances, maxDepth):
 		i3x.utils.addChildrenValues(udtInstances, udtInstance, elementObj, childrenValues, quality, timestamp, 2, maxDepth)
 	return elementObj
 
-def _queryHistory(tags, startDate, endDate):
+def _queryHistory(tags, startDate, endDate, coalesceMillis=0, log=None, label=""):
 	# Return raw stored historian points, forward-filled into composite rows.
 	#
 	# Each tag is queried individually: multi-path queryRawPoints returns nothing
@@ -408,6 +408,12 @@ def _queryHistory(tags, startDate, endDate):
 	# that changes rarely (e.g. HOA) keeps showing its value across the many rows
 	# where a frequently-changing tag (e.g. Amps) moves. A tag is null only before
 	# its first recorded value.
+	#
+	# Local fork (icc-2026): coalesceMillis groups those distinct timestamps into
+	# windows, so members written by one message but stamped milliseconds apart
+	# produce one whole row instead of a burst of partial ones. 0 is upstream's
+	# behaviour. See i3x.ignition.COALESCE_PARAM for why it is declared per
+	# instance rather than chosen here.
 	startMillis = startDate.getTime()
 	endMillis = endDate.getTime()
 
@@ -431,23 +437,74 @@ def _queryHistory(tags, startDate, endDate):
 		pts.sort()
 		series[tag] = pts
 
-	# Walk the change timestamps in order, advancing each tag's carried value.
+	# Group the change timestamps into windows. A window OPENS at a timestamp and
+	# closes coalesceMillis later, deliberately not "within coalesceMillis of the
+	# previous point": chained on the previous point, a steady stream half the
+	# window apart would merge into one unbounded row covering the whole request.
+	# Anchored on the open, a window can never span more than coalesceMillis.
+	# coalesceMillis 0 puts every timestamp in its own window, which is upstream.
+	windows = []
+	for key in sorted(changeMillis):
+		if windows and (key - windows[-1][0]) <= coalesceMillis:
+			windows[-1].append(key)
+		else:
+			windows.append([key])
+
+	# Walk the windows in order, advancing each tag's carried value. The row is
+	# stamped with the window's LAST timestamp: that is the instant at which every
+	# value in the row genuinely held simultaneously, where the first is an instant
+	# at which the later members had not arrived yet.
 	historyValues = []
 	idx = dict((tag, 0) for tag in tags)
 	last = dict((tag, None) for tag in tags)
-	for key in sorted(changeMillis):
+	for window in windows:
+		key = window[-1]
 		rowValues = {}
+		swallowed = []
 		for tag in tags:
 			pts = series[tag]
 			i = idx[tag]
+			inWindow = 0
 			while i < len(pts) and pts[i][0] <= key:
+				# Bound points (before the window opened, and before the request
+				# window for the first row) seed the carry-forward but are not
+				# changes this window absorbed.
+				if pts[i][0] >= window[0]:
+					inWindow += 1
 				last[tag] = pts[i][1]
 				i += 1
 			idx[tag] = i
 			rowValues[tag] = last[tag]
+			if inWindow > 1:
+				swallowed.append(tag)
+		# More than one stored point from a SINGLE tag inside one window is proof
+		# the window absorbed a real change: the values between the window's first
+		# and last points are not in the result and nothing else will report them.
+		# The silent-loss failure is the one coalescing exists to avoid, so it is
+		# reported even though the row itself is still returned.
+		if coalesceMillis > 0 and swallowed and log != None:
+			log.warn("%s: a %d ms coalesce window ending %s absorbed more than one stored point for %s -- intermediate values are missing from this result. Lower %s on this instance." % (label, coalesceMillis, str(tsByKey[key]), ", ".join(swallowed), i3x.ignition.COALESCE_PARAM))
 		rowValues["t_stamp"] = tsByKey[key]
 		historyValues.append(rowValues)
 	return historyValues
+
+def _coalesceMillis(udtInstance, log):
+	# The instance's declared write window in milliseconds, or 0 (upstream's
+	# behaviour) when it declares none. A value that is not a non-negative number
+	# is worth a line rather than a 500: the object still answers its history, it
+	# simply does not coalesce, which is the safe direction to fail in.
+	raw = udtInstance["parameters"].get(i3x.ignition.COALESCE_PARAM, None)
+	if raw == None:
+		return 0
+	try:
+		millis = int(raw)
+	except:
+		log.warn("%s: %s is not a whole number of milliseconds (%s); not coalescing" % (udtInstance["elementId"], i3x.ignition.COALESCE_PARAM, str(raw)))
+		return 0
+	if millis < 0:
+		log.warn("%s: %s is negative (%s); not coalescing" % (udtInstance["elementId"], i3x.ignition.COALESCE_PARAM, str(raw)))
+		return 0
+	return millis
 
 def _reviewHistory(udtInstance, startDate, endDate, log):
 	# Local fork (icc-2026). HistoricalValueResult entries for one vessel's review
@@ -475,16 +532,91 @@ def _reviewHistory(udtInstance, startDate, endDate, log):
 		rows = system.db.runPrepQuery(
 			"SELECT ts, document FROM lims.review_event "
 			"WHERE equipment_id = ? AND ts BETWEEN ? AND ? ORDER BY ts",
-			[equipmentId, startDate, endDate], i3x.ignition.LIMS_DATASOURCE)
+			[equipmentId, startDate, endDate], i3x.ignition.EVENT_STORE_DATASOURCE)
 	except:
 		import traceback
-		log.warn("Review history query failed for %s (datasource '%s'): %s" % (udtInstance["elementId"], i3x.ignition.LIMS_DATASOURCE, traceback.format_exc().splitlines()[-1]))
+		log.warn("Review history query failed for %s (datasource '%s'): %s" % (udtInstance["elementId"], i3x.ignition.EVENT_STORE_DATASOURCE, traceback.format_exc().splitlines()[-1]))
 		return []
 
 	values = []
 	for row in rows:
 		values.append({"value":system.util.jsonDecode(str(row["document"])), "quality":"Good", "timestamp":i3x.utils.formatUtc(row["ts"])})
 	return values
+
+def _analyzerHistory(udtInstance, startDate, endDate, log):
+	# Local fork (icc-2026). HistoricalValueResult entries for the cell analyzer,
+	# read from qc.analyzer_result instead of the tag historian.
+	#
+	# The stored document is ALREADY the object's member document, in the encoding
+	# /objects/value uses -- `opcua_event._store_analyzer_result` stores exactly
+	# what `readBlocking` on the instance returns, which is the same call and the
+	# same toDict() this server makes for the live value. So it is handed back
+	# untouched, for the reason _reviewHistory states: the i3x project cannot
+	# import `opcua_event` -- neither project inherits the other -- so a mapping
+	# written here would be a second copy of the writer, free to drift.
+	#
+	# Scoped by the instance's OWN device_id parameter, not by a parent: unlike a
+	# review, which hangs under the vessel it is about, the analyzer is a
+	# standalone instrument that samples from several vessels (its
+	# AnalyzesSamplesFrom edges name br-201 and br-202). Its parent is the
+	# `analyzers` folder, which identifies nothing.
+	deviceId = udtInstance["parameters"].get(i3x.ignition.DEVICE_ID_PARAM, None)
+	if deviceId == None or str(deviceId).strip() == "":
+		log.warn("Analyzer history for %s: no %s parameter, returning empty" % (udtInstance["elementId"], i3x.ignition.DEVICE_ID_PARAM))
+		return []
+	deviceId = str(deviceId).strip()
+
+	# Ordered by ts (the acquisition instant, the instrument's result/sample_time),
+	# oldest first, as the spec wants a HistoricalValueResult. A revision of an
+	# analysis is its own row with its own modified_time, so a corrected result
+	# appears after the one it corrects rather than replacing it. A failure here
+	# logs and returns empty rather than 500ing the whole bulk request, exactly as
+	# the alarm-journal and review branches do.
+	try:
+		rows = system.db.runPrepQuery(
+			"SELECT ts, document FROM qc.analyzer_result "
+			"WHERE device_id = ? AND ts BETWEEN ? AND ? ORDER BY ts",
+			[deviceId, startDate, endDate], i3x.ignition.EVENT_STORE_DATASOURCE)
+	except:
+		import traceback
+		log.warn("Analyzer history query failed for %s (datasource '%s'): %s" % (udtInstance["elementId"], i3x.ignition.EVENT_STORE_DATASOURCE, traceback.format_exc().splitlines()[-1]))
+		return []
+
+	values = []
+	for row in rows:
+		values.append({"value":system.util.jsonDecode(str(row["document"])), "quality":"Good", "timestamp":i3x.utils.formatUtc(row["ts"])})
+	return values
+
+# Local fork (icc-2026). Type suffix -> the reader that holds that type's truth.
+# Upstream's own `ignition-alarm` branch is the precedent for the whole idea:
+# an object's history comes from whatever store holds it, and the alarm journal
+# was already such a store. This table is the same statement for the event
+# stores, made once instead of as parallel elif branches.
+#
+# **Reader only, no key rule.** Each reader scopes itself, because the scoping
+# genuinely differs -- the review keys on its parent vessel, the analyzer on its
+# own device_id parameter -- and a key rule in this table would be a protocol
+# with exactly one consumer apiece.
+#
+# **Matched by endswith, not by dict lookup.** A typeId carries its provider
+# ("[default]_types_/cell_analyzer"), so keying a dict on the whole typeId would
+# never match, and `_historyValue` would fall through to the historian: an object
+# silently served from the wrong store is the failure this table exists to stop.
+_EVENT_HISTORY = (
+	(i3x.ignition.REVIEW_TYPE, _reviewHistory),
+	(i3x.ignition.ANALYZER_TYPE, _analyzerHistory),
+)
+
+def _eventHistoryReader(udtInstance):
+	# The event-store reader for this object, or None for "not special: leave it
+	# to the historian". Used by BOTH _historyValue's top level and its
+	# childHistory closure, so an object cannot answer one way by id and another
+	# way through its parent -- the bug that closure was added to fix.
+	typeId = str(udtInstance["typeId"])
+	for (suffix, reader) in _EVENT_HISTORY:
+		if typeId.endswith(suffix):
+			return reader
+	return None
 
 def _historyValue(udtInstance, udtInstances, maxDepth, startDate, endDate, log):
 	# HistoricalValueResult for one object: alarm-journal events for an alarm, or
@@ -500,9 +632,14 @@ def _historyValue(udtInstance, udtInstances, maxDepth, startDate, endDate, log):
 		# came back as forward-filled member rows -- nulls where the live object had
 		# values, and no `document` member at all, that one not being historised.
 		# None means "not special": leave the child to the generic path.
-		if str(childInstance["typeId"]).endswith(i3x.ignition.REVIEW_TYPE):
-			return _reviewHistory(childInstance, startDate, endDate, log)
+		reader = _eventHistoryReader(childInstance)
+		if reader != None:
+			return reader(childInstance, startDate, endDate, log)
 		return None
+
+	# Resolved once, before the chain, so the top level and the children agree by
+	# construction rather than by two lookups that could drift apart.
+	eventReader = _eventHistoryReader(udtInstance)
 
 	if udtInstance["typeId"] == "ignition-alarm":
 		# Alarm history comes from the alarm journal profile named by
@@ -517,10 +654,10 @@ def _historyValue(udtInstance, udtInstances, maxDepth, startDate, endDate, log):
 		except:
 			import traceback
 			log.warn("Alarm journal query failed for %s (journal '%s'): %s" % (udtInstance["elementId"], i3x.ignition.ALARM_JOURNAL, traceback.format_exc().splitlines()[-1]))
-	elif str(udtInstance["typeId"]).endswith(i3x.ignition.REVIEW_TYPE):
+	elif eventReader != None:
 		# Local fork (icc-2026): this object's history is an event store, not the
-		# tag historian. See _reviewHistory and i3x.ignition.REVIEW_TYPE.
-		elementObj["values"] = _reviewHistory(udtInstance, startDate, endDate, log)
+		# tag historian. See _EVENT_HISTORY.
+		elementObj["values"] = eventReader(udtInstance, startDate, endDate, log)
 	elif udtInstance["typeId"] != "folder-type" and udtInstance["typeId"] != "ignition-tag-provider":
 		# Collect the historizable leaf tags (recursing to maxDepth), query the
 		# historian for all of them at once, then shape into the response.
@@ -529,7 +666,7 @@ def _historyValue(udtInstance, udtInstances, maxDepth, startDate, endDate, log):
 			objs = {"tags":[], "objects":{}}
 			tags = i3x.utils.getTags(udtInstancePath, objs, tagConfig[0]["tags"], 1, maxDepth)
 			if len(tags):
-				historyValues = _queryHistory(tags, startDate, endDate)
+				historyValues = _queryHistory(tags, startDate, endDate, _coalesceMillis(udtInstance, log), log, udtInstance["elementId"])
 				i3x.utils.addChildrenHistory(elementObj, objs, historyValues, udtInstances, childHistory)
 	return elementObj
 
