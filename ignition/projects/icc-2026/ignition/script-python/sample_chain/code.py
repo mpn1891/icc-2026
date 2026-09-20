@@ -79,7 +79,11 @@ reads `bes.batch_event` and `em.reading` directly and the vessel's name off its
 tag, which is what 07 has always done. `i3x` asks the vendored CESMII i3X server
 for the same three facts over HTTP -- `/objects/history` on the bioreactor and
 on the particle counter, `/objects/value` for the equipment identifier -- and
-gets them out of the tag model instead of out of Postgres. The blocks come back
+asks for them as **objects**, by elementId, over an API anyone can call, rather
+than as rows over a database credential this gateway happens to hold. Where the
+server gets them from is the server's business and is not the same in both
+cases: the bioreactor's history is the tag historian and the counter's is
+`em.reading` (migrate-13). The blocks come back
 the same shape, key for key, because the point of the switch is that a consumer
 cannot tell which one ran: flipping one constant is the whole gesture and no
 other line of this module knows it happened. What the switch demonstrates is
@@ -98,15 +102,21 @@ historian's stamp for the row rather than `bes.batch_event.occurred_at` -- near
 neighbours, but two different clocks, and the diff between the two sources will
 show it.
 
-**The reliability is asymmetric, and that is the price of vendor neutrality.**
-The `sql` source reads the systems of record: `bes.batch_event` is tailed out of
-the WAL by Debezium and `em.reading` is written before pattern 6 publishes
-anything, so both are complete by construction. The `i3x` source reads this
-gateway's own copy, and tag history has a gap wherever the gateway did -- a
-restart, a stopped container, a tag phase 1 forgot to historise. That is a real
-loss of fidelity, accepted deliberately in exchange for a lookup any i3X client
-could make against any i3X server, and it is said out loud rather than
-discovered later.
+**The asymmetry is in the batch block only, and it is named rather than
+averaged away.** `bes.batch_event` is tailed out of the WAL by Debezium and is
+complete by construction; the `i3x` source asks the bioreactor object instead,
+whose history is this gateway's own tag history, and that has a gap wherever the
+gateway did -- a restart, a stopped container, a tag phase 1 forgot to historise.
+That is a real loss of fidelity, accepted deliberately in exchange for a lookup
+any i3X client could make against any i3X server.
+
+**The environment block has no such asymmetry, since migrate-13.** Both sources
+read `em.reading`, written before pattern 6 publishes anything: one of them by
+SELECT and the other by `POST /objects/history`, which the server answers out of
+the same table. So a reading found by either is the same reading, and what the
+switch demonstrates for this block is precisely the point worth demonstrating --
+that the only thing standing between a stranger and this fact was the database
+credential, and the API removes it without moving the fact.
 
 Jython 2.7: no f-strings, no type hints, integer division is floor division.
 """
@@ -399,17 +409,27 @@ _WARNED = {"row_instant": False}
 
 
 def _i3x_history(tag_path, start, end):
-    """`/objects/history` on one object, flattened to rows. (rows, reason).
+    """`/objects/history` on one object, as rows. (rows, reason).
 
-    A row is `(the flat value dict, the row's own RFC 3339 timestamp)`, oldest
-    first. The server drops rows in which none of this object's own tags has a
-    point, so an empty list means the window really is empty -- not that a
-    sibling object happened to move.
+    A row is `(the value dict, the row's own RFC 3339 timestamp)`, oldest first.
+    The server drops rows in which nothing about this object moved, so an empty
+    list means the window really is empty -- not that a sibling object happened
+    to move.
+
+    **The two callers get two different shapes, and the server decides which.**
+    The bioreactor is served from the tag historian, so its rows are flat leaf
+    names, forward-filled. The particle counter is served from `em.reading`
+    (migrate-13), so its rows are the stored member document, nested exactly as
+    `/objects/value` returns it. This function does not care -- it is the caller
+    that knows which object it asked about -- but a caller that assumes one
+    shape and is handed the other reads every key as `None`, silently, because
+    every field of both blocks is legitimately nullable.
 
     `maxDepth` is 1 everywhere here. Folders do not count toward it but nested
     UDT instances do, so 1 is this object's own tags and nothing of
     `sample_valve`'s or `last_review`'s -- which is what both lookups want, and
-    it keeps the flat leaf-name keys from having anything to collide with.
+    on the historian path it keeps the flat leaf names from having anything to
+    collide with.
     """
     result, reason = i3x_client.history([i3x_client.element_id(tag_path)],
                                         start, end, max_depth=1)
@@ -456,6 +476,24 @@ def _row_instant(raw, stamp):
         return _parse_iso(stamp)
     except Exception:
         return None
+
+
+def _conditions(raw):
+    """The conditions block, carried through rather than rebuilt.
+
+    The document nests them under `current/conditions`, matching the folder they
+    sit in on the object, and `em.reading.environment` holds the same dict for
+    the `sql` source to `_decode` -- both are the output of
+    `particle_counter_poll._environment`, which is the only place those three
+    names are decided. So this passes the dict through exactly as the `sql`
+    source passes the decoded column through, down to answering `None` when
+    there is nothing there. A fourth condition added to the folder then appears
+    on both sources or on neither, which is the property the whole switch rests
+    on; naming the three here would quietly break it.
+    """
+    if isinstance(raw, dict):
+        return raw
+    return None
 
 
 def _channels(value):
@@ -559,15 +597,30 @@ def _environment_i3x(instant):
     the first of the two behaviour changes in the module docstring, and it is
     the only rule in this module that the source changes.
 
-    **The search is nearest to the row's own `ts`, not to the row's stamp.**
-    `current/ts` is the instrument's completedAt, which is the instant
-    `em.reading.occurred_at` holds and therefore the instant the `sql` source
-    compares against. Using the historian's stamp instead would silently move
-    every reading later by one poll interval and quietly inflate `age_s`.
+    **Since migrate-13 this reads the same rows the `sql` source does.** The i3X
+    server serves this object's history from `em.reading.document` rather than
+    from the tag historian -- the reading as an object, stored by
+    `particle_counter_poll` from the same members list it writes to the tags.
+    So the two sources of this block differ in transport and in the window, and
+    no longer in provenance: a reading either source finds is the same row.
+    Before that change the historian answered with one row per member change
+    instant, forward-filled, and one analysis came back as four rows 32 ms apart
+    with every member null but `total_volume_l` -- a partial row could win the
+    nearest-row contest and this function would then report an excursion as
+    `status: None`. Measured 2026-09-19; that is what the event store removes.
 
-    Pattern 6 writes every `current/*` tag in one `writeBlocking`, so one
-    analysis is one row and forward-filling has nothing to smear: no row here
-    carries one analysis's counts beside another's timestamp.
+    **The row's value is the whole instance document, so the members are under
+    `current`.** `value["current"]["status"]`, not `value["status"]`: that is
+    what `/objects/value` returns for this object and the stored document is the
+    same shape by construction. A row that carries no `current` is skipped
+    rather than read as a reading with every field absent.
+
+    **The search is nearest to the row's own `ts`.** `current/ts` is the
+    instrument's completedAt, which is the instant `em.reading.occurred_at`
+    holds and therefore the instant the `sql` source compares against. The row's
+    own stamp is now that same column, so the fallback in `_row_instant` costs
+    nothing here -- it did when this read the historian, where the stamp was one
+    poll interval late.
     """
     if instant is None:
         return None, "the review message carried no usable sample instant"
@@ -582,12 +635,17 @@ def _environment_i3x(instant):
     nearest = None
     nearest_offset = None
     for value, stamp in rows:
-        occurred_at = _row_instant(value.get("ts"), stamp)
+        current = value.get("current")
+        if not isinstance(current, dict):
+            # Not a reading this module can read. Either the object's document
+            # changed shape or something other than the event store answered.
+            continue
+        occurred_at = _row_instant(current.get("ts"), stamp)
         if occurred_at is None:
             continue
         offset_ms = occurred_at.getTime() - instant.getTime()
         if nearest_offset is None or abs(offset_ms) < abs(nearest_offset):
-            nearest = (value, occurred_at)
+            nearest = (current, occurred_at)
             nearest_offset = offset_ms
 
     if nearest is None:
@@ -595,10 +653,10 @@ def _environment_i3x(instant):
         # also fires for a simulator that has been stopped longer than the
         # window, which is the case the window exists to catch. `_violations`
         # turns it into environment_unverifiable either way.
-        return None, ("no tag history for %s within %ss of %s"
+        return None, ("no i3x history for %s within %ss of %s"
                       % (EM_DEVICE_ID, str(EM_WINDOW_S), _iso(instant)))
 
-    value, occurred_at = nearest
+    current, occurred_at = nearest
     return {
         # Same order, same keys, same meanings as the `sql` block -- `age_s`
         # first for the same reason. A consumer cannot tell the two apart.
@@ -606,20 +664,17 @@ def _environment_i3x(instant):
         "nearest_side": "after" if nearest_offset >= 0 else "before",
         "device_id": EM_DEVICE_ID,
         # Prose, not a join key. See the module docstring.
-        "location": value.get("location"),
+        "location": current.get("location"),
         # OURS, not the instrument's -- `particle_counter_poll` set it against
         # config/excursion_threshold. Read, never recomputed.
-        "status": value.get("status"),
+        "status": current.get("status"),
         "occurred_at": _iso(occurred_at),
-        "channels": _channels(value),
-        # `em.reading.environment` renamed by the `sql` source; here the same
-        # three numbers come off `current/conditions/*`, which phase 1 added to
-        # the UDT precisely so this block could be rebuilt from the model.
-        "conditions": {
-            "flow_rate_lpm": value.get("flow_rate_lpm"),
-            "temperature_c": value.get("temperature_c"),
-            "humidity_pct": value.get("humidity_pct"),
-        },
+        "channels": _channels(current),
+        # The `sql` source decodes `em.reading.environment` for this; here the
+        # same three numbers come off `current/conditions/*`, a nested folder in
+        # the object and therefore a nested dict in the document. Same writer,
+        # same names, and neither side reshapes them.
+        "conditions": _conditions(current.get("conditions")),
     }, None
 
 

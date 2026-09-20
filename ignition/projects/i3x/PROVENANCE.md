@@ -54,9 +54,11 @@ upstream indentation throughout the script library — are untouched.
 
 ## Local edits
 
-Four. The first two are constants retuned for this gateway; the third and fourth are features, and
-they are the reason this folder is now a fork rather than a copy. The fourth has since been
-extended once; its own section says what changed and why.
+Two constants and four features, in the seven sections below. The constants are retuned for this
+gateway; the features are the reason this folder is a fork rather than a copy. **Three of the
+sections are one feature applied to three types** — event-store history, which is a single
+dispatch table (`_EVENT_HISTORY`) with one entry per type. Each still gets its own section,
+because each type keys on a different thing and the key is the part that goes silently wrong.
 
 ### `ignition/script-python/i3x/ignition/code.py` — `PROVIDERS`
 
@@ -244,6 +246,58 @@ it, and it has no other consumer in this project — no Perspective views, no sc
 reads — but the event branch returns `[]` on a query failure rather than falling back, so turning
 it off converts a Postgres outage from degraded into total. Land, measure, then flip.
 
+### `i3x/ignition/code.py` and `i3x/handlers/code.py` — event-store history for `particle_counter`
+
+Added 2026-09-20. The third type to come off the historian, and the last of them: after this the
+only objects the historian serves are the ones whose members genuinely move independently.
+
+**Why the counter needs it.** Eighteen members written by `particle_counter_poll._write_current`
+in one `writeBlocking`, so they have no cadence of their own and the reassembly invents states
+again. Measured 2026-09-19 on `particle-counter-01` with `POST /objects/history`, `maxDepth: 1`,
+one hour: **four rows inside 32 ms for one analysis, every member null but `total_volume_l`.**
+The failure this causes downstream is worse than the rows look, and it is silent:
+`sample_chain._environment_i3x` picks the row nearest the sample instant, and a partial row can
+win that contest — so pattern 7's i3x path could report `status: None` on a perfectly good
+excursion and fall through to `environment_unverifiable`, because every field of that block is
+legitimately nullable and nothing errors.
+
+`em.reading` is **not a new store** — it has held one row per analysis since 2026-08-27 and
+pattern 7's `sql` source has always read it. migrate-13 adds `document` to it, the same reading in
+the object's shape, and `_counterHistory` hands that back untouched. Same passthrough, same
+reason, as the two sections above: the `i3x` project cannot import `particle_counter_poll`, so a
+mapping written here would be a second copy of the writer.
+
+**The document is the instance's `current/` folder only**, which is narrower than the analyzer's
+whole-instance document, and the difference is about the writers, not about taste. The analyzer's
+values arrive from an OPC subscription — there is no list of members to build from, so one
+`readBlocking` on the instance was the only honest capture and it takes `command/` and `uptime`
+with it. The counter's poll authors every value it stores, so the document is nested from the same
+`members` list that goes to the tags and contains exactly that list. `state/` is the poll's cursor
+and watermark; `config/` is the cleanroom threshold. Neither is a fact about a reading, and
+neither is something the backfill of 13,000 existing rows could honestly have invented. So
+`/objects/value` on this object returns three folders and a history row returns one — and that
+one is identical in shape to its namesake in the live value, which is the property that matters.
+
+**The key is the instance's own NAME**, a third key rule in a three-entry table. The review scopes
+to its parent vessel, the analyzer to a `device_id` parameter, and this one to the last segment of
+its own tag path — because that is the string `em.reading.device_id` holds, and it holds it
+because `particle_counter_poll._device_id` derives it from the last segment of the same path.
+One rule applied from both ends, which is why the two cannot drift; `sample_chain` makes the same
+observation about `EM_TAG` in its own comment.
+
+Touched, each marked `Local fork (icc-2026)` in a comment:
+
+- `i3x/ignition/code.py`: `COUNTER_TYPE`, and the note on the third disease beside the other two.
+- `i3x/handlers/code.py`: new `_counterHistory`; one more row in `_EVENT_HISTORY`. Nothing else —
+  the table and `_eventHistoryReader` were built for this on 2026-09-19 and took the third type
+  without a change, which is the test of whether that refactor was worth making.
+
+Tag history on the 18 `current/` members is left **on**, on the analyzer's precedent and for the
+analyzer's reason: `/objects/history` no longer reads it and nothing else in this project does
+either, but the event branch returns `[]` on a query failure rather than falling back, so turning
+it off converts a Postgres outage from degraded into total. Land, measure, then flip — both sets
+together.
+
 ### `i3x/ignition/code.py` and `i3x/handlers/code.py` — coalesced history windows
 
 Added 2026-09-19. The section above moves an *event* off the historian entirely. This one is the
@@ -306,8 +360,8 @@ tag there is no union of timestamps to coalesce and every row was already whole.
 ## Updating from upstream
 
 Re-clone the repo at the new commit, re-copy the file list above, re-apply the `PROVIDERS` and
-`ALARM_JOURNAL` edits, the declared-relationships edit, the two event-store history edits
-(`lims_review` and `cell_analyzer`, which share the `_EVENT_HISTORY` table) and the coalesced
-history windows — diff this commit's three `code.py` files (`i3x/ignition`, `i3x/handlers`,
+`ALARM_JOURNAL` edits, the declared-relationships edit, the three event-store history edits
+(`lims_review`, `cell_analyzer` and `particle_counter`, which share the `_EVENT_HISTORY` table)
+and the coalesced history windows — diff this commit's three `code.py` files (`i3x/ignition`, `i3x/handlers`,
 `i3x/utils`) against upstream's before overwriting; the features land in the places named above.
 Then update the commit row in this file. There is nothing else of ours in here.

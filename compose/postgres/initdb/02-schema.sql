@@ -279,6 +279,24 @@ CREATE TABLE em.reading (
     environment     jsonb,                     -- flow / temperature / humidity averages
     occurred_at     timestamptz NOT NULL,      -- completedAt, the instrument's clock
     ingested_at     timestamptz NOT NULL DEFAULT now(),
+    -- The reading as an OBJECT: the counter instance's `current/` member
+    -- document, nested exactly as i3X `POST /objects/value` returns it
+    -- (`current.status`, `current.ch_0_5`, `current.conditions.flow_rate_lpm`)
+    -- with the DateTime member as epoch millis. The columns above are the
+    -- reading as a ROW, and pattern 7's `sql` source still reads them; this is
+    -- the same reading in the shape the i3X history branch hands back untouched,
+    -- so nothing on the read side has to map it. Same argument, same shape, as
+    -- lims.review_event.document and qc.analyzer_result.document -- without it
+    -- the server reassembles an analysis out of a dozen forward-filled scalar
+    -- series and reports states the object was never in.
+    --
+    -- `current/` only: `state/` is the poll's cursor and `config/` is the
+    -- cleanroom rule, and neither is a fact about the reading. migrate-13.
+    --
+    -- **Nullable here only to match migrate-13**, where it has to be: that file
+    -- adds the column to a live table whose writer arrives separately, by an
+    -- Ignition project scan. Every row this schema's writer produces has one.
+    document        jsonb,
     -- The dedupe guard, enforced. `particle_counter_poll` also skips anything
     -- at or below its last_sequence watermark, but a restarted gateway
     -- replaying a page must not be able to double-insert. An insert that

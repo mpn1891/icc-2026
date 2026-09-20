@@ -3,6 +3,10 @@
 > **Raised 2026-09-19. Nothing is built until these are answered.** Six questions, each with a
 > recommendation; *"as recommended"* is a complete answer to all six.
 >
+> **All six are now answered** — see *Answered 2026-09-20* below, which is the section to read
+> first. Only question 5, the history flags, is deliberately left open. The questions themselves are
+> kept below as written, because the reasoning in them is what the answers were chosen against.
+>
 > The working plan for this branch lives outside the repo at
 > `C:\Users\matt\.claude\plans\if-i-wanted-to-rosy-lantern.md` and is the source of truth for
 > phases and contracts; this file is the questions it cannot answer by itself. The answers go
@@ -15,6 +19,42 @@
 > [`03-opcua-analyzer-i3x.md`](03-opcua-analyzer-i3x.md), which is the file to work from for
 > `cell-analyzer-01`. What is left here and unsplit is the **particle counter**: questions 1 and 2,
 > and the counter's half of 5. Question 6 is shared and lands with whichever pass runs first.
+
+## Answered 2026-09-20 — the counter, built
+
+**1 and 2, as recommended.** The counter's stored document is **nested**, matching
+`/objects/value`, and the 13,215 rows already in `em.reading` were **backfilled** from the columns
+they hold. `em.reading` gained a `document` jsonb column
+([`migrate-13-em-reading-document.sql`](../../compose/postgres/migrate-13-em-reading-document.sql),
+mirrored into `initdb/02-schema.sql` in the same pass), written by `particle_counter_poll` from one
+`members` list that also feeds the tags, and served by `_counterHistory` in the i3X server's
+`_EVENT_HISTORY` table. `sample_chain._environment_i3x` moved to `value["current"]` in the same
+change, as question 1 said it must.
+
+**One sub-decision the questions did not reach, made while building: the document is the
+instance's `current/` folder only, not the whole instance value.** That is narrower than the
+analyzer's (question 4, answered *whole instance* on 2026-09-19), and the difference is about the
+two writers rather than about the two objects. The analyzer's values arrive from an OPC
+subscription, so there is no members list to build a document from and one `readBlocking` on the
+instance was the only honest capture — `command/` and `uptime` come along with it. The counter's
+poll authors every value it stores, so the document is nested from the same list the tags get and
+holds exactly that list: `state/` is the poll's cursor and watermark, `config/` is the cleanroom
+threshold, and neither is a fact about a reading. It is also the only scope the backfill could
+honestly produce — no row in that table records what the cursor was when it landed. **Reversing it
+is one list in `particle_counter_poll._members` plus the backfill statement**, if the identity with
+`/objects/value` is judged to be worth the poll's bookkeeping riding inside every reading.
+
+**5 is still open and still deferrable.** Tag history stays on for all 56 members (38 under
+`cell_analyzer/result/`, 18 under `particle_counter/current/`), on the reason the analyzer pass
+gave: `/objects/history` no longer reads either set and nothing else in this project does, but the
+event branch returns `[]` on a query failure rather than falling back, so turning it off converts a
+Postgres outage from degraded into total. Land, measure, then flip — both sets together.
+
+**6 landed with the analyzer pass.** `lims.review_event` is in `initdb/02-schema.sql`, and so are
+`qc.analyzer_result` and now `em.reading.document`.
+
+**3 and 4 were answered and built on 2026-09-19** — see
+[`03-opcua-analyzer-i3x.md`](03-opcua-analyzer-i3x.md).
 
 ## What this is about
 
@@ -159,11 +199,14 @@ and another way through its parent — which is the bug that closure was added t
 
 ## Once these are answered
 
-1. migrate-12 — `em.reading.document`, `qc.analyzer_result`, and `lims.review_event` mirrored into
-   `initdb/02-schema.sql`.
-2. `particle_counter_poll` — one `members` list, two sinks.
-3. `opcua_event` / `model_feed` — the analyzer's document, stored where question 3 says.
-4. `i3x/handlers/code.py` — the dispatch table, two more store readers.
-5. `sample_chain._environment_i3x` — only if question 1 says nested.
-6. Phase 1a's history flags — only if question 5 says off.
+1. ~~migrate-12~~ — done, split in two: `qc.analyzer_result` plus the `lims.review_event` and
+   `qc.analyzer_result` mirrors landed as migrate-12 on 2026-09-19; `em.reading.document` and its
+   mirror landed as **migrate-13** on 2026-09-20.
+2. ~~`particle_counter_poll` — one `members` list, two sinks.~~ Done: `_members` builds the list,
+   `_document` nests it, `_store` and `_write_current` each take it.
+3. ~~`opcua_event` / `model_feed` — the analyzer's document.~~ Done 2026-09-19, from the transform.
+4. ~~`i3x/handlers/code.py` — the dispatch table, two more store readers.~~ Done: `_analyzerHistory`
+   2026-09-19, `_counterHistory` 2026-09-20. The table took the third type without a change.
+5. ~~`sample_chain._environment_i3x`~~ — done; question 1 said nested, so it reads `value["current"]`.
+6. Phase 1a's history flags — **still open**, question 5. Both sets together, after measurement.
 7. Docs: this file's answers folded back into the plan, then phase 5.

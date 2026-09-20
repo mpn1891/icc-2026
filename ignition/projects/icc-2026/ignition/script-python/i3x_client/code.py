@@ -257,17 +257,24 @@ def history(element_ids, start, end, max_depth=1):
     `{"values": [...], "isComposition": ...}`, each entry
     `{"value": {...}, "quality": ..., "timestamp": ...}`, oldest first.
 
-    **The keys inside each `value` are leaf tag names, flattened.** The server
-    builds them with `getTagNameFromPath`, so `batch_data/batch_id` arrives as
-    `batch_id` and `current/conditions/flow_rate_lpm` as `flow_rate_lpm`. Two
-    tags with the same leaf name under different folders of one object would
-    collide; nothing in this model has that, and it is worth knowing before
-    adding one.
+    **The shape of `value` depends on where that object's history lives**, and
+    the caller has to know which. For an object served from the tag historian --
+    the bioreactor, the valves, the process values -- the keys are leaf tag
+    names, flattened: the server builds them with `getTagNameFromPath`, so
+    `batch_data/batch_id` arrives as `batch_id`. Two tags sharing a leaf name
+    under different folders of one object would collide, which is worth knowing
+    before adding one. Those rows are also forward-filled -- one row per distinct
+    change instant across the object's tags, each tag carrying its last value as
+    of that instant, null only before its first stored point in the range, or
+    right through it if it is not historised at all.
 
-    Rows are forward-filled: the server emits one row per distinct change
-    instant across all of the object's tags, and every row carries each tag's
-    last value as of that instant. A tag reads null only before its first stored
-    point in the range -- or right through it, if it is not historised at all.
+    For an object the server's local fork serves from an **event store**, the
+    value is the stored member document, nested exactly as `/objects/value`
+    returns it, and nothing is forward-filled because nothing was taken apart:
+    one row is one event. That is `lims_review`, `cell_analyzer` and, since
+    migrate-13, `particle_counter`. `ignition/projects/i3x/PROVENANCE.md` is the
+    list, and it is the server's decision, not this client's -- a caller that
+    guesses wrong reads every key as `None` rather than erroring.
     """
     document, reason = _call("/objects/history",
                              {"elementIds": list(element_ids),

@@ -34,12 +34,20 @@ ALARM_JOURNAL = "icc26_alarm"
 # Boolean module flag). Distinct paths in a stored document cannot collide.
 # `qc.analyzer_result` keeps it whole, in the shape /objects/value returns.
 #
+# `particle_counter`: the third of the same. One analysis is eighteen members
+# written by `particle_counter_poll` in a single writeBlocking, so again they
+# have no cadence of their own; measured 2026-09-19, one analysis came back from
+# the historian as four rows inside 32 ms with every member null but
+# `total_volume_l`. `em.reading` has been that reading's record since 2026-08-27
+# and gained the member document in migrate-13.
+#
 # Objects whose members DO move independently (a process value and its limits)
 # stay on the historian, where forward-fill is the correct semantics.
 REVIEW_TYPE = "_types_/lims_review"
 ANALYZER_TYPE = "_types_/cell_analyzer"
-# One Ignition datasource, both stores -- the `ICC26` connection, which is the
-# icc26 database as the icc26 role. NOT `pg_db`, which is the historian's own
+COUNTER_TYPE = "_types_/particle_counter"
+# One Ignition datasource, all three stores -- the `ICC26` connection, which is
+# the icc26 database as the icc26 role. NOT `pg_db`, which is the historian's own
 # store and will pass a glance in the dropdown before reading nowhere useful.
 # Named for what it holds rather than for the first store that used it: it was
 # LIMS_DATASOURCE until the analyzer store joined it on 2026-09-19.

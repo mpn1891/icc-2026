@@ -587,6 +587,64 @@ def _analyzerHistory(udtInstance, startDate, endDate, log):
 		values.append({"value":system.util.jsonDecode(str(row["document"])), "quality":"Good", "timestamp":i3x.utils.formatUtc(row["ts"])})
 	return values
 
+def _counterHistory(udtInstance, startDate, endDate, log):
+	# Local fork (icc-2026). HistoricalValueResult entries for the particle
+	# counter, read from em.reading instead of the tag historian.
+	#
+	# em.reading is not a new store -- it has been pattern 6's record since
+	# 2026-08-27, one row per analysis, written by `particle_counter_poll` before
+	# it publishes. What migrate-13 added is `document`: that same reading in the
+	# object's own shape, built from the same `members` list the tags are written
+	# from. So this reader hands the document back untouched, for the reason
+	# _reviewHistory states: the i3x project cannot import
+	# `particle_counter_poll` -- neither project inherits the other -- so a
+	# mapping written here would be a second copy of the writer, free to drift.
+	#
+	# The document holds the instance's `current/` folder only, so a history row
+	# carries `current.status` and `current.conditions.flow_rate_lpm` exactly as
+	# /objects/value does, and does NOT carry `state/` or `config/` -- the poll's
+	# cursor and the cleanroom threshold are not facts about a reading. That is a
+	# narrower document than the analyzer's, and deliberately: migrate-13 says why.
+	#
+	# Scoped by the instance's OWN NAME, which is a third key rule again. The
+	# review keys on its parent vessel and the analyzer on a device_id parameter;
+	# this instance is named `particle-counter-01` and em.reading.device_id holds
+	# exactly that string, because the writer derives it from the last segment of
+	# this same tag path (`particle_counter_poll._device_id`). One rule, applied
+	# from both ends, so the two cannot drift apart in either direction.
+	deviceId = str(udtInstance["path"]).split("/")[-1].strip()
+	if deviceId == "":
+		log.warn("Counter history for %s: empty instance name, returning empty" % udtInstance["elementId"])
+		return []
+
+	# Ordered by occurred_at -- the INSTRUMENT's completedAt, the instant the
+	# analysis is about, not `ingested_at` which is when the poll found it. That
+	# is the same column pattern 7's `sql` source searches, so both of its sources
+	# now agree on which instant a reading happened at. The store's acquisition
+	# column is named `occurred_at` here and `ts` in the other two; the shape of
+	# the query is otherwise identical, and ix_em_reading_lookup serves it.
+	#
+	# `document IS NULL` is a row stored before migrate-13's writer was deployed.
+	# Skipped rather than served as a row with a null value: a reading whose
+	# members are all absent is exactly the invented state this branch exists to
+	# stop returning. A failure here logs and returns empty rather than 500ing the
+	# whole bulk request, as the alarm-journal and the other two branches do.
+	try:
+		rows = system.db.runPrepQuery(
+			"SELECT occurred_at, document FROM em.reading "
+			"WHERE device_id = ? AND occurred_at BETWEEN ? AND ? "
+			"AND document IS NOT NULL ORDER BY occurred_at",
+			[deviceId, startDate, endDate], i3x.ignition.EVENT_STORE_DATASOURCE)
+	except:
+		import traceback
+		log.warn("Counter history query failed for %s (datasource '%s'): %s" % (udtInstance["elementId"], i3x.ignition.EVENT_STORE_DATASOURCE, traceback.format_exc().splitlines()[-1]))
+		return []
+
+	values = []
+	for row in rows:
+		values.append({"value":system.util.jsonDecode(str(row["document"])), "quality":"Good", "timestamp":i3x.utils.formatUtc(row["occurred_at"])})
+	return values
+
 # Local fork (icc-2026). Type suffix -> the reader that holds that type's truth.
 # Upstream's own `ignition-alarm` branch is the precedent for the whole idea:
 # an object's history comes from whatever store holds it, and the alarm journal
@@ -605,6 +663,7 @@ def _analyzerHistory(udtInstance, startDate, endDate, log):
 _EVENT_HISTORY = (
 	(i3x.ignition.REVIEW_TYPE, _reviewHistory),
 	(i3x.ignition.ANALYZER_TYPE, _analyzerHistory),
+	(i3x.ignition.COUNTER_TYPE, _counterHistory),
 )
 
 def _eventHistoryReader(udtInstance):

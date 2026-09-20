@@ -37,6 +37,15 @@ the only copy of the rule; pattern 7 reads `status` and must never compare count
 itself. docs/00-architecture.md, "Derived flags travel with the fact that
 produced them".
 
+**The reading is stored twice over, in one row.** `em.reading`'s columns are the
+reading as a row and pattern 7's `sql` source reads them; `em.reading.document`
+is the same reading as an OBJECT -- the counter instance's `current/` member
+document, in the shape the i3X server's `/objects/value` returns -- and the i3X
+history branch hands it back untouched. Both come off the one `members` list
+`_members` builds, which also goes to the tags, so the row, the document and the
+live object cannot say three different things. migrate-13, and the reason is in
+`_document`.
+
 **The stale-cursor trap is deliberate.** Restart the simulator and its sequence
 numbers begin at 1 again while `state/cursor` still points past the end. The
 server answers "nothing after 45" -- correctly -- and this poll runs perfectly
@@ -121,8 +130,8 @@ query getSamples($cursor: String, $limit: Int) {
 
 _INSERT = ("INSERT INTO em.reading "
            "(device_id, analysis_id, sequence_number, location, operator, status, "
-           " total_volume_l, channels, environment, occurred_at) "
-           "VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?) "
+           " total_volume_l, channels, environment, occurred_at, document) "
+           "VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?::jsonb) "
            "ON CONFLICT (device_id, analysis_id) DO NOTHING")
 
 # The cached bearer token. A dict rather than a module global with `global`, so
@@ -291,7 +300,96 @@ def _environment(record):
     }
 
 
-def _store(record):
+def _millis(value):
+    """A java.util.Date as epoch milliseconds, or the value untouched.
+
+    **This is the i3X server's DateTime encoding, not a choice made here.** A
+    DateTime member goes out of `/objects/value` as a bare number of epoch
+    millis -- measured 2026-09-18 against the vendored server, and what
+    `sample_chain._row_instant` tries first. The stored document has to use the
+    same encoding or the object read from history would not match the object
+    read live, which is the whole point of storing it pre-shaped.
+
+    Copied from `model_feed._millis` rather than imported, as `_iso` and
+    `_parse_iso` above are copied from `sample_chain`: two modules on opposite
+    sides of the stack should not acquire an import edge over two lines, and the
+    rule they both state belongs to the server, not to either of them.
+    """
+    if isinstance(value, Date):
+        return value.getTime()
+    return value
+
+
+def _members(record):
+    """The analysis as `(member path, value)` pairs, relative to the instance.
+
+    **One list, three sinks**: the tag write in `_write_current`, the stored
+    document in `_document`, and through that the i3X history row. The idiom is
+    `model_feed.write_review`'s, for the same reason -- the shape of this object
+    is defined in exactly one place, so the live object and its history cannot
+    drift apart no matter which one a consumer reads.
+
+    The paths are the real member paths, folders and all, because that is what
+    makes `_document` able to nest by construction rather than by a second
+    statement of the layout.
+
+    `current/` only. `state/` is the poll's own cursor and watermark and
+    `config/` is the cleanroom rule; neither is a fact about the analysis, and
+    an environmental record that carries our bookkeeping inside it is a record
+    somebody has to explain.
+    """
+    members = [
+        # The instrument's completedAt -- the instant the analysis is ABOUT, and
+        # the one pattern 7 searches against. Not `ingest_ts`, which is ours.
+        ("current/ts", _parse_iso(record["completed_at"])),
+        ("current/sequence_number", record["sequence_number"]),
+        # OURS, not the instrument's: `_build` set it against
+        # config/excursion_threshold. The flag travels with the fact.
+        ("current/status", record["status"]),
+        ("current/location", record["location"]),
+        ("current/operator", record["operator"]),
+        ("current/total_volume_l", record["total_volume_l"]),
+    ]
+    # The same three values `_store` puts in em.reading.environment, under the
+    # same names, so whichever source pattern 7 reads it rebuilds one block.
+    for name, value in _environment(record).items():
+        members.append(("current/conditions/" + name, value))
+    for channel in record["channels"]:
+        members.append(("current/" + _channel_tag(channel["size_um"]),
+                        channel["count"]))
+    return members
+
+
+def _document(members):
+    """The members nested by their own paths: the reading as an i3X object.
+
+    `[("current/conditions/humidity_pct", 43.5), ...]` becomes
+    `{"current": {"conditions": {"humidity_pct": 43.5}, ...}}`, which is exactly
+    what `POST /objects/value` returns for this instance's `current` folder --
+    the server builds its value document out of the same tag paths, so nesting
+    on "/" here is not an imitation of its layout, it *is* the layout.
+
+    **Stored pre-shaped so the read side can hand it back untouched.** The
+    vendored `i3x` project cannot import this module -- neither project inherits
+    the other -- so a mapping written over there would be a second copy of this
+    function, free to drift the first time a member is added. `_counterHistory`
+    in `i3x/handlers/code.py` therefore does no mapping at all, and that is only
+    sound because of this function. See `ignition/projects/i3x/PROVENANCE.md`.
+
+    A member whose value is None is written as a null, never skipped: the
+    object's shape must not depend on whether the instrument reported a field.
+    """
+    document = {}
+    for path, value in members:
+        parts = str(path).split("/")
+        node = document
+        for part in parts[:-1]:
+            node = node.setdefault(part, {})
+        node[parts[-1]] = _millis(value)
+    return document
+
+
+def _store(record, members):
     """INSERT INTO em.reading. Returns the number of rows written: 1 or 0.
 
     **Zero means the analysis was already stored**, and because storing happens
@@ -303,6 +401,11 @@ def _store(record):
     instrument restarts, so keying on them would make every reading of a fresh
     run collide with the previous run's rows and be dropped in silence, which is
     precisely the failure the stale-cursor demo is supposed to recover FROM.
+
+    **Takes the same `members` list the tags get**, and stores the document it
+    nests into alongside the columns. The columns are the reading as a row and
+    the document is the reading as an object; both are written in one statement
+    so no reader can ever find one without the other. migrate-13.
     """
     return system.db.runPrepUpdate(
         _INSERT,
@@ -315,55 +418,49 @@ def _store(record):
          record["total_volume_l"],
          system.util.jsonEncode(record["channels"]),
          system.util.jsonEncode(_environment(record)),
-         _parse_iso(record["completed_at"])],
+         _parse_iso(record["completed_at"]),
+         system.util.jsonEncode(_document(members))],
         database=DATASOURCE)
 
 
-def _write_current(base, record):
-    """The live view. Overwritten by every published analysis, and historised.
+def _write_current(base, members):
+    """The live view. Overwritten by every published analysis.
 
-    **History on this folder was off until 2026-09-18, and the reason it was off
-    was a good one**: an analysis is one row -- six channel counts, a status, a
-    location, an operator, a volume and three conditions -- and tag history
-    stores it as a dozen independent scalar series that merely share a
-    timestamp. `em.reading` held the analysis whole, and pattern 7 read that.
+    **Takes the same `members` list `_store` was given**, so the tags and the
+    stored document are the same values under the same names by construction,
+    not by two lists kept in step. `_members` holds the paths; this function
+    holds nothing but the prefix.
 
-    It is on now because pattern 7 can be asked to take its context over i3X
-    instead, and there `POST /objects/history` is the composite read path: no
-    join, no query language, one call per object over a time range. The
-    objection is answered by the server's own behaviour. It returns flat rows
-    keyed by leaf tag name and **forward-fills** them -- last observation
-    carried forward, null only before a tag's first point in the range -- so the
-    dozen scattered series come back as one row per instant with all dozen
-    columns populated. The analysis is reassembled at read time instead of being
-    kept whole at write time.
+    **On tag history, third revision, and this one is the honest end of it.**
+    History on `current/` was off originally, and the reason was good: an
+    analysis is one event -- six channel counts, a status, a location, an
+    operator, a volume and three conditions -- and the historian stores it as a
+    dozen independent scalar series that merely share an instant. It was turned
+    on 2026-09-18 because `POST /objects/history` was then the i3X read path for
+    this object and the historian was the only thing behind it. Measured
+    2026-09-19, that path returned four rows inside 32 ms for one analysis with
+    every member null but `total_volume_l`: forward-fill reassembling states the
+    object was never in. The objection was right the first time.
 
-    The consequence is that a tag which is not historised is a null column in
-    every one of those rows. So this is **all** of `current/`, `operator` and
-    `conditions/` included, and **none** of `state/` or `config/`: those two
-    describe the poll, not the analysis, and nothing reading an environmental
-    reading wants our cursor in the row.
+    Since migrate-13 the i3X history for this object comes from
+    `em.reading.document` and does not touch the historian at all. So these tags
+    are historised for **no reader**, and the reason they are still historised is
+    only that `_counterHistory` returns an empty list on a query failure rather
+    than falling back -- turning history off converts a Postgres outage from
+    degraded into total. Land, measure, then flip; the same position the
+    analyzer's 38 `result/` members are in, for the same reason.
+
+    What the tags are genuinely for is unchanged and is not history: they are the
+    object's live value on `/objects/value`, what an i3X subscription pushes, and
+    what the Explorer shows. That is why every `current/` member is still written
+    here, `operator` and `conditions/` included, and why `state/` and `config/`
+    are still not -- those describe the poll, not the analysis.
     """
-    paths = [base + "/current/ts",
-             base + "/current/sequence_number",
-             base + "/current/status",
-             base + "/current/location",
-             base + "/current/operator",
-             base + "/current/total_volume_l"]
-    values = [_parse_iso(record["completed_at"]),
-              record["sequence_number"],
-              record["status"],
-              record["location"],
-              record["operator"],
-              record["total_volume_l"]]
-    # The same three values `_store` puts in em.reading.environment, under the
-    # same names, so whichever source pattern 7 reads it rebuilds one block.
-    for name, value in _environment(record).items():
-        paths.append(base + "/current/conditions/" + name)
+    paths = []
+    values = []
+    for path, value in members:
+        paths.append(base + "/" + path)
         values.append(value)
-    for channel in record["channels"]:
-        paths.append(base + "/current/" + _channel_tag(channel["size_um"]))
-        values.append(channel["count"])
     system.tag.writeBlocking(paths, values)
 
 
@@ -500,12 +597,16 @@ def poll(base=BASE):
                     continue
 
                 record = _build(sample, device_id, threshold)
+                # Built once, here, and handed to both sinks: the row and the
+                # document go into `em.reading` together and the same values
+                # land on the tags. See `_members`.
+                members = _members(record)
 
                 # Store, then publish. A publish failure leaves a stored reading
                 # that never reached the backbone -- recoverable, and pattern 7
                 # can still find it. The reverse leaves a message on the wire the
                 # store cannot corroborate.
-                rows = _store(record)
+                rows = _store(record, members)
                 if rows:
                     stored = stored + 1
                     # A JSON STRING, not the dict. `publishEvent` coerces its
@@ -514,7 +615,7 @@ def poll(base=BASE):
                     # decodes what it is handed.
                     system.eventstream.publishEvent(
                         PROJECT, STREAM, system.util.jsonEncode(record), False)
-                    _write_current(base, record)
+                    _write_current(base, members)
                     published = published + 1
                 else:
                     logger.infof("analysis %s was already stored; not republished",
