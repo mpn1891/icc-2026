@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<!--
+  The i3X consumer's screen.
+
+  This page has one job and it is not the verdict. The verdict is three words
+  and `sample_chain` already reaches it inside the gateway. What nobody can see
+  from inside the gateway is HOW it was reached, so this page is built around
+  the exchanges: every request this client sent and every response the server
+  returned, verbatim, next to the conclusion drawn from them. If a beat lands
+  here it is somebody reading the raw JSON and realising there is nothing else
+  in it — no tag path, no SQL, no broker, no vendor.
+
+  Three things are deliberate:
+
+    The exchange is one click away, never hidden.   A summary the audience has
+                                                    to trust is the opposite of
+                                                    this demo's argument.
+    `age_s` is the largest number on the card.      A reading is evidence only
+                                                    if it is near the sample in
+                                                    time. Bury the age and a
+                                                    forty-minute-old count reads
+                                                    as current.
+    "Unverifiable" is as loud as "dirty".           A sample whose room cannot
+                                                    be evidenced cannot be
+                                                    released. Silence must not
+                                                    be able to pass for a pass.
+
+  No external assets of any kind — no fonts, no CDNs, no images. The demo has to
+  run with networking disabled (docs/00-architecture.md).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>i3X consumer</title>
+<style>
+  :root {
+    --bg: #11151a;
+    --panel: #1b212a;
+    --panel-2: #222a35;
+    --edge: #2e3946;
+    --ink: #e7edf3;
+    --muted: #8d9bab;
+    --dim: #63707e;
+    --accent: #4aa3e0;
+    --clean: #2fa36b;
+    --dirty: #d1544b;
+    --unsure: #c9973a;
+    --push: #6f7fd8;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+  }
+  a { color: var(--accent); }
+
+  header {
+    border-bottom: 1px solid var(--edge); background: var(--panel);
+    padding: .75rem 1.1rem; display: flex; flex-wrap: wrap;
+    gap: .6rem 1.4rem; align-items: baseline;
+  }
+  header h1 { font-size: 1rem; margin: 0; font-weight: 600; letter-spacing: .01em; }
+  header .sub { color: var(--muted); font-size: .8rem; }
+  header .spacer { flex: 1; }
+  .stat { color: var(--muted); font-size: .8rem; }
+  .stat b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .pill {
+    display: inline-block; padding: .1rem .5rem; border-radius: 999px;
+    font-size: .72rem; letter-spacing: .04em; text-transform: uppercase;
+    border: 1px solid var(--edge); color: var(--muted);
+  }
+  .pill.streaming { color: #cdebdb; border-color: var(--clean); background: #163025; }
+  .pill.connecting, .pill.reconnecting, .pill.starting { color: #f0e0bd; border-color: var(--unsure); background: #2e2617; }
+  .pill.error { color: #f4d2d0; border-color: var(--dirty); background: #33201f; }
+
+  main { display: grid; grid-template-columns: 300px 1fr; gap: 1rem; padding: 1rem; align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; }
+  .card > h2 {
+    margin: 0; padding: .55rem .8rem; font-size: .76rem; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--edge);
+  }
+  .card .body { padding: .7rem .8rem; }
+  aside .card { margin-bottom: 1rem; }
+
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: .2rem .7rem; font-size: .82rem; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-family: var(--mono); font-size: .78rem; word-break: break-all; }
+
+  .watch { font-family: var(--mono); font-size: .78rem; margin-bottom: .45rem; }
+  .watch .eid { color: var(--dim); display: block; font-size: .7rem; word-break: break-all; }
+
+  .episode { margin-bottom: .9rem; }
+  .ehead {
+    display: flex; flex-wrap: wrap; gap: .5rem .9rem; align-items: center;
+    padding: .6rem .8rem; border-bottom: 1px solid var(--edge);
+  }
+  .verdict {
+    font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    font-size: .78rem; padding: .18rem .55rem; border-radius: 4px; border: 1px solid;
+  }
+  .verdict.clean { color: #b6e8cd; border-color: var(--clean); background: #163025; }
+  .verdict.dirty { color: #f6cecb; border-color: var(--dirty); background: #33201f; }
+  .verdict.unverifiable { color: #f0e0bd; border-color: var(--unsure); background: #2e2617; }
+  .sample { font-family: var(--mono); font-size: .86rem; }
+  .ehead .who { color: var(--muted); font-size: .8rem; }
+  .ehead .when { color: var(--dim); font-size: .75rem; margin-left: auto; font-family: var(--mono); }
+  .trigger { font-size: .68rem; letter-spacing: .05em; text-transform: uppercase;
+             color: var(--push); border: 1px solid #3a4470; border-radius: 3px; padding: .05rem .35rem; }
+  .trigger.startup { color: var(--dim); border-color: var(--edge); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .8rem; padding: .7rem .8rem; }
+  .field .label { color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; }
+  .field .value { font-family: var(--mono); font-size: .86rem; }
+  .field.age .value { font-size: 1.5rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .field .note { color: var(--dim); font-size: .72rem; }
+
+  .reason { margin: 0 .8rem .7rem; padding: .5rem .6rem; border-left: 3px solid var(--unsure);
+            background: #241f14; color: #f0e0bd; font-size: .82rem; }
+
+  table.ch { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .78rem; }
+  table.ch th { text-align: left; color: var(--muted); font-weight: 500; padding: .12rem .5rem .12rem 0; }
+  table.ch td { padding: .12rem .5rem .12rem 0; font-variant-numeric: tabular-nums; }
+
+  details { border-top: 1px solid var(--edge); }
+  details > summary {
+    cursor: pointer; padding: .45rem .8rem; color: var(--muted); font-size: .78rem;
+    letter-spacing: .03em; user-select: none;
+  }
+  details > summary:hover { color: var(--ink); }
+  details[open] > summary { color: var(--ink); }
+
+  .call { border-top: 1px dashed var(--edge); padding: .5rem .8rem; }
+  .call:first-child { border-top: none; }
+  .callhead { display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; font-family: var(--mono); font-size: .78rem; }
+  .method { color: var(--accent); font-weight: 600; }
+  .status-ok { color: var(--clean); }
+  .status-bad { color: var(--dirty); }
+  .ms { color: var(--dim); margin-left: auto; }
+  pre {
+    margin: .35rem 0 0; padding: .5rem .6rem; background: #0d1116; border: 1px solid var(--edge);
+    border-radius: 5px; overflow: auto; max-height: 320px;
+    font-family: var(--mono); font-size: .74rem; line-height: 1.45; color: #cfe0ef;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  pre .lbl { color: var(--dim); }
+  .trunc { color: var(--unsure); font-size: .72rem; }
+  .empty { color: var(--dim); padding: 1.2rem .8rem; font-style: italic; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>i3X consumer</h1>
+  <span class="sub" id="base"></span>
+  <span class="pill" id="conn">starting</span>
+  <span class="sub" id="conn-detail"></span>
+  <span class="spacer"></span>
+  <span class="stat">pushes <b id="c-push">0</b></span>
+  <span class="stat">episodes <b id="c-ep">0</b></span>
+  <span class="stat">keep-alives <b id="c-ka">0</b></span>
+  <span class="stat">sessions <b id="c-sess">0</b></span>
+</header>
+
+<main>
+  <aside>
+    <section class="card">
+      <h2>Subscribed</h2>
+      <div class="body" id="watching"></div>
+    </section>
+    <section class="card">
+      <h2>Server</h2>
+      <div class="body"><dl class="kv" id="server"></dl></div>
+    </section>
+    <section class="card">
+      <h2>Discovery</h2>
+      <div id="session"></div>
+    </section>
+  </aside>
+
+  <section id="episodes"></section>
+</main>
+
+<script>
+"use strict";
+
+// Open <details> survive a re-render. The page rebuilds the episode list
+// whenever a new episode arrives, and an audience mid-read of one exchange must
+// not have it shut in their face.
+var openKeys = new Set();
+var lastSignature = "";
+
+function esc(text) {
+  return String(text === null || text === undefined ? "" : text)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function pretty(value) {
+  if (value === null || value === undefined) { return ""; }
+  if (typeof value === "string") {
+    var trimmed = value.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try { return JSON.stringify(JSON.parse(trimmed), null, 2); } catch (e) { return value; }
+    }
+    return value;
+  }
+  try { return JSON.stringify(value, null, 2); } catch (e) { return String(value); }
+}
+
+function clock(iso) {
+  if (!iso) { return "—"; }
+  return String(iso).replace("T", " ").replace("Z", "");
+}
+
+function num(value, digits) {
+  if (value === null || value === undefined || value === "") { return "—"; }
+  var asNumber = Number(value);
+  return isNaN(asNumber) ? String(value) : asNumber.toFixed(digits === undefined ? 1 : digits);
+}
+
+function detailsBlock(key, summary, inner) {
+  var open = openKeys.has(key) ? " open" : "";
+  return '<details data-key="' + esc(key) + '"' + open + '>' +
+           '<summary>' + esc(summary) + '</summary>' + inner +
+         '</details>';
+}
+
+function renderCall(call) {
+  var statusClass = (call.status && call.status >= 200 && call.status < 300) ? "status-ok" : "status-bad";
+  var head = '<div class="callhead">' +
+      '<span class="method">' + esc(call.method) + '</span>' +
+      '<span>' + esc(call.path) + '</span>' +
+      '<span class="' + statusClass + '">' + esc(call.error ? "no answer" : call.status) + '</span>' +
+      '<span class="ms">' + esc(num(call.elapsed_ms, 1)) + ' ms</span>' +
+    '</div>';
+  var body = "";
+  if (call.request) {
+    body += '<pre><span class="lbl">request</span>\n' + esc(pretty(call.request)) + '</pre>';
+  }
+  if (call.error) {
+    body += '<pre><span class="lbl">error</span>\n' + esc(call.error) + '</pre>';
+  } else {
+    body += '<pre><span class="lbl">response</span>\n' + esc(pretty(call.response)) + '</pre>';
+    if (call.truncated) {
+      body += '<div class="trunc">response truncated for display — the client read all of it</div>';
+    }
+  }
+  return '<div class="call">' + head + body + '</div>';
+}
+
+function renderEnvironment(env) {
+  if (!env) { return ""; }
+  var rows = (env.channels || []).map(function (channel) {
+    return "<tr><td>" + esc(num(channel.size_um, 1)) + " µm</td><td>" + esc(channel.count) + "</td></tr>";
+  }).join("");
+  var conditions = env.conditions || {};
+  return '<div class="grid">' +
+      '<div class="field age"><div class="label">age</div>' +
+        '<div class="value">' + esc(num(env.age_s, 1)) + ' s</div>' +
+        '<div class="note">nearest reading ' + esc(env.nearest_side || "") + ' the sample</div></div>' +
+      '<div class="field"><div class="label">status</div><div class="value">' + esc(env.status) + '</div>' +
+        '<div class="note">read, never recomputed</div></div>' +
+      '<div class="field"><div class="label">reading taken</div><div class="value">' + esc(clock(env.occurred_at)) + '</div>' +
+        '<div class="note">seq ' + esc(env.sequence_number) + ', ' + esc(num(env.total_volume_l, 3)) + ' L</div></div>' +
+      '<div class="field"><div class="label">location</div><div class="value">' + esc(env.location) + '</div>' +
+        '<div class="note">prose, not a join key</div></div>' +
+      '<div class="field"><div class="label">counts</div><table class="ch">' +
+        '<tr><th>channel</th><th>count</th></tr>' + rows + '</table></div>' +
+      '<div class="field"><div class="label">conditions</div><div class="value">' +
+        esc(num(conditions.flow_rate_lpm, 2)) + ' LPM<br>' +
+        esc(num(conditions.temperature_c, 1)) + ' °C<br>' +
+        esc(num(conditions.humidity_pct, 1)) + ' %</div></div>' +
+    '</div>';
+}
+
+function renderEpisode(episode) {
+  var review = episode.review || {};
+  var head = '<div class="ehead">' +
+      '<span class="verdict ' + esc(episode.verdict) + '">' + esc(episode.verdict) + '</span>' +
+      '<span class="sample">' + esc(review.sample_id || "no sample") + '</span>' +
+      '<span class="who">' + esc(episode.object) + ' · ' + esc(review.disposition || "—") +
+        ' · ' + esc(review.analyst || "—") + '</span>' +
+      '<span class="trigger ' + esc(episode.trigger) + '">' + esc(episode.trigger) + '</span>' +
+      '<span class="when">' + esc(clock(episode.received_at)) + '</span>' +
+    '</div>';
+
+  var facts = '<div class="grid">' +
+      '<div class="field"><div class="label">sample drawn</div>' +
+        '<div class="value">' + esc(clock(episode.sample_instant)) + '</div>' +
+        '<div class="note">from ' + esc(episode.sample_instant_from || "—") + '</div></div>' +
+      '<div class="field"><div class="label">signed off</div>' +
+        '<div class="value">' + esc(clock(review.verified_at)) + '</div>' +
+        '<div class="note">by ' + esc(review.analyst || "—") + '</div></div>' +
+      '<div class="field"><div class="label">analytes</div><div class="value">' +
+        'gluc ' + esc(num(review.glucose_g_l, 2)) + '<br>' +
+        'lac ' + esc(num(review.lactate_g_l, 2)) + '<br>' +
+        'osmo ' + esc(num(review.osmolality_mosm_kg, 1)) + '</div></div>' +
+      '<div class="field"><div class="label">history window</div>' +
+        '<div class="value">± ' + esc(episode.window_s) + ' s</div>' +
+        '<div class="note">' + esc(episode.rows_returned) + ' readings returned</div></div>' +
+    '</div>';
+
+  var reason = episode.reason ? '<div class="reason">' + esc(episode.reason) + '</div>' : "";
+
+  var calls = (episode.calls || []).map(renderCall).join("");
+  var exchange = calls
+    ? detailsBlock("ex-" + episode.id,
+        "the exchange — " + episode.calls.length + " i3X call" + (episode.calls.length === 1 ? "" : "s"),
+        calls)
+    : "";
+
+  var envelope = review.document
+    ? detailsBlock("env-" + episode.id, "the review envelope, as it went onto the backbone",
+        '<div class="call"><pre>' + esc(pretty(review.document)) + '</pre></div>')
+    : "";
+
+  return '<article class="card episode">' + head + facts +
+         renderEnvironment(episode.environment) + reason + exchange + envelope + '</article>';
+}
+
+function renderAside(state) {
+  var watching = (state.watching || []).map(function (target) {
+    return '<div class="watch">' + esc(target.label) +
+           '<span class="eid">' + esc(target.elementId) + '</span></div>';
+  }).join("");
+  if (state.counter) {
+    watching += '<div class="watch" style="margin-top:.6rem;color:var(--muted)">asks about ' +
+      esc(state.counter.label) + '<span class="eid">' + esc(state.counter.elementId) + '</span></div>';
+  }
+  document.getElementById("watching").innerHTML = watching || '<span class="empty">nothing yet</span>';
+
+  var server = state.server || {};
+  var caps = server.capabilities || {};
+  document.getElementById("server").innerHTML =
+    '<dt>spec</dt><dd>' + esc(server.specVersion || server.version || "—") + '</dd>' +
+    '<dt>server</dt><dd>' + esc(server.serverVersion || server.implementationVersion || "—") + '</dd>' +
+    '<dt>name</dt><dd>' + esc(server.serverName || server.name || "—") + '</dd>' +
+    '<dt>history</dt><dd>' + esc(caps.query ? caps.query.history : "—") + '</dd>' +
+    '<dt>subscribe</dt><dd>' + esc(caps.subscription ? caps.subscription.streaming : "—") + '</dd>';
+
+  var session = (state.session_calls || []).map(renderCall).join("");
+  document.getElementById("session").innerHTML =
+    session ? detailsBlock("session", "how this client found everything — " +
+                           state.session_calls.length + " calls", session)
+            : '<div class="empty">no calls yet</div>';
+}
+
+function apply(state) {
+  document.getElementById("base").textContent = state.base_url + "  ·  ± " + state.window_s + " s window";
+  var conn = state.connection || {};
+  var pill = document.getElementById("conn");
+  pill.textContent = conn.state;
+  pill.className = "pill " + conn.state;
+  document.getElementById("conn-detail").textContent = conn.detail || "";
+  document.getElementById("c-push").textContent = state.counts.pushes;
+  document.getElementById("c-ep").textContent = state.counts.episodes;
+  document.getElementById("c-ka").textContent = state.counts.keepalives;
+  document.getElementById("c-sess").textContent = state.counts.sessions;
+
+  // Rebuild only when the set of episodes or the discovery log actually
+  // changed. A poll that redrew the DOM every second would fight the reader.
+  var signature = (state.episodes || []).map(function (e) { return e.id; }).join(",") +
+                  "|" + (state.session_calls || []).length + "|" + conn.state;
+  if (signature === lastSignature) { return; }
+  lastSignature = signature;
+
+  renderAside(state);
+  var host = document.getElementById("episodes");
+  host.innerHTML = (state.episodes || []).length
+    ? state.episodes.map(renderEpisode).join("")
+    : '<div class="card"><div class="empty">Waiting for a review. Approve or reject a sample in the LIMS and it lands here.</div></div>';
+}
+
+document.addEventListener("toggle", function (event) {
+  var node = event.target;
+  if (node.tagName !== "DETAILS") { return; }
+  var key = node.getAttribute("data-key");
+  if (!key) { return; }
+  if (node.open) { openKeys.add(key); } else { openKeys.delete(key); }
+}, true);
+
+function poll() {
+  fetch("/api/state")
+    .then(function (response) { return response.json(); })
+    .then(apply)
+    .catch(function () {
+      var pill = document.getElementById("conn");
+      pill.textContent = "no client";
+      pill.className = "pill error";
+    });
+}
+
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>

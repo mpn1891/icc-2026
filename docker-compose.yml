@@ -636,6 +636,52 @@ services:
     networks: [icc26]
 
   # ───────────────────────────────────────────────────────────────────────────
+  # i3X consumer — the only READER in the stack, and the one that is not the
+  # gateway. It subscribes to the LIMS review objects over the CESMII i3X API
+  # and, on each review, asks the same API for the particle counter's history
+  # around that sample's instant. Its page shows every request and response
+  # verbatim beside the verdict it drew.
+  #
+  # **It holds one credential: an Ignition login.** No Postgres, no broker, no
+  # tag path, no element id — it browses `/objecttypes` and `/objects` to find
+  # what it needs. That is the whole argument, and it is enforced here by what
+  # this block does NOT contain rather than asserted in a README.
+  #
+  # No depends_on: ignition. The gateway can be down, restarting, or have the
+  # `i3x` project disabled, and this keeps saying so on its own page — which is
+  # more useful on stage than a container that refuses to start.
+  # ───────────────────────────────────────────────────────────────────────────
+  i3x-client:
+    build:
+      context: ./services/i3x-client
+    image: icc26/i3x-client:${ICC26_TAG:-local}
+    container_name: icc26-i3x-client
+    restart: unless-stopped
+    environment:
+      # HTTPS on :8043. Ignition 302s :8088 to it and a redirect across schemes
+      # reads as an empty body rather than as an error — see services/lims.
+      I3X_BASE_URL: ${I3X_BASE_URL:-https://ignition:8043/system/webdev/i3x}
+      I3X_USERNAME: ${I3X_USERNAME:-admin}
+      I3X_PASSWORD: ${I3X_PASSWORD:-password}
+      # Either side of the sample instant. `sample_chain` uses 3600; this is
+      # smaller only so the raw history response stays readable on the page,
+      # which is what the page is for. The nearest-either-side rule is the same.
+      HISTORY_WINDOW_S: ${I3X_CLIENT_WINDOW_S:-300}
+      MAX_EPISODES: ${I3X_CLIENT_MAX_EPISODES:-25}
+      LOG_LEVEL: ${I3X_CLIENT_LOG_LEVEL:-INFO}
+      TZ: ${TZ:-America/Chicago}
+    ports:
+      - "${I3X_CLIENT_PORT:-8092}:8092"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8092/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [icc26]
+
+  # ───────────────────────────────────────────────────────────────────────────
   # (services/sim-vibration/ — the retired pattern-1 vibration gateway — was
   # deleted on 2026-08-23. It was never wired in here.)
   # ───────────────────────────────────────────────────────────────────────────
