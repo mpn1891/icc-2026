@@ -133,9 +133,9 @@ def advance(base):
     path, including the refusals -- a button that stays stuck down is worse than
     one that did nothing.
 
-    `operation`, `event_type` and `qualified_window` are all taken from the
-    incoming row, in one write, so the three tags are one consistent view of it
-    rather than three that can disagree.
+    `operation`, `event_type`, `qualified_window` and `batch_id` are all taken
+    from the incoming row, in one write, so the four tags are one consistent
+    view of it rather than four that can disagree.
     """
     logger = system.util.getLogger(LOGGER_NAME)
 
@@ -164,7 +164,6 @@ def advance(base):
 
     current = str(current) if current is not None else IDLE
 
-    minted = False
     if batch_id is None or not str(batch_id).strip():
         if current in SEQUENCE:
             # Mid-batch with no id is not something to paper over. The rows
@@ -176,7 +175,6 @@ def advance(base):
             system.tag.writeBlocking([flag_tag], [False])
             return
         batch_id = _mint_batch_id(equipment_id)
-        minted = True
     else:
         batch_id = str(batch_id).strip()
 
@@ -248,20 +246,27 @@ def advance(base):
     # QUALIFIED above stays the only copy of the rule.
     new_event_type, _, new_qualified = rows[-1]
 
-    if next_operation is None:
-        # Batch over: clear the id so the next advance mints a fresh one rather
-        # than silently reusing this batch's.
-        system.tag.writeBlocking(
-            [operation_tag, event_type_tag, qualified_tag, flag_tag, batch_tag],
-            [new_operation, new_event_type, new_qualified, False, ""])
-    elif minted:
-        system.tag.writeBlocking(
-            [operation_tag, event_type_tag, qualified_tag, flag_tag, batch_tag],
-            [new_operation, new_event_type, new_qualified, False, batch_id])
-    else:
-        system.tag.writeBlocking(
-            [operation_tag, event_type_tag, qualified_tag, flag_tag],
-            [new_operation, new_event_type, new_qualified, False])
+    # Batch over: clear the id so the next advance mints a fresh one rather than
+    # silently reusing this batch's.
+    new_batch_id = "" if next_operation is None else batch_id
+
+    # All five in one write, every advance -- including `batch_id` when it has
+    # not changed, which it usually has not. Changed 2026-09-20. The historian
+    # keeps no point for a tag nobody wrote, and i3X's `/objects/history`
+    # returns null for any member whose last stored point predates the requested
+    # window: the same HARVEST row read over ten minutes came back
+    # `batch_id: null` and over two days came back `B-20260918-03`. A consumer
+    # cannot tell that null from "no batch", so pattern 7 asking for batch
+    # context around a sample instant was being answered wrongly rather than
+    # narrowly. Writing it every time is what makes a short window answerable.
+    #
+    # This only helps if the members also have `historicalDeadbandMode` Off on
+    # the instance, or the historian discards the unchanged write before it is
+    # stored -- the write side and the historian setting are one fix in two
+    # places, and neither half does anything alone.
+    system.tag.writeBlocking(
+        [operation_tag, event_type_tag, qualified_tag, flag_tag, batch_tag],
+        [new_operation, new_event_type, new_qualified, False, new_batch_id])
 
     logger.infof("%s %s: %s -> %s (%d rows)",
                  equipment_id, batch_id, current, new_operation, len(rows))
