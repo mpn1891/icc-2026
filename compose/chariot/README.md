@@ -23,6 +23,7 @@ slide and because the asymmetries are the interesting part:
 | `sample-valve-02` | Pattern 2 the same assembly, Sparkplug B | `spBv1.0/#` both ways since 2026-08-25 — the widest grant of any device account. See below |
 | `analyzer-bridge` | Pattern 3, reserved | Only if the cell analyzer demo ever publishes without routing through Ignition |
 | `lims-bridge` | Pattern 4 LIMS | Subscribe-only, `icc26/site1/qc/analyzers/+/result`. Empty publish grant is the cycle-hazard lock |
+| `i3x-client` | The external i3X consumer, pattern 7 read back from outside | Publish-only, exactly one topic. Added 2026-09-21 — see the first-run caveat |
 | `observer` | Read-only | Firehose view, `mosquitto_sub`, MQTT Explorer |
 
 **The two valve accounts are the ACL half of the pattern 1 / pattern 2 comparison, and it is
@@ -69,6 +70,30 @@ you close it. This is also why `observer` has
 an empty `publishTopics` array: it is safe to hand out and safe to leave connected during the
 talk.
 
+**`i3x-client` is the inverse of `lims-bridge`, and the pair is the slide.** The LIMS consumes
+the backbone and may not publish to it; the i3X consumer reads the *model* — over an API, with
+a gateway login, browsing for everything it needs — and may publish exactly one topic,
+`icc26/site1/qc/i3x_event_review`. Its subscribe grant is empty: its inbound side is the i3X
+subscription, and a broker subscription would give it a second way in and make its own page
+ambiguous about which one woke it. The point of the account existing at all is that the i3X
+login **did not** come with it. Browsing the whole address space is one authorization
+decision; putting a message on somebody's bus is another one, made by a different system, and
+this is the file where the second one is written down. The service ships with publishing
+**off** — `PUBLISH_ENABLED=false`, toggled on the page at :8092.
+
+⚠ **This account was added on 2026-09-21, and this file seeds on first run only** — so on
+every Chariot volume older than that date it **does not exist, today**, and
+`allowAnonymous: true` does not rescue it. Measured 2026-09-21: the consumer sends a username
+and password, so Chariot evaluates them and answers `Bad user name or password`. Anonymous
+access is a grant for a client that offers *no* credentials; it is not a fallback for a
+client that offers a wrong one. That distinction is worth keeping in mind for every account
+in this table — the seeding caveat is not softened by the anonymous flag the way it reads as
+if it might be.
+
+The symptom is a red `broker unreachable` light on :8092 and a `failed` badge on each
+finding; no publish is ever silently dropped. Either add `i3x-client` by hand in the Chariot
+UI or `python tasks.py nuke`.
+
 **`lims-bridge` publishes nothing.** Pattern 4's only output is an HTTP callback into
 Ignition; Transmission publishes the released sample as `ign-transmission`. The empty
 publish grant is load-bearing: this is the first component that both consumes the
@@ -96,7 +121,8 @@ Deleting the users instead would not have been reversible that cheaply — see t
 caveat at the top of this file.
 
 **Before the talk:** set it back to `false`, restart, and confirm each pattern service
-still connects with its own credential. Do this early enough that a missing ACL is a
+still connects with its own credential — `i3x-client` especially, since it is the one account
+newer than most volumes and the one whose absence is currently invisible. Do this early enough that a missing ACL is a
 Tuesday problem, not a stage problem.
 
 ## Trial timer

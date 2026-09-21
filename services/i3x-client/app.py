@@ -3,8 +3,13 @@
 
 Everything else in this repo is a producer. This is the only thing that reads,
 and it reads the way a stranger would have to: over the CESMII i3X 1.0 API, with
-a username and a password, holding no database credential, no broker credential,
-no knowledge of a tag path, and no copy of anybody's rule.
+a username and a password, holding no database credential, no knowledge of a tag
+path, and no copy of anybody's rule.
+
+It can also publish what it finds, and that -- and only that -- is what the
+broker credential below is for. It is off by default and it is a button on the
+page, because the read path standing entirely on one API login is the claim
+being made, and a credential quietly present is a claim quietly weaker.
 
 **It is the argument the whole demo is for, made in one loop:**
 
@@ -35,6 +40,32 @@ way, which shows the facts are *available* over the API. It does not show they
 are available to somebody who is not the gateway. This does: another container,
 another language, another HTTP client, no shared credential but one API login,
 and the same two facts come back.
+
+**It also writes, once you let it.** Everything above is the read path, and the
+read path is the argument. The publish is the sentence after it: with the button
+on the page turned on, each finding goes back onto the backbone as
+`icc26/site1/qc/i3x_event_review` -- the verdict, the environmental reading it
+was drawn from, and enough identity to correlate. That takes a **second
+credential**, and it is the only one this process holds beyond the API login:
+reading the model needs a gateway account, putting anything back needs a broker
+account, and the two are separate grants issued by separate systems. Browsing
+the whole model bought no right whatsoever to speak on it. The default is
+**off**, so the paragraph above stays true until somebody deliberately stops it
+being true.
+
+**The button stops the publish, not the connection.** The broker session is held
+from startup either way, exactly as pattern 4's drainer keeps writing its outbox
+while delivery is paused: the toggle governs what this client *says*, not what
+it is holding, and doing it the other way would put a reconnect between the
+button and the first message in front of an audience. A withheld finding is
+counted, and the document that was not sent is kept beside it on the page --
+"we chose not to say this" and "we had nothing to say" must not look the same.
+
+**Every verdict publishes, `clean` included.** 07's `icc26/site1/qc/deviation`
+is a gate: it fires only when something is wrong, which is correct for a topic
+called deviation. This one is a review log, and a consumer of it wants to know
+that a sample was looked at and found clean -- a different question, and one a
+topic that only ever carries bad news cannot answer.
 
 **Two of 07's rules are copied here on purpose, and no others.**
 
@@ -82,6 +113,7 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+import paho.mqtt.client as mqtt
 import requests
 import urllib3
 from fastapi import FastAPI
@@ -104,6 +136,15 @@ def _env_int(name: str, default: int) -> int:
         return int(_env(name, str(default)))
     except ValueError:
         return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    """`1/true/yes/on`, any case. Everything else is false, junk included.
+
+    Deliberately not a lenient parse. This flag decides whether this process
+    puts messages on somebody else's backbone, and a typo must fail closed.
+    """
+    return _env(name, "true" if default else "false").lower() in ("1", "true", "yes", "on")
 
 
 class Config:
@@ -134,6 +175,36 @@ class Config:
         self.max_body_chars = _env_int("MAX_BODY_CHARS", 24000)
 
         self.log_level = _env("LOG_LEVEL", "INFO").upper()
+
+        # -- the publish side, and it is off unless asked --------------------
+        # Everything above this line is the read path. See the module
+        # docstring: the read path is the argument, and it is only true while
+        # this stays false.
+        self.publish_enabled = _env_bool("PUBLISH_ENABLED", False)
+
+        # A *broker* account, from a different system than the login above,
+        # granted exactly one topic in compose/chariot/mqtt-users.json. The
+        # client id is set so this shows up by name in Chariot's client list --
+        # a reader that turned into a writer should be visible as one.
+        self.broker_host = _env("BROKER_HOST", "chariot")
+        self.broker_port = _env_int("BROKER_PORT", 1883)
+        self.mqtt_username = _env("MQTT_USERNAME", "i3x-client")
+        self.mqtt_password = _env("MQTT_PASSWORD", "i3x-client")
+        self.mqtt_client_id = _env("MQTT_CLIENT_ID", "i3x-client")
+
+        # Beside `qc/deviation` rather than under a device, because a finding is
+        # about a *sample* and there is no box it belongs to -- the same reason
+        # 07's aggregate is not device-addressed. It is the one topic on this
+        # bus whose last segment names a mechanism; the namespace rule
+        # (docs/00-architecture.md) forbids that, and the exception is taken
+        # knowingly, for the same reason `audit/bes/batch-event` takes one: the
+        # mechanism IS the subject. Nothing inside the payload repeats it.
+        #
+        # No Engine custom namespace matches it, so this lands on the backbone
+        # without creating tags and without a second registrant on anybody's
+        # Event Stream source topic.
+        self.publish_topic = _env("PUBLISH_TOPIC", "icc26/site1/qc/i3x_event_review")
+        self.publish_qos = _env_int("PUBLISH_QOS", 1)
 
 
 # The two types this client goes looking for, BY DISPLAY NAME on
@@ -426,6 +497,232 @@ class Client:
             # plant went quiet.
             timeout=(15.0, None),
         )
+
+
+# -- the one thing this client writes -----------------------------------------
+
+class Publisher:
+    """The finding, back onto the backbone as `icc26/site1/qc/i3x_event_review`.
+
+    Everything else in this file reads. This is the half that writes, and it is
+    the reason the process holds a second credential -- a broker account, issued
+    by a different system than the i3X login, granted exactly one topic and
+    nothing to subscribe to. Worth saying out loud on stage: an API login let
+    this client browse a model nobody had told it about, and it bought no right
+    at all to put anything back. Those are separate grants because they are
+    separate questions.
+
+    `enabled` gates the publish and nothing else -- the session is held from
+    startup either way, the same way pattern 4's drainer keeps filling its
+    outbox while delivery is paused. That makes Enable instant rather than a
+    reconnect in front of an audience, and it makes the honest statement the
+    precise one: the credential is held, the toggle decides whether it is used.
+    """
+
+    def __init__(self, cfg: Config) -> None:
+        self.cfg = cfg
+        self._lock = threading.Lock()
+        self._enabled = threading.Event()
+        if cfg.publish_enabled:
+            self._enabled.set()
+        self.client: Optional[mqtt.Client] = None
+        self.connected = False
+        self.counts = {"published": 0, "withheld": 0, "failed": 0}
+        self.last: Optional[Dict[str, Any]] = None
+
+    # lifecycle ---------------------------------------------------------------
+
+    def start(self) -> None:
+        """Connect, whatever the toggle says. See the class docstring."""
+        client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
+            client_id=self.cfg.mqtt_client_id,
+            clean_session=True,
+            protocol=mqtt.MQTTv311,
+        )
+        client.username_pw_set(self.cfg.mqtt_username, self.cfg.mqtt_password)
+        client.reconnect_delay_set(min_delay=1, max_delay=60)
+        client.on_connect = self._on_connect
+        client.on_disconnect = self._on_disconnect
+        self.client = client
+        # `connect_async` + `loop_start`, so a broker that is down at boot is a
+        # red light on the page rather than a container that will not start.
+        client.connect_async(self.cfg.broker_host, self.cfg.broker_port, keepalive=30)
+        client.loop_start()
+        LOG.info("mqtt connecting to %s:%s as %s -- publish is %s, topic %s",
+                 self.cfg.broker_host, self.cfg.broker_port, self.cfg.mqtt_username,
+                 "ON" if self.is_enabled() else "off", self.cfg.publish_topic)
+
+    def stop(self) -> None:
+        if self.client is None:
+            return
+        self.client.loop_stop()
+        self.client.disconnect()
+
+    def _on_connect(self, client, userdata, connect_flags, reason_code, properties) -> None:
+        # paho 2.x ReasonCode compares to int but is not itself an int.
+        if reason_code != 0:
+            self.connected = False
+            # The likely cause, and worth naming: `mqtt-users.json` seeds on
+            # FIRST RUN ONLY, so on a Chariot volume older than this account the
+            # credential simply does not exist. See compose/chariot/README.md.
+            LOG.error("mqtt connect refused: %s -- is there an %s account on this broker?",
+                      reason_code, self.cfg.mqtt_username)
+            return
+        self.connected = True
+        # Subscribes to nothing, deliberately. This client's inbound side is the
+        # i3X subscription; a broker subscription here would be a second way in
+        # and would make the page ambiguous about which one it woke on.
+        LOG.info("mqtt connected as %s", self.cfg.mqtt_username)
+
+    def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties) -> None:
+        self.connected = False
+        LOG.warning("mqtt disconnected: %s", reason_code)
+
+    # the toggle --------------------------------------------------------------
+
+    def is_enabled(self) -> bool:
+        return self._enabled.is_set()
+
+    def set_enabled(self, on: bool) -> None:
+        if on:
+            self._enabled.set()
+        else:
+            self._enabled.clear()
+        LOG.info("publishing %s", "enabled" if on else "disabled")
+
+    def status(self) -> Dict[str, Any]:
+        with self._lock:
+            return {
+                "enabled": self.is_enabled(),
+                "connected": self.connected,
+                "broker": "%s:%d" % (self.cfg.broker_host, self.cfg.broker_port),
+                "username": self.cfg.mqtt_username,
+                "topic": self.cfg.publish_topic,
+                "qos": self.cfg.publish_qos,
+                "counts": dict(self.counts),
+                "last": dict(self.last) if self.last else None,
+            }
+
+    # the message -------------------------------------------------------------
+
+    def document(self, episode: Dict[str, Any]) -> Dict[str, Any]:
+        """The finding, in the envelope every other pattern on this bus uses.
+
+        `ts` and `values`, and nothing else -- no `seq`, no `source`, no `meta`,
+        and nothing naming the mechanism. The topic is the provenance, which is
+        the rule docs/00-architecture.md states for patterns 4 and 7, and it
+        holds here even though this topic's own last segment happens to name
+        i3X: a subscriber already knows where this was read.
+
+        `ts` is the sample instant and `values.assessed_at` is when this client
+        reached the verdict. The gap between them is the document's entire
+        provenance, the same reading 07's envelope invites.
+
+        **What is in here is what this client contributed** -- the verdict, and
+        the reading it was drawn from, plus enough identity to correlate. The
+        analyzer's numbers are deliberately absent: they are already on the bus
+        as pattern 3 and again inside pattern 4's review, and a third copy
+        arriving from a *reader* would be this process putting its name on
+        somebody else's measurement.
+        """
+        review = episode.get("review") or {}
+        return {
+            "ts": episode.get("sample_instant"),
+            "values": {
+                "verdict": episode.get("verdict"),
+
+                # Populated on `unverifiable`, and then always. A verdict this
+                # client declined to reach says why in the message rather than
+                # leaving a subscriber to infer it from a null.
+                "reason": episode.get("reason"),
+
+                "sample_id": review.get("sample_id"),
+                "equipment_id": review.get("equipment_id"),
+                "disposition": review.get("disposition"),
+                "analyst": review.get("analyst"),
+                "assessed_at": episode.get("received_at"),
+
+                # How the verdict was arrived at, so it can be audited without
+                # re-running the query: which member gave the time axis, how far
+                # the search was allowed to reach, and how many rows it saw. A
+                # `clean` drawn from one row in a 600 s span is a different
+                # statement from one drawn from sixty, and the difference has to
+                # travel with it.
+                "sample_instant_from": episode.get("sample_instant_from"),
+                "history_window_s": episode.get("window_s"),
+                "rows_returned": episode.get("rows_returned"),
+
+                # Always present, null when nothing was found -- the shape does
+                # not change with the outcome, so a consumer reads the same key
+                # either way and a gap is never a missing field. `age_s` inside
+                # it is what decides whether any of this is evidence at all.
+                "environment": episode.get("environment"),
+            },
+        }
+
+    def announce(self, episode: Dict[str, Any]) -> None:
+        """Publish the finding, or record why not. Sets `episode["publish"]`.
+
+        **A startup read is never published.** Those episodes are this client
+        asking rather than the server telling, and every one of them would go
+        out again on every container restart -- a subscriber would watch the
+        same finding announced as new each time this process was rebuilt. The
+        loop this topic exists for starts at an analyst signing something off.
+        """
+        if episode.get("trigger") != "push":
+            episode["publish"] = {
+                "state": "skipped",
+                "detail": "a startup read of the current value, not a review -- see announce()",
+            }
+            return
+
+        record: Dict[str, Any] = {
+            "topic": self.cfg.publish_topic,
+            "qos": self.cfg.publish_qos,
+            "at": _iso(datetime.now(timezone.utc)),
+            # Built either way. What was withheld is as interesting as what was
+            # sent, and showing it is the difference between an audience taking
+            # the shape of the message on trust and reading it.
+            "document": self.document(episode),
+            "error": None,
+        }
+        episode["publish"] = record
+
+        if not self.is_enabled():
+            record["state"] = "withheld"
+            record["detail"] = "publishing is off -- this is the document that was not sent"
+            self._count("withheld", record)
+            return
+
+        try:
+            if self.client is None:
+                raise RuntimeError("no MQTT client; start() was never called")
+            info = self.client.publish(self.cfg.publish_topic,
+                                       json.dumps(record["document"]),
+                                       qos=self.cfg.publish_qos, retain=False)
+            # Waited on rather than fired and forgotten, because the page says
+            # "published" and that word has to mean the broker took it. This
+            # raises on both halves of the failure -- a publish refused outright
+            # (no connection, over the queue) and a QoS 1 PUBACK that never
+            # arrived -- so there is no silent third case. Five seconds is long
+            # for a compose network and short enough not to visibly stall the
+            # subscription thread.
+            info.wait_for_publish(timeout=5.0)
+            record["state"] = "published"
+            record["mid"] = info.mid
+            self._count("published", record)
+        except Exception as exc:
+            record["state"] = "failed"
+            record["error"] = "%s: %s" % (type(exc).__name__, exc)
+            self._count("failed", record)
+            LOG.warning("publish to %s failed -- %s", self.cfg.publish_topic, record["error"])
+
+    def _count(self, outcome: str, record: Dict[str, Any]) -> None:
+        with self._lock:
+            self.counts[outcome] += 1
+            self.last = {"state": record.get("state"), "at": record.get("at"),
+                         "error": record.get("error")}
 
 
 # -- what the page is looking at ----------------------------------------------
@@ -763,8 +1060,8 @@ def _discover(cfg: Config, client: Client, state: State) -> Optional[Dict[str, A
     return {"info": info, "watching": watching, "counter": counter}
 
 
-def _seed(cfg: Config, client: Client, state: State, watching: List[Dict[str, str]],
-          seen: set) -> None:
+def _seed(cfg: Config, client: Client, state: State, publisher: Publisher,
+          watching: List[Dict[str, str]], seen: set) -> None:
     """Read each review's live value once, so the page is not empty on arrival.
 
     Marked `startup` rather than `push`, because it is this client asking rather
@@ -782,11 +1079,15 @@ def _seed(cfg: Config, client: Client, state: State, watching: List[Dict[str, st
         key = (target["elementId"], episode["review"].get("sample_id"),
                episode["review"].get("verified_at"))
         seen.add(key)
+        # Records why it published nothing rather than saying nothing about it.
+        # `announce` refuses every startup episode -- see its docstring.
+        publisher.announce(episode)
         state.add_episode(episode)
 
 
-def _consume(cfg: Config, client: Client, state: State, client_id: str,
-             subscription_id: str, labels: Dict[str, str], seen: set) -> None:
+def _consume(cfg: Config, client: Client, state: State, publisher: Publisher,
+             client_id: str, subscription_id: str, labels: Dict[str, str],
+             seen: set) -> None:
     """Read the SSE stream until it ends, turning each push into an episode."""
     response = client.stream(client_id, subscription_id)
     if response.status_code != 200:
@@ -834,11 +1135,15 @@ def _consume(cfg: Config, client: Client, state: State, client_id: str,
             if key in seen:
                 continue
             seen.add(key)
-            state.add_episode(_assess(cfg, client, state, "push",
-                                      labels[element_id], element_id, value))
+            episode = _assess(cfg, client, state, "push",
+                              labels[element_id], element_id, value)
+            # After the verdict and before the page, so an episode never
+            # appears without saying what was done with it.
+            publisher.announce(episode)
+            state.add_episode(episode)
 
 
-def worker(cfg: Config, state: State) -> None:
+def worker(cfg: Config, state: State, publisher: Publisher) -> None:
     """Discover, subscribe, stream, and rebuild the whole thing when it breaks.
 
     **Reconnecting means starting over, not resuming.** Subscriptions live in
@@ -879,8 +1184,9 @@ def worker(cfg: Config, state: State) -> None:
                 time.sleep(cfg.reconnect_s)
                 continue
 
-            _seed(cfg, client, state, watching, seen)
-            _consume(cfg, client, state, client_id, subscription_id, labels, seen)
+            _seed(cfg, client, state, publisher, watching, seen)
+            _consume(cfg, client, state, publisher, client_id, subscription_id,
+                     labels, seen)
             state.set_connection("reconnecting", "the stream ended")
         except Exception as exc:
             state.set_connection("reconnecting", "%s: %s" % (type(exc).__name__, exc))
@@ -893,7 +1199,7 @@ def worker(cfg: Config, state: State) -> None:
 
 # -- the web app --------------------------------------------------------------
 
-def build_app(cfg: Config, state: State) -> FastAPI:
+def build_app(cfg: Config, state: State, publisher: Publisher) -> FastAPI:
     app = FastAPI(title="icc26 i3X consumer", docs_url=None, redoc_url=None)
 
     @app.get("/", response_class=HTMLResponse)
@@ -906,7 +1212,28 @@ def build_app(cfg: Config, state: State) -> FastAPI:
         """Everything the page draws, in one document. The page polls this; it
         does not re-stream SSE to the browser, because two hops of the same
         stream would only make the interesting one harder to see."""
-        return JSONResponse(state.snapshot())
+        snapshot = state.snapshot()
+        # Merged here rather than held in `State`, so the read side and the
+        # write side stay separable in the code the way they are on the page.
+        snapshot["publish"] = publisher.status()
+        return JSONResponse(snapshot)
+
+    @app.post("/api/publish/enable")
+    def publish_enable() -> JSONResponse:
+        """Start publishing findings. Nothing already seen is replayed.
+
+        The episodes on the page were withheld at the moment they were
+        assessed, and they stay withheld: re-announcing them now would date
+        every one of them to this button press. Approve another sample.
+        """
+        publisher.set_enabled(True)
+        return JSONResponse(publisher.status())
+
+    @app.post("/api/publish/disable")
+    def publish_disable() -> JSONResponse:
+        """Stop publishing. The broker session stays up -- see `Publisher`."""
+        publisher.set_enabled(False)
+        return JSONResponse(publisher.status())
 
     @app.get("/healthz")
     def healthz() -> JSONResponse:
@@ -914,9 +1241,13 @@ def build_app(cfg: Config, state: State) -> FastAPI:
         connected = snapshot["connection"]["state"] == "streaming"
         # Deliberately 200 either way. A client that cannot reach the gateway is
         # a client doing its job of saying so, and a container restart would
-        # only hide the message on the page.
+        # only hide the message on the page. The publish side is reported for
+        # the same reason and gates nothing: a reader that is not currently
+        # allowed to speak is not an unhealthy reader.
         return JSONResponse({"ok": True, "streaming": connected,
-                             "episodes": snapshot["counts"]["episodes"]})
+                             "episodes": snapshot["counts"]["episodes"],
+                             "publishing": publisher.is_enabled(),
+                             "broker": publisher.connected})
 
     return app
 
@@ -934,11 +1265,21 @@ def main() -> int:
     LOG.info("history window +/- %ss (sample_chain uses 3600)", cfg.history_window_s)
 
     state = State(cfg)
-    threading.Thread(target=worker, args=(cfg, state), daemon=True,
+    publisher = Publisher(cfg)
+    publisher.start()
+    if publisher.is_enabled():
+        # Said loudly, because it is the one setting that turns this container
+        # from a reader into a participant, and a stack that came up publishing
+        # because of an env var nobody remembered setting is worth a line.
+        LOG.warning("PUBLISH_ENABLED is on -- findings will go to %s from the first "
+                    "review onward, with no further confirmation", cfg.publish_topic)
+
+    threading.Thread(target=worker, args=(cfg, state, publisher), daemon=True,
                      name="i3x-subscription").start()
 
     import uvicorn
-    uvicorn.run(build_app(cfg, state), host="0.0.0.0", port=cfg.http_port, log_config=None)
+    uvicorn.run(build_app(cfg, state, publisher), host="0.0.0.0", port=cfg.http_port,
+                log_config=None)
     return 0
 
 

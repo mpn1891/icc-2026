@@ -642,10 +642,16 @@ services:
   # around that sample's instant. Its page shows every request and response
   # verbatim beside the verdict it drew.
   #
-  # **It holds one credential: an Ignition login.** No Postgres, no broker, no
-  # tag path, no element id — it browses `/objecttypes` and `/objects` to find
-  # what it needs. That is the whole argument, and it is enforced here by what
-  # this block does NOT contain rather than asserted in a README.
+  # **It reads on one credential: an Ignition login.** No Postgres, no tag
+  # path, no element id — it browses `/objecttypes` and `/objects` to find what
+  # it needs. That is the whole argument, and it is enforced here by what this
+  # block does NOT contain rather than asserted in a README.
+  #
+  # It can also publish each finding back as `icc26/site1/qc/i3x_event_review`,
+  # and that needs a SECOND credential — a broker account, granted one topic.
+  # Two grants from two systems, which is the honest shape: browsing the whole
+  # model bought no right to put anything on the bus. `PUBLISH_ENABLED` is
+  # false here on purpose and the toggle lives on the page.
   #
   # No depends_on: ignition. The gateway can be down, restarting, or have the
   # `i3x` project disabled, and this keeps saying so on its own page — which is
@@ -668,8 +674,27 @@ services:
       # which is what the page is for. The nearest-either-side rule is the same.
       HISTORY_WINDOW_S: ${I3X_CLIENT_WINDOW_S:-300}
       MAX_EPISODES: ${I3X_CLIENT_MAX_EPISODES:-25}
+      # The publish side. Reading the model needs the Ignition login above;
+      # putting a finding back needs a broker account, and those being two
+      # grants from two systems is the point of the button on the page.
+      #
+      # Off by default and meant to stay off in the file — this container's
+      # claim is that it reads with one credential, and a stack that comes up
+      # publishing makes that claim quietly weaker every time. Turn it on with
+      # the button, on stage, where the audience sees it happen.
+      PUBLISH_ENABLED: ${I3X_CLIENT_PUBLISH:-false}
+      BROKER_HOST: chariot
+      MQTT_USERNAME: i3x-client
+      MQTT_PASSWORD: i3x-client
+      # Matched by no Engine custom namespace, so it lands on the backbone
+      # without creating tags and without becoming a second registrant on an
+      # Event Stream source topic. See docs/00-architecture.md.
+      PUBLISH_TOPIC: ${I3X_CLIENT_PUBLISH_TOPIC:-icc26/site1/qc/i3x_event_review}
       LOG_LEVEL: ${I3X_CLIENT_LOG_LEVEL:-INFO}
       TZ: ${TZ:-America/Chicago}
+    # No depends_on: chariot. Reconnect-with-backoff is in-app, per the
+    # conventions, and a broker that is down shows as a red light on :8092
+    # rather than as a container that will not start.
     ports:
       - "${I3X_CLIENT_PORT:-8092}:8092"
     healthcheck:

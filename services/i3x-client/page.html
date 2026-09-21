@@ -2,196 +2,280 @@
 <!--
   The i3X consumer's screen.
 
-  This page has one job and it is not the verdict. The verdict is three words
-  and `sample_chain` already reaches it inside the gateway. What nobody can see
-  from inside the gateway is HOW it was reached, so this page is built around
-  the exchanges: every request this client sent and every response the server
-  returned, verbatim, next to the conclusion drawn from them. If a beat lands
-  here it is somebody reading the raw JSON and realising there is nothing else
-  in it — no tag path, no SQL, no broker, no vendor.
+  Not the verdict -- `sample_chain` already reaches that inside the gateway.
+  What nobody can see from in there is HOW it was reached, so this page is built
+  around the exchanges: every request this client sent and every response the
+  server returned, verbatim, one click from the conclusion drawn from them.
 
-  Three things are deliberate:
+  Two things are deliberate. The exchange is never hidden -- a summary the
+  audience has to trust is the opposite of this demo's argument. And the age of
+  the reading is the largest number on the card, because a reading is evidence
+  only if it is near the sample in time; bury the age and a forty-minute-old
+  count reads as current. Everything else about a reading is in the JSON under
+  it rather than restated as a field.
 
-    The exchange is one click away, never hidden.   A summary the audience has
-                                                    to trust is the opposite of
-                                                    this demo's argument.
-    `age_s` is the largest number on the card.      A reading is evidence only
-                                                    if it is near the sample in
-                                                    time. Bury the age and a
-                                                    forty-minute-old count reads
-                                                    as current.
-    "Unverifiable" is as loud as "dirty".           A sample whose room cannot
-                                                    be evidenced cannot be
-                                                    released. Silence must not
-                                                    be able to pass for a pass.
+  The Publishing card is the same idea pointed the other way. It is the only
+  control on this page, it starts off, and whichever way it is set the document
+  is shown -- published or withheld, the audience reads the bytes rather than a
+  claim about them.
 
-  No external assets of any kind — no fonts, no CDNs, no images. The demo has to
-  run with networking disabled (docs/00-architecture.md).
+  Skin: the same light panel screen as the other service pages (8085/8086/8087/
+  8089) so the set reads as one stack. No external assets of any kind -- the
+  demo has to run with networking disabled (docs/00-architecture.md).
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>i3X consumer</title>
+<title>Pattern 7</title>
 <style>
   :root {
-    --bg: #11151a;
-    --panel: #1b212a;
-    --panel-2: #222a35;
-    --edge: #2e3946;
-    --ink: #e7edf3;
-    --muted: #8d9bab;
-    --dim: #63707e;
-    --accent: #4aa3e0;
-    --clean: #2fa36b;
-    --dirty: #d1544b;
-    --unsure: #c9973a;
-    --push: #6f7fd8;
+    --navy: #0a3d62;
+    --navy-2: #0d4a78;
+    --bg: #d5dce3;
+    --panel: #ffffff;
+    --ink: #1a2430;
+    --muted: #5c6d7c;
+    --line: #c3ced6;
+    --ok: #1f8f4a;
+    --ok-bg: #e5f6ea;
+    --warn: #8a5a00;
+    --warn-bg: #f8efd8;
+    --bad: #b42318;
+    --bad-bg: #fde8e8;
     --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.45 "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
   }
-  a { color: var(--accent); }
 
-  header {
-    border-bottom: 1px solid var(--edge); background: var(--panel);
-    padding: .75rem 1.1rem; display: flex; flex-wrap: wrap;
-    gap: .6rem 1.4rem; align-items: baseline;
+  .status-bar {
+    background: var(--navy);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    padding: .55rem 1rem;
+    flex-wrap: wrap;
   }
-  header h1 { font-size: 1rem; margin: 0; font-weight: 600; letter-spacing: .01em; }
-  header .sub { color: var(--muted); font-size: .8rem; }
-  header .spacer { flex: 1; }
-  .stat { color: var(--muted); font-size: .8rem; }
-  .stat b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
-
-  .pill {
-    display: inline-block; padding: .1rem .5rem; border-radius: 999px;
-    font-size: .72rem; letter-spacing: .04em; text-transform: uppercase;
-    border: 1px solid var(--edge); color: var(--muted);
+  .brand-mark {
+    font-weight: 800;
+    letter-spacing: .04em;
+    font-size: .95rem;
+    padding-right: .85rem;
+    border-right: 1px solid rgba(255,255,255,.25);
   }
-  .pill.streaming { color: #cdebdb; border-color: var(--clean); background: #163025; }
-  .pill.connecting, .pill.reconnecting, .pill.starting { color: #f0e0bd; border-color: var(--unsure); background: #2e2617; }
-  .pill.error { color: #f4d2d0; border-color: var(--dirty); background: #33201f; }
+  .brand-mark span {
+    display: block; font-size: .62rem; font-weight: 600; letter-spacing: .16em;
+    text-transform: uppercase; opacity: .7;
+  }
+  .product { font-weight: 700; letter-spacing: .06em; }
+  .status-bar .spacer { flex: 1; }
+  .mod {
+    font: 700 10px/1 var(--mono);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: .38rem .5rem;
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.2);
+  }
+  .mod.streaming { background: #1f8f4a; border-color: #1f8f4a; }
+  .mod.error { background: #8a2a2a; border-color: #8a2a2a; }
 
-  main { display: grid; grid-template-columns: 300px 1fr; gap: 1rem; padding: 1rem; align-items: start; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .subbar {
+    background: var(--navy-2);
+    color: #cfe3f0;
+    padding: .45rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    flex-wrap: wrap;
+    font-size: .82rem;
+  }
+  .subbar code { font-family: var(--mono); color: #fff; }
+  .subbar .spacer { flex: 1; }
 
-  .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; }
+  .shell { flex: 1; padding: 1rem 1rem 2rem; max-width: 980px; width: 100%; margin: 0 auto; }
+
+  .screen-title {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 1rem; margin: .2rem 0 .85rem; flex-wrap: wrap;
+  }
+  .screen-title h1 { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--navy); }
+  .screen-title p { margin: 0; color: var(--muted); font-size: .82rem; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    margin-bottom: .85rem;
+    box-shadow: 0 1px 2px rgba(10,61,98,.06);
+  }
   .card > h2 {
-    margin: 0; padding: .55rem .8rem; font-size: .76rem; font-weight: 600;
-    letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
-    border-bottom: 1px solid var(--edge);
+    margin: 0;
+    padding: .55rem .9rem;
+    font-size: .72rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--navy);
+    background: #eef3f7;
+    border-bottom: 1px solid var(--line);
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    flex-wrap: wrap;
   }
-  .card .body { padding: .7rem .8rem; }
-  aside .card { margin-bottom: 1rem; }
-
-  .kv { display: grid; grid-template-columns: auto 1fr; gap: .2rem .7rem; font-size: .82rem; }
-  .kv dt { color: var(--muted); }
-  .kv dd { margin: 0; font-family: var(--mono); font-size: .78rem; word-break: break-all; }
-
-  .watch { font-family: var(--mono); font-size: .78rem; margin-bottom: .45rem; }
-  .watch .eid { color: var(--dim); display: block; font-size: .7rem; word-break: break-all; }
-
-  .episode { margin-bottom: .9rem; }
-  .ehead {
-    display: flex; flex-wrap: wrap; gap: .5rem .9rem; align-items: center;
-    padding: .6rem .8rem; border-bottom: 1px solid var(--edge);
+  .card > h2 .hint {
+    margin-left: auto; font-weight: 400; letter-spacing: 0; text-transform: none;
+    color: var(--muted); font-size: .76rem;
   }
+  .body { padding: .8rem .9rem .9rem; }
+
+  dl.readout { margin: 0; display: grid; grid-template-columns: 11rem 1fr; gap: .35rem 1rem; }
+  dl.readout dt { color: var(--muted); font-size: .8rem; }
+  dl.readout dd {
+    margin: 0; font-family: var(--mono); font-size: .86rem; color: var(--navy);
+    font-weight: 600; word-break: break-word;
+  }
+  dl.readout dd .aside { color: var(--muted); font-weight: 400; }
+  dl.readout dd.age { font-size: 1.35rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  @media (max-width: 560px) { dl.readout { grid-template-columns: 1fr; gap: .1rem; } }
+
   .verdict {
-    font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-    font-size: .78rem; padding: .18rem .55rem; border-radius: 4px; border: 1px solid;
+    font: 700 10px/1 var(--mono);
+    letter-spacing: .12em; text-transform: uppercase;
+    padding: .34rem .5rem; border: 1px solid;
   }
-  .verdict.clean { color: #b6e8cd; border-color: var(--clean); background: #163025; }
-  .verdict.dirty { color: #f6cecb; border-color: var(--dirty); background: #33201f; }
-  .verdict.unverifiable { color: #f0e0bd; border-color: var(--unsure); background: #2e2617; }
-  .sample { font-family: var(--mono); font-size: .86rem; }
-  .ehead .who { color: var(--muted); font-size: .8rem; }
-  .ehead .when { color: var(--dim); font-size: .75rem; margin-left: auto; font-family: var(--mono); }
-  .trigger { font-size: .68rem; letter-spacing: .05em; text-transform: uppercase;
-             color: var(--push); border: 1px solid #3a4470; border-radius: 3px; padding: .05rem .35rem; }
-  .trigger.startup { color: var(--dim); border-color: var(--edge); }
+  .verdict.clean { background: var(--ok-bg); border-color: #b7e0c4; color: #145c2e; }
+  .verdict.dirty { background: var(--bad-bg); border-color: #f0b4b4; color: #8a1f1f; }
+  .verdict.unverifiable { background: var(--warn-bg); border-color: #e6d19a; color: var(--warn); }
+  .sid {
+    font-family: var(--mono); font-size: .86rem; letter-spacing: 0;
+    text-transform: none; color: var(--ink);
+  }
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .8rem; padding: .7rem .8rem; }
-  .field .label { color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; }
-  .field .value { font-family: var(--mono); font-size: .86rem; }
-  .field.age .value { font-size: 1.5rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
-  .field .note { color: var(--dim); font-size: .72rem; }
+  .btn {
+    font: 600 .82rem/1 "Segoe UI", system-ui, sans-serif;
+    padding: .55rem .95rem; cursor: pointer;
+    color: #fff; background: var(--navy); border: 1px solid var(--navy);
+  }
+  .btn:hover { background: var(--navy-2); }
+  .btn.stop { background: #8a2a2a; border-color: #8a2a2a; }
+  .btn.stop:hover { background: #a03232; }
+  .btn:disabled { opacity: .45; cursor: default; }
 
-  .reason { margin: 0 .8rem .7rem; padding: .5rem .6rem; border-left: 3px solid var(--unsure);
-            background: #241f14; color: #f0e0bd; font-size: .82rem; }
+  .led {
+    font: 700 10px/1 var(--mono);
+    letter-spacing: .1em; text-transform: uppercase;
+    padding: .34rem .5rem; border: 1px solid;
+  }
+  .led.on { background: var(--ok-bg); border-color: #b7e0c4; color: #145c2e; }
+  .led.off { background: var(--warn-bg); border-color: #e6d19a; color: var(--warn); }
+  .led.bad { background: var(--bad-bg); border-color: #f0b4b4; color: #8a1f1f; }
 
-  table.ch { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .78rem; }
-  table.ch th { text-align: left; color: var(--muted); font-weight: 500; padding: .12rem .5rem .12rem 0; }
-  table.ch td { padding: .12rem .5rem .12rem 0; font-variant-numeric: tabular-nums; }
+  .controls {
+    display: flex; align-items: center; gap: .75rem;
+    flex-wrap: wrap; margin-bottom: .8rem;
+  }
 
-  details { border-top: 1px solid var(--edge); }
+  .msg {
+    margin: .8rem 0 0; padding: .55rem .75rem; font-size: .82rem;
+    background: var(--warn-bg); border: 1px solid #e6d19a; color: var(--warn);
+  }
+
+  details { border-top: 1px solid var(--line); }
   details > summary {
-    cursor: pointer; padding: .45rem .8rem; color: var(--muted); font-size: .78rem;
-    letter-spacing: .03em; user-select: none;
+    cursor: pointer; user-select: none;
+    padding: .55rem .9rem; color: var(--muted); font-size: .8rem;
+    background: #f4f7fa;
   }
-  details > summary:hover { color: var(--ink); }
-  details[open] > summary { color: var(--ink); }
+  details > summary:hover { color: var(--navy); }
+  details[open] > summary { color: var(--navy); border-bottom: 1px solid var(--line); }
 
-  .call { border-top: 1px dashed var(--edge); padding: .5rem .8rem; }
+  .call { padding: .6rem .9rem; border-top: 1px solid #e4eaef; }
   .call:first-child { border-top: none; }
-  .callhead { display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; font-family: var(--mono); font-size: .78rem; }
-  .method { color: var(--accent); font-weight: 600; }
-  .status-ok { color: var(--clean); }
-  .status-bad { color: var(--dirty); }
-  .ms { color: var(--dim); margin-left: auto; }
+  .callhead {
+    display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap;
+    font-family: var(--mono); font-size: .78rem;
+  }
+  .method { color: var(--navy); font-weight: 700; }
+  .status-ok { color: var(--ok); font-weight: 600; }
+  .status-bad { color: var(--bad); font-weight: 600; }
+  .ms { color: var(--muted); margin-left: auto; }
   pre {
-    margin: .35rem 0 0; padding: .5rem .6rem; background: #0d1116; border: 1px solid var(--edge);
-    border-radius: 5px; overflow: auto; max-height: 320px;
-    font-family: var(--mono); font-size: .74rem; line-height: 1.45; color: #cfe0ef;
+    margin: .35rem 0 0; padding: .5rem .6rem;
+    background: #f7f9fb; border: 1px solid var(--line);
+    overflow: auto; max-height: 300px;
+    font-family: var(--mono); font-size: .74rem; line-height: 1.45; color: #23303c;
     white-space: pre-wrap; word-break: break-word;
   }
-  pre .lbl { color: var(--dim); }
-  .trunc { color: var(--unsure); font-size: .72rem; }
-  .empty { color: var(--dim); padding: 1.2rem .8rem; font-style: italic; }
+  pre .lbl { color: var(--muted); }
+  .trunc { color: var(--warn); font-size: .74rem; margin-top: .3rem; }
+  .empty { margin: 0; padding: .9rem; color: var(--muted); }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>i3X consumer</h1>
-  <span class="sub" id="base"></span>
-  <span class="pill" id="conn">starting</span>
-  <span class="sub" id="conn-detail"></span>
+<div class="status-bar">
+  <div class="brand-mark">ICC26<span>i3X consumer</span></div>
+  <div class="product">External reader</div>
+  <div class="spacer"></div>
+  <span class="mod" id="conn">starting</span>
+</div>
+
+<div class="subbar">
+  Server <code id="base">&hellip;</code>
+  · window <code id="window">&hellip;</code>
+  · pushes <code id="c-push">0</code>
+  · reviews <code id="c-ep">0</code>
+  · published <code id="c-pub">0</code>
   <span class="spacer"></span>
-  <span class="stat">pushes <b id="c-push">0</b></span>
-  <span class="stat">episodes <b id="c-ep">0</b></span>
-  <span class="stat">keep-alives <b id="c-ka">0</b></span>
-  <span class="stat">sessions <b id="c-sess">0</b></span>
-</header>
+  <span id="conn-detail"></span>
+</div>
 
-<main>
-  <aside>
-    <section class="card">
-      <h2>Subscribed</h2>
-      <div class="body" id="watching"></div>
-    </section>
-    <section class="card">
-      <h2>Server</h2>
-      <div class="body"><dl class="kv" id="server"></dl></div>
-    </section>
-    <section class="card">
-      <h2>Discovery</h2>
-      <div id="session"></div>
-    </section>
-  </aside>
+<div class="shell">
+  <div class="screen-title">
+    <h1>Reviews over i3X</h1>
+    <p>One credential, no tag paths. Open an exchange to see what was asked and answered.</p>
+  </div>
 
-  <section id="episodes"></section>
-</main>
+  <div class="card">
+    <h2>Session</h2>
+    <div class="body">
+      <dl class="readout" id="session-facts"></dl>
+    </div>
+    <div id="session"></div>
+  </div>
+
+  <div class="card">
+    <h2>Publishing <span class="hint" id="pub-topic">&hellip;</span></h2>
+    <div class="body">
+      <div class="controls">
+        <button class="btn" id="pub-toggle" type="button">&hellip;</button>
+        <span class="led" id="pub-state">&hellip;</span>
+        <span class="led" id="pub-broker">&hellip;</span>
+      </div>
+      <dl class="readout" id="pub-facts"></dl>
+    </div>
+  </div>
+
+  <div id="episodes"></div>
+</div>
 
 <script>
 "use strict";
 
-// Open <details> survive a re-render. The page rebuilds the episode list
-// whenever a new episode arrives, and an audience mid-read of one exchange must
-// not have it shut in their face.
+// Open <details> survive a re-render. The page rebuilds the list whenever a new
+// review arrives, and an audience mid-read of one exchange must not have it
+// shut in their face.
 var openKeys = new Set();
 var lastSignature = "";
 
@@ -253,127 +337,175 @@ function renderCall(call) {
   return '<div class="call">' + head + body + '</div>';
 }
 
-function renderEnvironment(env) {
-  if (!env) { return ""; }
-  var rows = (env.channels || []).map(function (channel) {
-    return "<tr><td>" + esc(num(channel.size_um, 1)) + " µm</td><td>" + esc(channel.count) + "</td></tr>";
-  }).join("");
-  var conditions = env.conditions || {};
-  return '<div class="grid">' +
-      '<div class="field age"><div class="label">age</div>' +
-        '<div class="value">' + esc(num(env.age_s, 1)) + ' s</div>' +
-        '<div class="note">nearest reading ' + esc(env.nearest_side || "") + ' the sample</div></div>' +
-      '<div class="field"><div class="label">status</div><div class="value">' + esc(env.status) + '</div>' +
-        '<div class="note">read, never recomputed</div></div>' +
-      '<div class="field"><div class="label">reading taken</div><div class="value">' + esc(clock(env.occurred_at)) + '</div>' +
-        '<div class="note">seq ' + esc(env.sequence_number) + ', ' + esc(num(env.total_volume_l, 3)) + ' L</div></div>' +
-      '<div class="field"><div class="label">location</div><div class="value">' + esc(env.location) + '</div>' +
-        '<div class="note">prose, not a join key</div></div>' +
-      '<div class="field"><div class="label">counts</div><table class="ch">' +
-        '<tr><th>channel</th><th>count</th></tr>' + rows + '</table></div>' +
-      '<div class="field"><div class="label">conditions</div><div class="value">' +
-        esc(num(conditions.flow_rate_lpm, 2)) + ' LPM<br>' +
-        esc(num(conditions.temperature_c, 1)) + ' °C<br>' +
-        esc(num(conditions.humidity_pct, 1)) + ' %</div></div>' +
-    '</div>';
+// published / withheld / failed, as a chip and as a sentence. `skipped` draws
+// nothing: a startup read was never a candidate, and a grey badge saying so on
+// every card at boot would bury the two states that mean something.
+var PUBLISH_LED = { published: "on", withheld: "off", failed: "bad" };
+var PUBLISH_SUMMARY = {
+  published: "Published to ",
+  withheld: "Withheld \u2014 the document that was not sent to ",
+  failed: "Failed to publish to "
+};
+
+function renderAnnouncement(episode) {
+  var pub = episode.publish || {};
+  if (!pub.document || !PUBLISH_LED[pub.state]) { return ""; }
+  var inner = '<div class="call">';
+  if (pub.detail) {
+    inner += '<div class="callhead"><span>' + esc(pub.detail) + '</span></div>';
+  }
+  if (pub.error) {
+    inner += '<pre><span class="lbl">error</span>\n' + esc(pub.error) + '</pre>';
+  }
+  inner += '<pre><span class="lbl">QoS ' + esc(pub.qos) + ' payload</span>\n' +
+             esc(pretty(pub.document)) + '</pre></div>';
+  return detailsBlock("pub-" + episode.id,
+                      PUBLISH_SUMMARY[pub.state] + pub.topic, inner);
 }
 
 function renderEpisode(episode) {
   var review = episode.review || {};
-  var head = '<div class="ehead">' +
+  var env = episode.environment || {};
+  var pub = episode.publish || {};
+
+  var pubChip = PUBLISH_LED[pub.state]
+    ? ' <span class="led ' + PUBLISH_LED[pub.state] + '">' + esc(pub.state) + '</span>'
+    : "";
+
+  var head = '<h2>' +
       '<span class="verdict ' + esc(episode.verdict) + '">' + esc(episode.verdict) + '</span>' +
-      '<span class="sample">' + esc(review.sample_id || "no sample") + '</span>' +
-      '<span class="who">' + esc(episode.object) + ' · ' + esc(review.disposition || "—") +
-        ' · ' + esc(review.analyst || "—") + '</span>' +
-      '<span class="trigger ' + esc(episode.trigger) + '">' + esc(episode.trigger) + '</span>' +
-      '<span class="when">' + esc(clock(episode.received_at)) + '</span>' +
-    '</div>';
+      pubChip +
+      '<span class="sid">' + esc(review.sample_id || "no sample") + '</span>' +
+      '<span class="hint">' + esc(episode.object) + ' · ' + esc(review.disposition || "—") +
+        ' · ' + esc(episode.trigger) + ' ' + esc(clock(episode.received_at)) + '</span>' +
+    '</h2>';
 
-  var facts = '<div class="grid">' +
-      '<div class="field"><div class="label">sample drawn</div>' +
-        '<div class="value">' + esc(clock(episode.sample_instant)) + '</div>' +
-        '<div class="note">from ' + esc(episode.sample_instant_from || "—") + '</div></div>' +
-      '<div class="field"><div class="label">signed off</div>' +
-        '<div class="value">' + esc(clock(review.verified_at)) + '</div>' +
-        '<div class="note">by ' + esc(review.analyst || "—") + '</div></div>' +
-      '<div class="field"><div class="label">analytes</div><div class="value">' +
-        'gluc ' + esc(num(review.glucose_g_l, 2)) + '<br>' +
-        'lac ' + esc(num(review.lactate_g_l, 2)) + '<br>' +
-        'osmo ' + esc(num(review.osmolality_mosm_kg, 1)) + '</div></div>' +
-      '<div class="field"><div class="label">history window</div>' +
-        '<div class="value">± ' + esc(episode.window_s) + ' s</div>' +
-        '<div class="note">' + esc(episode.rows_returned) + ' readings returned</div></div>' +
-    '</div>';
+  var rows = '<dt>Sample drawn</dt><dd>' + esc(clock(episode.sample_instant)) + '</dd>';
+  if (episode.environment) {
+    rows +=
+      '<dt>Nearest reading</dt>' +
+      '<dd class="age">' + esc(num(env.age_s, 1)) + ' s ' +
+        '<span class="aside">' + esc(env.nearest_side || "") + ' the sample</span></dd>' +
+      '<dt>Room status</dt>' +
+      '<dd>' + esc(env.status) + ' <span class="aside">read, never recomputed</span></dd>';
+  }
+  rows +=
+    '<dt>History window</dt>' +
+    '<dd>± ' + esc(episode.window_s) + ' s ' +
+      '<span class="aside">' + esc(episode.rows_returned) + ' readings returned</span></dd>';
 
-  var reason = episode.reason ? '<div class="reason">' + esc(episode.reason) + '</div>' : "";
+  var reason = episode.reason ? '<p class="msg">' + esc(episode.reason) + '</p>' : "";
 
   var calls = (episode.calls || []).map(renderCall).join("");
   var exchange = calls
     ? detailsBlock("ex-" + episode.id,
-        "the exchange — " + episode.calls.length + " i3X call" + (episode.calls.length === 1 ? "" : "s"),
-        calls)
+        "The exchange — " + episode.calls.length + " i3X call" +
+        (episode.calls.length === 1 ? "" : "s"), calls)
     : "";
 
   var envelope = review.document
-    ? detailsBlock("env-" + episode.id, "the review envelope, as it went onto the backbone",
+    ? detailsBlock("env-" + episode.id, "The review envelope, as it went onto the backbone",
         '<div class="call"><pre>' + esc(pretty(review.document)) + '</pre></div>')
     : "";
 
-  return '<article class="card episode">' + head + facts +
-         renderEnvironment(episode.environment) + reason + exchange + envelope + '</article>';
+  return '<div class="card">' + head +
+         '<div class="body"><dl class="readout">' + rows + '</dl>' + reason + '</div>' +
+         exchange + envelope + renderAnnouncement(episode) + '</div>';
 }
 
-function renderAside(state) {
-  var watching = (state.watching || []).map(function (target) {
-    return '<div class="watch">' + esc(target.label) +
-           '<span class="eid">' + esc(target.elementId) + '</span></div>';
-  }).join("");
-  if (state.counter) {
-    watching += '<div class="watch" style="margin-top:.6rem;color:var(--muted)">asks about ' +
-      esc(state.counter.label) + '<span class="eid">' + esc(state.counter.elementId) + '</span></div>';
-  }
-  document.getElementById("watching").innerHTML = watching || '<span class="empty">nothing yet</span>';
+function renderPublish(pub) {
+  if (!pub) { return; }
+  document.getElementById("pub-topic").textContent = pub.topic + "  \u00b7  QoS " + pub.qos;
 
+  // `data-next` rather than reading the label back, so the button says what it
+  // will do and the click handler does not have to parse English to find out.
+  var button = document.getElementById("pub-toggle");
+  button.textContent = pub.enabled ? "Stop publishing" : "Start publishing";
+  button.className = "btn" + (pub.enabled ? " stop" : "");
+  button.setAttribute("data-next", pub.enabled ? "disable" : "enable");
+
+  var stateChip = document.getElementById("pub-state");
+  stateChip.textContent = pub.enabled ? "publishing" : "withholding";
+  stateChip.className = "led " + (pub.enabled ? "on" : "off");
+
+  // Separate from the toggle on purpose: the session is held whether or not
+  // this client is allowed to speak, so "off" and "unreachable" are two
+  // different lights and a failed publish has to be attributable to one.
+  var broker = document.getElementById("pub-broker");
+  broker.textContent = pub.connected ? "broker connected" : "broker unreachable";
+  broker.className = "led " + (pub.connected ? "on" : "bad");
+
+  var last = pub.last || {};
+  var counts = pub.counts || {};
+  document.getElementById("pub-facts").innerHTML =
+    '<dt>Sent as</dt><dd>' + esc(pub.username) +
+      ' <span class="aside">at ' + esc(pub.broker) +
+      ' \u2014 a broker account, not the i3X login</span></dd>' +
+    '<dt>Findings</dt><dd>' + esc(counts.published || 0) + ' published' +
+      ' <span class="aside">\u00b7 ' + esc(counts.withheld || 0) + ' withheld \u00b7 ' +
+      esc(counts.failed || 0) + ' failed</span></dd>' +
+    '<dt>Last</dt><dd>' + (last.state
+      ? esc(last.state) + ' <span class="aside">' + esc(clock(last.at)) +
+        (last.error ? ' \u2014 ' + esc(last.error) : "") + '</span>'
+      : "\u2014") + '</dd>';
+}
+
+function renderSession(state) {
   var server = state.server || {};
-  var caps = server.capabilities || {};
-  document.getElementById("server").innerHTML =
-    '<dt>spec</dt><dd>' + esc(server.specVersion || server.version || "—") + '</dd>' +
-    '<dt>server</dt><dd>' + esc(server.serverVersion || server.implementationVersion || "—") + '</dd>' +
-    '<dt>name</dt><dd>' + esc(server.serverName || server.name || "—") + '</dd>' +
-    '<dt>history</dt><dd>' + esc(caps.query ? caps.query.history : "—") + '</dd>' +
-    '<dt>subscribe</dt><dd>' + esc(caps.subscription ? caps.subscription.streaming : "—") + '</dd>';
+  // Element ids ride in `title` rather than on the page: the client finding
+  // them by browsing is the point, the strings themselves are not.
+  var watching = (state.watching || []).map(function (target) {
+    return '<span title="' + esc(target.elementId) + '">' + esc(target.label) + '</span>';
+  }).join(", ");
+
+  document.getElementById("session-facts").innerHTML =
+    '<dt>Subscribed</dt><dd>' + (watching || "—") + '</dd>' +
+    '<dt>Asks about</dt><dd>' + (state.counter
+      ? '<span title="' + esc(state.counter.elementId) + '">' + esc(state.counter.label) + '</span>'
+      : "—") + '</dd>' +
+    '<dt>Server</dt><dd>' + esc(server.serverName || server.name || "—") +
+      ' <span class="aside">spec ' + esc(server.specVersion || server.version || "—") +
+      '</span></dd>';
 
   var session = (state.session_calls || []).map(renderCall).join("");
-  document.getElementById("session").innerHTML =
-    session ? detailsBlock("session", "how this client found everything — " +
-                           state.session_calls.length + " calls", session)
-            : '<div class="empty">no calls yet</div>';
+  document.getElementById("session").innerHTML = session
+    ? detailsBlock("session", "How this client found everything — " +
+                   state.session_calls.length + " calls", session)
+    : "";
 }
 
 function apply(state) {
-  document.getElementById("base").textContent = state.base_url + "  ·  ± " + state.window_s + " s window";
+  document.getElementById("base").textContent = state.base_url;
+  document.getElementById("window").textContent = "± " + state.window_s + " s";
   var conn = state.connection || {};
-  var pill = document.getElementById("conn");
-  pill.textContent = conn.state;
-  pill.className = "pill " + conn.state;
+  var chip = document.getElementById("conn");
+  chip.textContent = conn.state;
+  chip.className = "mod " + conn.state;
   document.getElementById("conn-detail").textContent = conn.detail || "";
   document.getElementById("c-push").textContent = state.counts.pushes;
   document.getElementById("c-ep").textContent = state.counts.episodes;
-  document.getElementById("c-ka").textContent = state.counts.keepalives;
-  document.getElementById("c-sess").textContent = state.counts.sessions;
+  document.getElementById("c-pub").textContent =
+    (state.publish && state.publish.counts) ? state.publish.counts.published : 0;
 
-  // Rebuild only when the set of episodes or the discovery log actually
-  // changed. A poll that redrew the DOM every second would fight the reader.
+  // Above the signature guard, because the toggle and the broker light change
+  // without a new review arriving and the control must never show a stale
+  // position -- the one thing on this page somebody acts on.
+  renderPublish(state.publish);
+
+  // Rebuild only when the set of reviews or the discovery log actually changed.
+  // A poll that redrew the DOM every second would fight the reader.
   var signature = (state.episodes || []).map(function (e) { return e.id; }).join(",") +
                   "|" + (state.session_calls || []).length + "|" + conn.state;
   if (signature === lastSignature) { return; }
   lastSignature = signature;
 
-  renderAside(state);
+  renderSession(state);
   var host = document.getElementById("episodes");
   host.innerHTML = (state.episodes || []).length
     ? state.episodes.map(renderEpisode).join("")
-    : '<div class="card"><div class="empty">Waiting for a review. Approve or reject a sample in the LIMS and it lands here.</div></div>';
+    : '<div class="card"><h2>Reviews</h2>' +
+      '<p class="empty">Waiting for a review. Approve or reject a sample in the LIMS ' +
+      'and it lands here.</p></div>';
 }
 
 document.addEventListener("toggle", function (event) {
@@ -384,14 +516,27 @@ document.addEventListener("toggle", function (event) {
   if (node.open) { openKeys.add(key); } else { openKeys.delete(key); }
 }, true);
 
+document.getElementById("pub-toggle").addEventListener("click", function () {
+  var button = this;
+  var next = button.getAttribute("data-next") || "enable";
+  // Disabled across the round trip so a double click cannot enable and disable
+  // in the same second and leave the page arguing with itself.
+  button.disabled = true;
+  fetch("/api/publish/" + next, { method: "POST" })
+    .then(function (response) { return response.json(); })
+    .then(renderPublish)
+    .catch(function () { /* the next poll corrects the button */ })
+    .then(function () { button.disabled = false; });
+});
+
 function poll() {
   fetch("/api/state")
     .then(function (response) { return response.json(); })
     .then(apply)
     .catch(function () {
-      var pill = document.getElementById("conn");
-      pill.textContent = "no client";
-      pill.className = "pill error";
+      var chip = document.getElementById("conn");
+      chip.textContent = "no client";
+      chip.className = "mod error";
     });
 }
 

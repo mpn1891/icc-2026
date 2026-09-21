@@ -56,6 +56,14 @@
     }
   },
   {
+    "username": "i3x-client",
+    "password": "i3x-client",
+    "acl": {
+      "subscribeTopics": [],
+      "publishTopics": ["icc26/site1/qc/i3x_event_review"]
+    }
+  },
+  {
     "username": "observer",
     "password": "observer",
     "acl": {
