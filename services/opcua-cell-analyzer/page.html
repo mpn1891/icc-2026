@@ -14,7 +14,7 @@
   the same characters. Type them wrong and the demo shows you exactly what a
   plant looks like when the transcription is the join.
 
-  Skin: a generic cell-culture analyzer operator GUI — light medical
+  Skin: a generic cell-culture analyzer operator GUI, a light medical
   touchscreen, status bar, module chips, large analysis form. No external
   assets of any kind -- the demo has to run with networking disabled.
 -->
@@ -192,7 +192,7 @@
   <div class="brand-mark">ICC26<span>cell culture analytics</span></div>
   <div class="product">Cell Analyzer</div>
   <div class="spacer"></div>
-  <div class="modules" title="Module status — white/ready, red/unavailable, per the vendor manual">
+  <div class="modules" title="Module status: white/ready, red/unavailable, per the vendor manual">
     <span class="mod ready">Chem</span>
     <span class="mod ready">Gas</span>
     <span class="mod ready">CDV</span>
@@ -208,7 +208,7 @@
 
 <div class="shell">
   <div class="screen-title">
-    <h1>External sample — ESM</h1>
+    <h1>External sample (ESM)</h1>
     <p>Log the sample id, then run. The analyzer echoes whatever is typed.</p>
   </div>
 
@@ -221,7 +221,7 @@
                placeholder="S-20260826-0001">
         <p class="hint">
           Scan the barcode or type the identifier printed by the sample valve on BR-201.
-          The analyzer echoes whatever is entered here back on its result &mdash; it has no
+          The analyzer echoes whatever is entered here back on its result. It has no
           way to check it.
         </p>
       </div>
@@ -258,7 +258,7 @@
         <code>OPCSystemCommands/ESMScheduleAnalysis/SampleInformation/*</code>, then the
         <code>ESMScheduleAnalysis</code> bit is set. That is the whole vendor contract:
         104 writable bits, zero OPC UA methods, and nothing atomic about the sequence.
-        An Ignition tag write does exactly the same thing &mdash; and, unlike this screen,
+        An Ignition tag write does exactly the same thing, and, unlike this screen,
         gets no answer back if the instrument declines.
       </p>
     </div>

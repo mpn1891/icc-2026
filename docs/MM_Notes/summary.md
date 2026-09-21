@@ -38,4 +38,6 @@ Debezium connects as its own `cdc` replication role against publication `icc26_c
 **A second path leaves the same click, and it is not CDC.** After the commit `bes_batch` writes the `batch_data` tags, historised on change, and *that* is what i3X serves — so stopping Debezium silences the topic while `/objects/history` keeps answering. Measured 2026-09-20: one advance is one clean history row (no coalesce needed here), but a member whose last stored point predates the requested window comes back **null**, so the same HARVEST row read over ten minutes gave `batch_id: null` and over two days gave `B-20260918-03`. Fixed on the write side — all five members written every advance, with `historicalDeadbandMode` Off on the ones that rarely change. A window containing no advance still returns zero rows, which is why an event-store reader over `bes.batch_event` is still open.
 
 ## Pattern 6
+
+The particle counter hosts its own local database with a graphql API. Ignition has a timer script that polls the source. In this case it also exposes a cursor/index field so the ignition polling side can know when it polls if it should continue polling to grab the next one (if more than one ran between polls)
 ## Pattern 7
