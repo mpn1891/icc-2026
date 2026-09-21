@@ -158,7 +158,7 @@ class Config:
         # unattended fallback, which this pattern is not supposed to need.
         self.generator_interval_s = _env_float("GENERATOR_INTERVAL_S", 0.0)
         self.http_port = _env_int("HTTP_PORT", 8000)
-        self.default_analyst = _env("DEFAULT_ANALYST", "mnorris")
+        self.default_analyst = _env("DEFAULT_ANALYST", "mmartin")
 
 
 def _now() -> datetime:

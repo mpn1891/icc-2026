@@ -122,7 +122,7 @@ the whole time. That is pattern 5, arriving from the opposite direction.
 
 ```powershell
 curl.exe -X POST http://localhost:8000/trigger
-curl.exe -X POST http://localhost:8000/samples/S-20260820-141530/approve -d "analyst=mnorris"
+curl.exe -X POST http://localhost:8000/samples/S-20260820-141530/approve -d "analyst=mmartin"
 ```
 
 `/trigger` inserts rows. It does **not** publish onto the analyzer topic —

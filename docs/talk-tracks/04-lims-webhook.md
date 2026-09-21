@@ -127,7 +127,7 @@ walk, and the timestamps are illustrative — the walk's exact pair is quoted un
   "values": {
     "sample_id": "S-20260831-0103",
     "equipment_id": "br-201",
-    "analyst": "mnorris",
+    "analyst": "mmartin",
     "disposition": "pass",
     "verified_at": "2026-08-31T15:41:13.184Z",
     "collection": {

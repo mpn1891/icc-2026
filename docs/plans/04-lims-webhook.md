@@ -581,7 +581,7 @@ verification instant survives as `values.verified_at`; `meta.correlation_id` was
     "sample_id": "S-2026-0819-014",
     "batch_id": "B-2026-0042",
     "collected_at": "2026-08-19T14:03:22.145Z",
-    "analyst": "mnorris",
+    "analyst": "mmartin",
     "disposition": "pass",
     "results": [
       { "analyte": "glucose",    "value": 4.21,  "uom": "g/L" },
@@ -639,7 +639,7 @@ Terminal 2:
 curl.exe -X POST http://localhost:8000/trigger
 
 # Release it (or click Approve at http://localhost:8000/)
-curl.exe -X POST http://localhost:8000/samples/S-2026-0819-014/approve -d "analyst=mnorris"
+curl.exe -X POST http://localhost:8000/samples/S-2026-0819-014/approve -d "analyst=mmartin"
 ```
 
 Expected: a message on the analyzer topic at trigger time, then **nothing** on

@@ -180,7 +180,7 @@ the table above now expects to be **absent**. Read it for the `values` block, wh
 ```json
 {"meta":{"ingest_ts":"2026-08-31T15:41:13.184Z","correlation_id":"S-20260831-0103",
  "mechanism":"aggregate"},
- "values":{"disposition":"pass","analyst":"mnorris","sample_id":"S-20260831-0103",
+ "values":{"disposition":"pass","analyst":"mmartin","sample_id":"S-20260831-0103",
   "batch_id":"B-20260831-01","equipment_id":"br-201","equipment_identifier":"br-201",
   "batch_context":{"operation":"GROWTH","event_type":"operation_start",
                    "qualified_window":true,"as_of":"2026-08-31T15:39:24.600Z"},
