@@ -5,13 +5,21 @@
     "typeId": "bioreactor",
     "tags": [
       {
-        "name": "asset_data",
+        "name": "batch_data",
         "tagType": "Folder",
         "tags": [
           {
-            "name": "equipment_identifier",
-            "tagType": "AtomicTag",
-            "value": "br-201"
+            "deadbandMode": "Off",
+            "historicalDeadbandMode": "Off",
+            "name": "batch_id",
+            "tagType": "AtomicTag"
+          },
+          {
+            "deadbandMode": "Off",
+            "historicalDeadband": 0.0,
+            "historicalDeadbandMode": "Off",
+            "name": "event_type",
+            "tagType": "AtomicTag"
           }
         ]
       },
@@ -23,7 +31,7 @@
             "name": "sample_valve",
             "parameters": {
               "HistoryCoalesceMs": {
-                "dataType": "Int8",
+                "dataType": "Integer",
                 "value": 2000
               },
               "cycle_result_path": {
@@ -39,7 +47,7 @@
                 "value": "[MQTT Engine]icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete/values/sample_completion"
               }
             },
-            "tagType": "UdtInstance",
+            "tagType": "AtomicTag",
             "typeId": "sample_valve"
           }
         ]
@@ -51,17 +59,6 @@
     "tagType": "UdtInstance",
     "typeId": "bioreactor",
     "tags": [
-      {
-        "name": "asset_data",
-        "tagType": "Folder",
-        "tags": [
-          {
-            "name": "equipment_identifier",
-            "tagType": "AtomicTag",
-            "value": "br-202"
-          }
-        ]
-      },
       {
         "name": "process_data",
         "tagType": "Folder",
@@ -82,7 +79,7 @@
                 "value": "[MQTT Engine]Edge Nodes/ICC26-Site1-UPSTREAM/SAMPLE-VALVE-02/SV-202/Sample/LastSampleTime"
               }
             },
-            "tagType": "UdtInstance",
+            "tagType": "AtomicTag",
             "typeId": "sample_valve",
             "tags": [
               {
