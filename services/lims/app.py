@@ -1072,7 +1072,7 @@ def _read_page() -> str:
 
 def _fmt_display_ts(value) -> str:
     if value is None:
-        return "—"
+        return "–"
     if isinstance(value, datetime):
         dt = value
     else:
@@ -1307,7 +1307,7 @@ def _spec_for(analyte: str, value) -> dict:
         if catalog["hi"] is not None and number > catalog["hi"]:
             in_spec = False
     if catalog["lo"] is None and catalog["hi"] is None:
-        spec_text = "—"
+        spec_text = "–"
     elif catalog["lo"] is None:
         spec_text = "≤ %s" % _fmt_result(catalog["hi"])
     elif catalog["hi"] is None:
@@ -1370,12 +1370,12 @@ def _no_results_html(sample: dict) -> str:
     if sample.get("reviewable"):
         return (
             '<td class="await-cell" colspan="6">'
-            "No analysis — the cycle did not complete normally, so no material "
+            "No analysis: the cycle did not complete normally, so no material "
             "reached the analyser. The record still requires a disposition.</td>"
         )
     return (
         '<td class="await-cell" colspan="6">'
-        "Sample drawn and logged. Awaiting analyser result — the sample id has to "
+        "Sample drawn and logged. Awaiting analyser result. The sample id has to "
         "be entered on the analyzer before it runs.</td>"
     )
 
@@ -1542,7 +1542,7 @@ def _unmatched_html(unmatched: list[dict], pending: list[dict], analyst: str) ->
             "</tr>" % (
                 _esc(item["reported_sample_id"]),
                 _esc(_fmt_display_ts(item["collected_at"])),
-                _esc(summary or "—"),
+                _esc(summary or "–"),
                 action,
             )
         )
@@ -1551,7 +1551,7 @@ def _unmatched_html(unmatched: list[dict], pending: list[dict], analyst: str) ->
         "<th>Reported as</th><th>Acquired</th><th>Results</th><th></th>"
         "</tr></thead><tbody>%s</tbody></table>"
         '<p class="meaning">The id the instrument reported is kept exactly as received. '
-        "Attaching records which sample the analysis belongs to and who decided that — "
+        "Attaching records which sample the analysis belongs to and who decided that. "
         "it does not overwrite what the analyzer said.</p>" % "".join(rows)
     )
 
@@ -1579,7 +1579,7 @@ def _outbox_html(outbox: list[dict]) -> str:
                 _esc(state),
                 _esc(labels.get(state, state)),
                 item["attempts"],
-                _esc(item["last_error"] or "—"),
+                _esc(item["last_error"] or "–"),
                 _esc(_fmt_display_ts(item["updated_at"])),
             )
         )

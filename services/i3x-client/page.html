@@ -297,12 +297,12 @@ function pretty(value) {
 }
 
 function clock(iso) {
-  if (!iso) { return "—"; }
+  if (!iso) { return "–"; }
   return String(iso).replace("T", " ").replace("Z", "");
 }
 
 function num(value, digits) {
-  if (value === null || value === undefined || value === "") { return "—"; }
+  if (value === null || value === undefined || value === "") { return "–"; }
   var asNumber = Number(value);
   return isNaN(asNumber) ? String(value) : asNumber.toFixed(digits === undefined ? 1 : digits);
 }
@@ -331,7 +331,7 @@ function renderCall(call) {
   } else {
     body += '<pre><span class="lbl">response</span>\n' + esc(pretty(call.response)) + '</pre>';
     if (call.truncated) {
-      body += '<div class="trunc">response truncated for display — the client read all of it</div>';
+      body += '<div class="trunc">response truncated for display: the client read all of it</div>';
     }
   }
   return '<div class="call">' + head + body + '</div>';
@@ -376,7 +376,7 @@ function renderEpisode(episode) {
       '<span class="verdict ' + esc(episode.verdict) + '">' + esc(episode.verdict) + '</span>' +
       pubChip +
       '<span class="sid">' + esc(review.sample_id || "no sample") + '</span>' +
-      '<span class="hint">' + esc(episode.object) + ' · ' + esc(review.disposition || "—") +
+      '<span class="hint">' + esc(episode.object) + ' · ' + esc(review.disposition || "–") +
         ' · ' + esc(episode.trigger) + ' ' + esc(clock(episode.received_at)) + '</span>' +
     '</h2>';
 
@@ -399,7 +399,7 @@ function renderEpisode(episode) {
   var calls = (episode.calls || []).map(renderCall).join("");
   var exchange = calls
     ? detailsBlock("ex-" + episode.id,
-        "The exchange — " + episode.calls.length + " i3X call" +
+        "The exchange: " + episode.calls.length + " i3X call" +
         (episode.calls.length === 1 ? "" : "s"), calls)
     : "";
 
@@ -459,17 +459,17 @@ function renderSession(state) {
   }).join(", ");
 
   document.getElementById("session-facts").innerHTML =
-    '<dt>Subscribed</dt><dd>' + (watching || "—") + '</dd>' +
+    '<dt>Subscribed</dt><dd>' + (watching || "–") + '</dd>' +
     '<dt>Asks about</dt><dd>' + (state.counter
       ? '<span title="' + esc(state.counter.elementId) + '">' + esc(state.counter.label) + '</span>'
-      : "—") + '</dd>' +
-    '<dt>Server</dt><dd>' + esc(server.serverName || server.name || "—") +
-      ' <span class="aside">spec ' + esc(server.specVersion || server.version || "—") +
+      : "–") + '</dd>' +
+    '<dt>Server</dt><dd>' + esc(server.serverName || server.name || "–") +
+      ' <span class="aside">spec ' + esc(server.specVersion || server.version || "–") +
       '</span></dd>';
 
   var session = (state.session_calls || []).map(renderCall).join("");
   document.getElementById("session").innerHTML = session
-    ? detailsBlock("session", "How this client found everything — " +
+    ? detailsBlock("session", "How this client found everything: " +
                    state.session_calls.length + " calls", session)
     : "";
 }

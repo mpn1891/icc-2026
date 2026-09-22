@@ -268,10 +268,10 @@
     <h2>Last completed analysis</h2>
     <div class="body">
       <dl class="readout">
-        <dt>Reported sample ID</dt><dd id="last_id">&mdash;</dd>
-        <dt>Sample time</dt><dd id="last_time">&mdash;</dd>
-        <dt>Analyses this session</dt><dd id="sample_no">&mdash;</dd>
-        <dt>Currently loaded ID</dt><dd id="loaded_id">&mdash;</dd>
+        <dt>Reported sample ID</dt><dd id="last_id">&ndash;</dd>
+        <dt>Sample time</dt><dd id="last_time">&ndash;</dd>
+        <dt>Analyses this session</dt><dd id="sample_no">&ndash;</dd>
+        <dt>Currently loaded ID</dt><dd id="loaded_id">&ndash;</dd>
       </dl>
       <p class="note">
         <b>Reported sample ID is whatever was typed above.</b> The LIMS stores it verbatim
@@ -312,10 +312,10 @@
     }
 
     const last = s.last_result || {};
-    $("last_id").textContent = last.sample_id || "—";
-    $("last_time").textContent = last.sample_time || "—";
+    $("last_id").textContent = last.sample_id || "–";
+    $("last_time").textContent = last.sample_time || "–";
     $("sample_no").textContent = s.sample_no;
-    $("loaded_id").textContent = (s.loaded && s.loaded.sample_id) || "—";
+    $("loaded_id").textContent = (s.loaded && s.loaded.sample_id) || "–";
 
     // Prefill the metadata that carries over between samples, but never the
     // sample id: it is different every time and pre-filling it is how a stale

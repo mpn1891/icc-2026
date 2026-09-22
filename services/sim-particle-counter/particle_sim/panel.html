@@ -279,7 +279,7 @@
     <div class="mark">ICC26<span>particle counter</span></div>
     <div class="model">ISO 21501-4</div>
     <div class="spacer"></div>
-    <div class="serial" id="serial">&mdash;</div>
+    <div class="serial" id="serial">&ndash;</div>
     <div class="lamp" id="lamp"><i></i> Sampling</div>
   </div>
 
@@ -287,7 +287,7 @@
 
     <div class="idle-banner" id="idle-banner">
       <strong>NO RUN ACTIVE</strong>
-      <span>The buffer is empty. Press <b>Start sampling</b> — nothing is measured until you do.</span>
+      <span>The buffer is empty. Press <b>Start sampling</b>. Nothing is measured until you do.</span>
     </div>
 
     <div class="row">
@@ -298,7 +298,7 @@
             <div class="state idle" id="state">IDLE</div>
             <div class="countdown" id="countdown"></div>
           </div>
-          <div class="sub" id="run-sub">&mdash;</div>
+          <div class="sub" id="run-sub">&ndash;</div>
         </div>
 
         <div class="block">
@@ -337,12 +337,12 @@
         <div class="block">
           <h2>Conditions</h2>
           <dl class="kv" id="conditions">
-            <dt>Sequence</dt><dd id="seq">&mdash;</dd>
-            <dt>Completed</dt><dd id="completed">&mdash;</dd>
-            <dt>Volume</dt><dd id="volume">&mdash;</dd>
-            <dt>Flow</dt><dd id="flow">&mdash;</dd>
-            <dt>Temp / RH</dt><dd id="th">&mdash;</dd>
-            <dt>Buffer</dt><dd id="buffer">&mdash;</dd>
+            <dt>Sequence</dt><dd id="seq">&ndash;</dd>
+            <dt>Completed</dt><dd id="completed">&ndash;</dd>
+            <dt>Volume</dt><dd id="volume">&ndash;</dd>
+            <dt>Flow</dt><dd id="flow">&ndash;</dd>
+            <dt>Temp / RH</dt><dd id="th">&ndash;</dd>
+            <dt>Buffer</dt><dd id="buffer">&ndash;</dd>
           </dl>
         </div>
       </div>
@@ -364,8 +364,8 @@
 <div class="rig">
   <h2>Simulator rig<span>not part of the instrument</span></h2>
   <div class="spacer"></div>
-  <div class="counter" id="rig-counter">counter &mdash;</div>
-  <button class="persist" id="btn-persist">Sequence persistence: &mdash;</button>
+  <div class="counter" id="rig-counter">counter &ndash;</div>
+  <button class="persist" id="btn-persist">Sequence persistence: &ndash;</button>
   <p id="rig-note"></p>
 </div>
 
@@ -389,7 +389,7 @@
 
   var PERSIST_OFF = "Sequence numbering restarts at 1 when this container "
     + "restarts, so a poller's stored cursor points past the end and the poll "
-    + "goes quiet with nothing failing. That is the stale-cursor demo — leave "
+    + "goes quiet with nothing failing. That is the stale-cursor demo: leave "
     + "this off for it.";
   var PERSIST_ON = "The counter survives a container restart, so a poller's "
     + "stored cursor stays valid and the poll picks up on its own. The buffer "
@@ -439,11 +439,11 @@
     var tbody = el("channels");
     if (!s.last) {
       tbody.innerHTML = '<tr><td colspan="2" class="sub">No analysis yet.</td></tr>';
-      el("seq").textContent = "—";
-      el("completed").textContent = "—";
-      el("volume").textContent = "—";
-      el("flow").textContent = "—";
-      el("th").textContent = "—";
+      el("seq").textContent = "–";
+      el("completed").textContent = "–";
+      el("volume").textContent = "–";
+      el("flow").textContent = "–";
+      el("th").textContent = "–";
     } else {
       var rows = "";
       s.last.channels.forEach(function (c) {
