@@ -439,11 +439,11 @@
     var tbody = el("channels");
     if (!s.last) {
       tbody.innerHTML = '<tr><td colspan="2" class="sub">No analysis yet.</td></tr>';
-      el("seq").textContent = "–";
-      el("completed").textContent = "–";
-      el("volume").textContent = "–";
-      el("flow").textContent = "–";
-      el("th").textContent = "–";
+      el("seq").textContent = "-";
+      el("completed").textContent = "-";
+      el("volume").textContent = "-";
+      el("flow").textContent = "-";
+      el("th").textContent = "-";
     } else {
       var rows = "";
       s.last.channels.forEach(function (c) {

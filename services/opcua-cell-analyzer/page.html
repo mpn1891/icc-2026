@@ -312,10 +312,10 @@
     }
 
     const last = s.last_result || {};
-    $("last_id").textContent = last.sample_id || "–";
-    $("last_time").textContent = last.sample_time || "–";
+    $("last_id").textContent = last.sample_id || "-";
+    $("last_time").textContent = last.sample_time || "-";
     $("sample_no").textContent = s.sample_no;
-    $("loaded_id").textContent = (s.loaded && s.loaded.sample_id) || "–";
+    $("loaded_id").textContent = (s.loaded && s.loaded.sample_id) || "-";
 
     // Prefill the metadata that carries over between samples, but never the
     // sample id: it is different every time and pre-filling it is how a stale

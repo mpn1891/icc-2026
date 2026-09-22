@@ -1072,7 +1072,7 @@ def _read_page() -> str:
 
 def _fmt_display_ts(value) -> str:
     if value is None:
-        return "–"
+        return "-"
     if isinstance(value, datetime):
         dt = value
     else:
@@ -1307,13 +1307,13 @@ def _spec_for(analyte: str, value) -> dict:
         if catalog["hi"] is not None and number > catalog["hi"]:
             in_spec = False
     if catalog["lo"] is None and catalog["hi"] is None:
-        spec_text = "–"
+        spec_text = "-"
     elif catalog["lo"] is None:
         spec_text = "≤ %s" % _fmt_result(catalog["hi"])
     elif catalog["hi"] is None:
         spec_text = "≥ %s" % _fmt_result(catalog["lo"])
     else:
-        spec_text = "%s – %s" % (_fmt_result(catalog["lo"]), _fmt_result(catalog["hi"]))
+        spec_text = "%s to %s" % (_fmt_result(catalog["lo"]), _fmt_result(catalog["hi"]))
     return {
         "code": catalog["code"],
         "name": catalog["name"],
@@ -1542,7 +1542,7 @@ def _unmatched_html(unmatched: list[dict], pending: list[dict], analyst: str) ->
             "</tr>" % (
                 _esc(item["reported_sample_id"]),
                 _esc(_fmt_display_ts(item["collected_at"])),
-                _esc(summary or "–"),
+                _esc(summary or "-"),
                 action,
             )
         )
@@ -1579,7 +1579,7 @@ def _outbox_html(outbox: list[dict]) -> str:
                 _esc(state),
                 _esc(labels.get(state, state)),
                 item["attempts"],
-                _esc(item["last_error"] or "–"),
+                _esc(item["last_error"] or "-"),
                 _esc(_fmt_display_ts(item["updated_at"])),
             )
         )
