@@ -61,10 +61,10 @@ button and the first message in front of an audience. A withheld finding is
 counted, and the document that was not sent is kept beside it on the page --
 "we chose not to say this" and "we had nothing to say" must not look the same.
 
-**Every verdict publishes, `clean` included.** 07's `icc26/site1/qc/deviation`
+**Every verdict publishes, `in specification` included.** 07's `icc26/site1/qc/deviation`
 is a gate: it fires only when something is wrong, which is correct for a topic
 called deviation. This one is a review log, and a consumer of it wants to know
-that a sample was looked at and found clean -- a different question, and one a
+that a sample was looked at and found in specification -- a different question, and one a
 topic that only ever carries bad news cannot answer.
 
 **Two of 07's rules are copied here on purpose, and no others.**
@@ -646,7 +646,7 @@ class Publisher:
                 # How the verdict was arrived at, so it can be audited without
                 # re-running the query: which member gave the time axis, how far
                 # the search was allowed to reach, and how many rows it saw. A
-                # `clean` drawn from one row in a 600 s span is a different
+                # `in specification` drawn from one row in a 600 s span is a different
                 # statement from one drawn from sixty, and the difference has to
                 # travel with it.
                 "sample_instant_from": episode.get("sample_instant_from"),
@@ -907,11 +907,12 @@ def _assess(cfg: Config, client: Client, state: State, trigger: str,
     """One review in, one episode out: the verdict and every call that made it.
 
     The verdict has three values and only one of them is arithmetic-free by
-    accident. `clean` and `dirty` are `status` read back verbatim;
+    accident. `in specification` and `out of specification` are `status` mapped
+    from `normal` and `excursion`;
     `unverifiable` is this client declining to answer, and it says why in a
     sentence rather than leaving a null for somebody to interpret. A sample
     whose room cannot be evidenced cannot be released, so "I could not find out"
-    has to be as loud as "it was dirty".
+    has to be as loud as "it was out of specification".
     """
     calls: List[Dict[str, Any]] = []
     review = _review(value)
@@ -982,9 +983,9 @@ def _assess(cfg: Config, client: Client, state: State, trigger: str,
     }
 
     if status == STATUS_EXCURSION:
-        episode["verdict"] = "dirty"
+        episode["verdict"] = "out of specification"
     elif status == STATUS_NORMAL:
-        episode["verdict"] = "clean"
+        episode["verdict"] = "in specification"
     else:
         episode["reason"] = ("the nearest reading carries status %r, which this client does "
                              "not recognise and will not interpret" % (status,))

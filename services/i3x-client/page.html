@@ -154,8 +154,8 @@
     letter-spacing: .12em; text-transform: uppercase;
     padding: .34rem .5rem; border: 1px solid;
   }
-  .verdict.clean { background: var(--ok-bg); border-color: #b7e0c4; color: #145c2e; }
-  .verdict.dirty { background: var(--bad-bg); border-color: #f0b4b4; color: #8a1f1f; }
+  .verdict.in-specification { background: var(--ok-bg); border-color: #b7e0c4; color: #145c2e; }
+  .verdict.out-of-specification { background: var(--bad-bg); border-color: #f0b4b4; color: #8a1f1f; }
   .verdict.unverifiable { background: var(--warn-bg); border-color: #e6d19a; color: var(--warn); }
   .sid {
     font-family: var(--mono); font-size: .86rem; letter-spacing: 0;
@@ -363,6 +363,13 @@ function renderAnnouncement(episode) {
                       PUBLISH_SUMMARY[pub.state] + pub.topic, inner);
 }
 
+function verdictClass(verdict) {
+  if (verdict === "in specification") { return "in-specification"; }
+  if (verdict === "out of specification") { return "out-of-specification"; }
+  if (verdict === "unverifiable") { return "unverifiable"; }
+  return "";
+}
+
 function renderEpisode(episode) {
   var review = episode.review || {};
   var env = episode.environment || {};
@@ -373,7 +380,7 @@ function renderEpisode(episode) {
     : "";
 
   var head = '<h2>' +
-      '<span class="verdict ' + esc(episode.verdict) + '">' + esc(episode.verdict) + '</span>' +
+      '<span class="verdict ' + verdictClass(episode.verdict) + '">' + esc(episode.verdict) + '</span>' +
       pubChip +
       '<span class="sid">' + esc(review.sample_id || "no sample") + '</span>' +
       '<span class="hint">' + esc(episode.object) + ' · ' + esc(review.disposition || "-") +

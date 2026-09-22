@@ -11,7 +11,7 @@
     Sample point      free text, and it IS the location. The vendor record has
                       no location field, so it rides in `deviceName`. The
                       operator owns it.
-    Clean / dirty     the excursion, as a physical gesture rather than a curl.
+    In-spec / OOS     the excursion, as a physical gesture rather than a curl.
     Live readout      proves the instrument is running independently of whether
                       Ignition is looking. That independence is the whole
                       pattern: nothing pushes.
@@ -210,6 +210,7 @@
   button.on { outline: 2px solid #ffd166; outline-offset: 1px; }
   button.dirty.on { background: linear-gradient(180deg, #e0902c, #b06712); }
   button.clean.on { background: linear-gradient(180deg, #2f9fd6, #17709e); }
+  .block .keys button { flex: 1 1 0; text-align: center; }
 
   .field { display: flex; gap: .5rem; }
   .field input {
@@ -315,8 +316,8 @@
         <div class="block">
           <h2>Room condition</h2>
           <div class="keys" style="padding:0">
-            <button class="clean" id="btn-clean">Clean</button>
-            <button class="dirty" id="btn-dirty">Dirty</button>
+            <button class="clean" id="btn-clean">In-spec</button>
+            <button class="dirty" id="btn-dirty">OOS</button>
           </div>
         </div>
       </div>
