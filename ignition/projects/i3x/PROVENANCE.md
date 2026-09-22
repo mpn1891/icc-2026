@@ -316,7 +316,7 @@ shows the difference is entirely the ingestion:
 | Instance | Bound to | Rows for one sample |
 |---|---|---|
 | `br-202` | `[MQTT Engine]Edge Nodes/…/SV-202/Sample/*` (Sparkplug) | 1 |
-| `br-201` | `[MQTT Engine]icc26/site1/upstream/…/sample-complete/values/*` (custom namespace) | 3, spanning 10 ms |
+| `br-201` | `[MQTT Engine]icc26/site1/upstream/…/sample-acq-completed/values/*` (custom namespace) | 3, spanning 10 ms |
 
 br-201's first two rows hold states the valve was never in — a sample id with no cycle result, then
 a cycle result with no completion time — because forward-fill had nothing yet to carry for the

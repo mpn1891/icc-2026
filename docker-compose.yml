@@ -448,7 +448,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────────
   # Pattern 4 — LIMS approval webhook
   #
-  # Subscribes to icc26/site1/qc/analyzers/+/result as lims-bridge, holds the
+  # Subscribes to icc26/site1/qc/analyzers/+/sample-analyzed as lims-bridge, holds the
   # sample unapproved, and on a human Approve POSTs it to Ignition through a
   # transactional outbox. Publishes nothing: publishTopics is empty, and
   # Transmission is the publisher. The approval screen is this container on
@@ -466,7 +466,7 @@ services:
       BROKER_HOST: chariot
       MQTT_USERNAME: lims-bridge
       MQTT_PASSWORD: lims-bridge
-      RESULT_TOPIC: icc26/site1/qc/analyzers/+/result
+      RESULT_TOPIC: icc26/site1/qc/analyzers/+/sample-analyzed
       PGHOST: postgres
       PGDATABASE: icc26
       PGUSER: icc26
@@ -647,7 +647,7 @@ services:
   # it needs. That is the whole argument, and it is enforced here by what this
   # block does NOT contain rather than asserted in a README.
   #
-  # It can also publish each finding back as `icc26/site1/qc/i3x_event_review`,
+  # It can also publish each finding back as `icc26/site1/qc/i3x-meta-review-completed`,
   # and that needs a SECOND credential — a broker account, granted one topic.
   # Two grants from two systems, which is the honest shape: browsing the whole
   # model bought no right to put anything on the bus. `PUBLISH_ENABLED` is
@@ -689,7 +689,7 @@ services:
       # Matched by no Engine custom namespace, so it lands on the backbone
       # without creating tags and without becoming a second registrant on an
       # Event Stream source topic. See docs/00-architecture.md.
-      PUBLISH_TOPIC: ${I3X_CLIENT_PUBLISH_TOPIC:-icc26/site1/qc/i3x_event_review}
+      PUBLISH_TOPIC: ${I3X_CLIENT_PUBLISH_TOPIC:-icc26/site1/qc/i3x-meta-review-completed}
       LOG_LEVEL: ${I3X_CLIENT_LOG_LEVEL:-INFO}
       TZ: ${TZ:-America/Chicago}
     # No depends_on: chariot. Reconnect-with-backoff is in-app, per the

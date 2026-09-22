@@ -4,7 +4,7 @@
   "numbersAsFloats": false,
   "qos1": true,
   "rootFolder": "",
-  "subscription": "icc26/site1/qc/lims/sample-result",
+  "subscription": "icc26/site1/qc/lims/sample-results-released",
   "tagName": "",
   "writableTags": false
 }

@@ -27,7 +27,7 @@ it.** It ships a licensed OPC UA server with about 400 documented tags — and n
 
 **Demo.** Read the sample id off the valve's page, type it into the instrument's own screen at
 :8087, press Run. Seconds later one message lands on
-`icc26/site1/qc/analyzers/cell-analyzer-01/result`.
+`icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed`.
 
 **Risk.** Nothing in the vendor's model says *"a run finished."* The bridge infers it from a
 timestamp changing value, and everything downstream rests on that inference being right.
@@ -111,7 +111,7 @@ osmolality is a number an analyst could have signed for.
                                   ▼
                             Transmission
                                   ▼
-          icc26/site1/qc/analyzers/cell-analyzer-01/result
+          icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed
 ```
 
 **Say the Event Stream → Transmission relay out loud once — here or in pattern 6, not both.**
@@ -196,18 +196,18 @@ Watcher, in its own terminal:
 
 ```powershell
 docker run --rm -it --network icc26 eclipse-mosquitto:2 `
-  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/qc/analyzers/+/result' -v
+  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/qc/analyzers/+/sample-analyzed' -v
 ```
 
 | Beat | Trigger | What lands |
 |---|---|---|
 | The instrument's own screen | Open <http://localhost:8087> | A sample-login field, not a dashboard. The vendor's surface, not ours |
-| The transcription | Badge `B-1042` at :8085, copy the id, type it in, press Run | **One** message on `…/cell-analyzer-01/result` when the run completes |
+| The transcription | Badge `B-1042` at :8085, copy the id, type it in, press Run | **One** message on `…/cell-analyzer-01/sample-analyzed` when the run completes |
 | Absent is not zero | Read the payload | `osmo: null` beside `modules_used.osmo: false` — and two analytes downstream, not three |
 | It refuses, and a bit cannot | Press Run again while one is running | The page says an analysis is already running. Then say what an OPC UA client would have been told: nothing |
 | The document has no mechanism | Scroll the watcher | `ts` and `values`. Where it came from is the topic, and only the topic |
 
-**The particle counter's topic shares this wildcard.** `qc/analyzers/+/result` catches
+**The particle counter's topic shares this wildcard.** `qc/analyzers/+/sample-analyzed` catches
 `particle-counter-01` too, which is useful in pattern 6 and noise here — narrow it to the one
 device if the burst of three every 30 s is landing on top of the beat.
 

@@ -901,7 +901,7 @@ def build(document):
     the string "None" onto the topic. See the module docstring.
 
     Called from `07_chain/lims-review`'s transform with what the MQTT Engine
-    source read off `icc26/site1/qc/lims/sample-result`. The source encoder is
+    source read off `icc26/site1/qc/lims/sample-results-released`. The source encoder is
     `ignition.string`, so what arrives is the raw payload as text; a dict is
     accepted anyway, because what an Event Stream hands a transform is not worth
     being brittle about.

@@ -12,7 +12,7 @@
 > remains the clean-room path. Odoo is no longer in the stack (2026-08-23).
 >
 > **Revised 2026-08-26: the LIMS now opens the sample entry from pattern 1's
-> `event/sample-complete` and appends the analyzer result to it.** Read
+> `event/sample-acq-completed` and appends the analyzer result to it.** Read
 > [*Revised 2026-08-26*](#revised-2026-08-26--the-entry-is-opened-at-collection-not-at-result)
 > first — it supersedes several sections further down, which are left in place
 > because the reasoning in them is still why this pattern is shaped the way it is.
@@ -38,8 +38,8 @@ Now there are two subscriptions and the order they arrive in *is* the pattern:
 
 | | Topic | What it does |
 |---|---|---|
-| 1 | `icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete` (pattern 1) | **Opens the entry.** One `lims.sample` row carrying the badge holder, `sample_start`, `open_duration_s` and `cycle_result` |
-| 2 | `icc26/site1/qc/analyzers/+/result` (pattern 3) | **Appends the analytes** to that entry, minutes later |
+| 1 | `icc26/site1/upstream/br-201/sample-valve-01/event/sample-acq-completed` (pattern 1) | **Opens the entry.** One `lims.sample` row carrying the badge holder, `sample_start`, `open_duration_s` and `cycle_result` |
+| 2 | `icc26/site1/qc/analyzers/+/sample-analyzed` (pattern 3) | **Appends the analytes** to that entry, minutes later |
 
 The analyst reviews one record holding both halves. Approve publishes both halves.
 
@@ -90,7 +90,7 @@ Two things in it are load-bearing:
   You do not correct a record by overwriting what the instrument reported; you record the
   correction beside it, with `attached_by` and `attached_at`.
 - **`ON CONFLICT (sample_id) DO NOTHING` on the entry insert is not tidiness.**
-  `sample-complete` is published **retained** and this client connects `clean_session=True`, so
+  `sample-acq-completed` is published **retained** and this client connects `clean_session=True`, so
   the broker replays the last one on every reconnect. Without the conflict clause,
   `docker restart icc26-lims` resurrects the most recent sample — already approved, already
   released — back into the review queue. Retained plus clean session is a redelivery source
@@ -158,8 +158,8 @@ field whitelist to widen. It used to fill `meta` / `seq` / `source` when absent;
 
 ```json
 "subscribeTopics": [
-  "icc26/site1/qc/analyzers/+/result",
-  "icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete"
+  "icc26/site1/qc/analyzers/+/sample-analyzed",
+  "icc26/site1/upstream/br-201/sample-valve-01/event/sample-acq-completed"
 ]
 ```
 
@@ -172,7 +172,7 @@ only.
    badge holder and open duration populated, no Approve button.
 2. Type that id into `:8087`, press Run. The *same* entry flips to ready with two analytes and
    a batch id — two, not three; see [the mapping table](#granularity). **No second entry appears.**
-3. Approve. One message on `icc26/site1/qc/lims/sample-result` carrying `values.collection`
+3. Approve. One message on `icc26/site1/qc/lims/sample-results-released` carrying `values.collection`
    beside the analytes.
 4. **Do it wrong.** Repeat step 2 with a transposed character: the entry stays awaiting, the
    result lands under Unmatched results. Attach it, then confirm in Postgres that
@@ -191,7 +191,7 @@ only.
 
 A sample result produced by the pattern-3 analyzer is received by the LIMS off the event backbone,
 held unreviewed, released by a human, and only then pushed into Ignition over HTTP and published
-to `icc26/site1/qc/lims/sample-result` with `analyst` and
+to `icc26/site1/qc/lims/sample-results-released` with `analyst` and
 `disposition` ∈ `pass | fail`. Both approve and reject publish.
 
 ## Talk point
@@ -224,11 +224,11 @@ pattern having to share a topic with the other.
 
 | | Sketch in `00-master-plan.md` | As specified here | Why |
 |---|---|---|---|
-| Data origin | a generator invents sample results on an interval | **subscribes to `icc26/site1/qc/analyzers/+/result`**; the generator survives as a fallback | A service inventing numbers is the least convincing artifact on the stage. Chaining pattern 3 into 4 makes one sample's journey the spine of the talk |
+| Data origin | a generator invents sample results on an interval | **subscribes to `icc26/site1/qc/analyzers/+/sample-analyzed`**; the generator survives as a fallback | A service inventing numbers is the least convincing artifact on the stage. Chaining pattern 3 into 4 makes one sample's journey the spine of the talk |
 | Inbound transport | n/a (the LIMS was the origin) | **MQTT subscribe** | Nothing else in this stack *consumes* the backbone except pattern 7. "One event backbone" is a weak claim with no subscribers on it — and since the firehose was cut (2026-08-25) this pattern and pattern 7 are the only two there are |
-| Webhook trigger | on insert / sample-complete | **on manual approval**, and only on approval | Gives the callback a real reason to be asynchronous |
+| Webhook trigger | on insert / sample-acq-completed | **on manual approval**, and only on approval | Gives the callback a real reason to be asynchronous |
 | Approval UI | Perspective | **served by the LIMS itself on `:8000`** | Same house style as the two valve config pages on 8085/8086. A LIMS screen should look like a LIMS, not like SCADA, and it keeps Perspective off this pattern's critical path |
-| LIMS MQTT publish rights | `sample-result` + `batch/event` | **none — `publishTopics: []`** | See [The cycle hazard](#the-cycle-hazard) |
+| LIMS MQTT publish rights | `sample-results-released` + `batch/event` | **none — `publishTopics: []`** | See [The cycle hazard](#the-cycle-hazard) |
 | Contract surfaces | four, one per pattern | **one** | Patterns 5, 6 and 7 have their own sources as of 2026-08-19 |
 | Message granularity | unstated | **one message per sample**, all analytes | See [Granularity](#granularity) |
 | Delivery durability | "retry/backoff" | **a transactional outbox** | It is the pattern's main engineering content now that no other mechanism covers this data |
@@ -241,7 +241,7 @@ pattern having to share a topic with the other.
 ```
 opcua-cell-analyzer ──OPC UA──▶ Ignition ──Event Stream──▶ Transmission
                                                           │
-                          icc26/site1/qc/analyzers/cell-analyzer-01/result
+                          icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed
                                                           │
                                               subscribe (QoS 1, lims-bridge)
                                                           ▼
@@ -255,7 +255,7 @@ opcua-cell-analyzer ──OPC UA──▶ Ignition ──Event Stream──▶ T
                                                           ▼
                                               Ignition WebDev  ──▶ Transmission
                                                           │
-                                 icc26/site1/qc/lims/sample-result
+                                 icc26/site1/qc/lims/sample-results-released
 ```
 
 `values.sample_id` is stamped once, upstream, and survives the whole chain, so one sample is
@@ -386,7 +386,7 @@ LIMS, so it is cut. See `00-master-plan.md` § 06.
   "username": "lims-bridge",
   "password": "lims-bridge",
   "acl": {
-    "subscribeTopics": ["icc26/site1/qc/analyzers/+/result"],
+    "subscribeTopics": ["icc26/site1/qc/analyzers/+/sample-analyzed"],
     "publishTopics": []
   }
 }
@@ -480,7 +480,7 @@ Replace the `lims` placeholder comment at the bottom of the services block.
       BROKER_HOST: chariot
       MQTT_USERNAME: lims-bridge
       MQTT_PASSWORD: lims-bridge
-      RESULT_TOPIC: icc26/site1/qc/analyzers/+/result
+      RESULT_TOPIC: icc26/site1/qc/analyzers/+/sample-analyzed
       PGHOST: postgres
       PGDATABASE: icc26
       PGUSER: icc26
@@ -545,13 +545,13 @@ datasource later is a small separate change rather than a scheduling risk.
 
 | | |
 |---|---|
-| Subscribes | `icc26/site1/qc/analyzers/+/result`, QoS 1, as `lims-bridge` |
+| Subscribes | `icc26/site1/qc/analyzers/+/sample-analyzed`, QoS 1, as `lims-bridge` |
 | Publishes | **nothing.** `publishTopics: []` |
-| Ignition publishes | `icc26/site1/qc/lims/sample-result` via Transmission as `ign-transmission` |
+| Ignition publishes | `icc26/site1/qc/lims/sample-results-released` via Transmission as `ign-transmission` |
 
 ### Topic, and the wart we are not fixing
 
-`../00-architecture.md` flags `qc/lims/sample-result` as putting a software system in the
+`../00-architecture.md` flags `qc/lims/sample-results-released` as putting a software system in the
 line-or-cell slot, and says to revisit at spec 04. Revisited, and **kept as-is.**
 
 The doc's own precedent points the other way — `bes.batch_event` published to
@@ -601,7 +601,7 @@ which is the point of the whole pattern.
 Falsifiable, in order. Do not proceed past a red one.
 
 1. **Pattern 3 is actually on the broker.** `mosquitto_sub` on
-   `icc26/site1/qc/analyzers/cell-analyzer-01/result`, trigger `ESMScheduleAnalysis`, exactly one
+   `icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed`, trigger `ESMScheduleAnalysis`, exactly one
    message per completed sample. It has never been watched (`00-status.md`).
 2. `correlation_id` is present in that message.
 3. Nuke, reseed, confirm the schema: `status`, `verified_at`, `uq_sample_analyte` and
@@ -611,7 +611,7 @@ Falsifiable, in order. Do not proceed past a red one.
 5. One analyzer message → three rows, all `status='received'`.
 6. **Redelivery is a no-op.** Republish the same captured message; row count does not change.
 7. Approve → three rows flip to `verified` with `verified_at` and `analyst`; **one** outbox row;
-   **one** message on `icc26/site1/qc/lims/sample-result`, `mechanism` is `webhook`,
+   **one** message on `icc26/site1/qc/lims/sample-results-released`, `mechanism` is `webhook`,
    `disposition` is `pass`.
 8. **Reject publishes `disposition=fail`.** Same topic, same outbox path, `analyst` set. Not silence.
 9. Replay a delivered idempotency key by hand → `409`, and **no** second message.
@@ -629,7 +629,7 @@ Terminal 1 — watch both topics, so the chain is visible end to end:
 ```
 docker run --rm -it --network icc26 eclipse-mosquitto:2 `
   mosquitto_sub -h chariot -u observer -P observer `
-  -t 'icc26/site1/qc/analyzers/+/result' -t 'icc26/site1/qc/lims/sample-result' -v
+  -t 'icc26/site1/qc/analyzers/+/sample-analyzed' -t 'icc26/site1/qc/lims/sample-results-released' -v
 ```
 
 Terminal 2:
@@ -643,7 +643,7 @@ curl.exe -X POST http://localhost:8000/samples/S-2026-0819-014/approve -d "analy
 ```
 
 Expected: a message on the analyzer topic at trigger time, then **nothing** on
-`qc/lims/sample-result` until the approve call, then exactly one message.
+`qc/lims/sample-results-released` until the approve call, then exactly one message.
 
 ```powershell
 docker exec -it icc26-postgres psql -U icc26 -d icc26 -c `
@@ -688,7 +688,7 @@ argument this pattern makes about durability.
 | `UNIQUE (sample_id, analyte)` | A real LIMS repeats tests. Simplifies the demo's ingest dedupe to one constraint |
 | Ignition-side dedupe is in-memory and lost on restart | Avoids depending on the `ICC26` datasource, which does not exist yet |
 | The instrument operator (`values.operator`) is dropped | No column for it; `analyst` is the approver, a different person and the one an audit trail cares about |
-| `qc/lims/sample-result` still names a system in the line-or-cell slot | Kept for schedule reasons, and *less* defensible than it was. See above |
+| `qc/lims/sample-results-released` still names a system in the line-or-cell slot | Kept for schedule reasons, and *less* defensible than it was. See above |
 | **Cut:** `GET /results?since_id=N`, `GET /results/latest`, the Debezium-tailed insert | Patterns 6, 7 and 5 respectively, all of which now have their own sources. The surfaces would have had no consumers |
 | **Cut:** `release_seq` and the three-watermark demo | Pattern 6 no longer polls the LIMS |
 | **Remaining 2026-08-23:** reject is still silent in the running service | Spec now requires `disposition` pass/fail on both review outcomes; implement before pattern 7 |

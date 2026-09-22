@@ -37,7 +37,7 @@ CREATE TABLE plant.batch (
 
 -- ── lims: the sample entry, and the results appended to it ───────────────────
 -- Pattern 4's holding area. **The entry is opened by the sample valve, not by
--- the analyzer** (2026-08-26): `event/sample-complete` on pattern 1's backbone
+-- the analyzer** (2026-08-26): `event/sample-acq-completed` on pattern 1's backbone
 -- creates one `lims.sample` row, and the analyzer result appends analyte rows to it
 -- later. The sample begins when material leaves the reactor, which is the rule
 -- docs/00-architecture.md § *The sample id, and pattern 1 mints it* already set;

@@ -3,7 +3,7 @@
 -- same change written as ALTER/CREATE so ign-data survives. Safe to run twice.
 --
 -- What changes: the sample entry becomes a row of its own, created by pattern 1's
--- event/sample-complete, and lims.sample_result becomes the analyte rows appended
+-- event/sample-acq-completed, and lims.sample_result becomes the analyte rows appended
 -- to it. See docs/plans/04-lims-webhook.md.
 --
 -- Run it as `postgres`, not as `icc26`. initdb created these tables as the

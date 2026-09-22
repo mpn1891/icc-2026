@@ -36,15 +36,15 @@
               },
               "cycle_result_path": {
                 "dataType": "String",
-                "value": "[MQTT Engine]icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete/values/cycle_result"
+                "value": "[MQTT Engine]icc26/site1/upstream/br-201/sample-valve-01/event/sample-acq-completed/values/cycle_result"
               },
               "sample_id_path": {
                 "dataType": "String",
-                "value": "[MQTT Engine]icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete/values/sample_id"
+                "value": "[MQTT Engine]icc26/site1/upstream/br-201/sample-valve-01/event/sample-acq-completed/values/sample_id"
               },
               "sample_time_path": {
                 "dataType": "String",
-                "value": "[MQTT Engine]icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete/values/sample_completion"
+                "value": "[MQTT Engine]icc26/site1/upstream/br-201/sample-valve-01/event/sample-acq-completed/values/sample_completion"
               }
             },
             "tagType": "AtomicTag",

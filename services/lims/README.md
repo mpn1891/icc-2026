@@ -14,8 +14,8 @@ http://localhost:8000/     review screen
 
 | | Topic | What it does |
 |---|---|---|
-| 1 | `…/br-201/sample-valve-01/event/sample-complete` (pattern 1) | **Opens the entry** — one `lims.sample` row with the badge holder, `sample_start`, `open_duration_s`, `cycle_result` |
-| 2 | `icc26/site1/qc/analyzers/+/result` (pattern 3) | **Appends the analytes** to that entry, minutes later |
+| 1 | `…/br-201/sample-valve-01/event/sample-acq-completed` (pattern 1) | **Opens the entry** — one `lims.sample` row with the badge holder, `sample_start`, `open_duration_s`, `cycle_result` |
+| 2 | `icc26/site1/qc/analyzers/+/sample-analyzed` (pattern 3) | **Appends the analytes** to that entry, minutes later |
 
 The sample begins when material leaves the reactor, so that is when the record
 exists. An analyzer result is not the birth of a sample; it is something that
@@ -81,7 +81,7 @@ ingest is `INSERT … ON CONFLICT (reported_sample_id, analyte) DO NOTHING`. Tha
 uniqueness is a demo simplification — a real LIMS repeats tests — and it is why
 the constraint exists.
 
-**`sample-complete` is retained and this client uses a clean session.** The broker
+**`sample-acq-completed` is retained and this client uses a clean session.** The broker
 replays the last one on every reconnect, so `docker restart icc26-lims` delivers
 the most recent valve event again. The entry insert is
 `ON CONFLICT (sample_id) DO NOTHING` for exactly that reason: without it, a

@@ -44,7 +44,7 @@ and the same two facts come back.
 **It also writes, once you let it.** Everything above is the read path, and the
 read path is the argument. The publish is the sentence after it: with the button
 on the page turned on, each finding goes back onto the backbone as
-`icc26/site1/qc/i3x_event_review` -- the verdict, the environmental reading it
+`icc26/site1/qc/i3x-meta-review-completed` -- the verdict, the environmental reading it
 was drawn from, and enough identity to correlate. That takes a **second
 credential**, and it is the only one this process holds beyond the API login:
 reading the model needs a gateway account, putting anything back needs a broker
@@ -203,7 +203,7 @@ class Config:
         # No Engine custom namespace matches it, so this lands on the backbone
         # without creating tags and without a second registrant on anybody's
         # Event Stream source topic.
-        self.publish_topic = _env("PUBLISH_TOPIC", "icc26/site1/qc/i3x_event_review")
+        self.publish_topic = _env("PUBLISH_TOPIC", "icc26/site1/qc/i3x-meta-review-completed")
         self.publish_qos = _env_int("PUBLISH_QOS", 1)
 
 
@@ -502,7 +502,7 @@ class Client:
 # -- the one thing this client writes -----------------------------------------
 
 class Publisher:
-    """The finding, back onto the backbone as `icc26/site1/qc/i3x_event_review`.
+    """The finding, back onto the backbone as `icc26/site1/qc/i3x-meta-review-completed`.
 
     Everything else in this file reads. This is the half that writes, and it is
     the reason the process holds a second credential -- a broker account, issued

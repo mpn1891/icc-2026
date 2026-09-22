@@ -17,7 +17,7 @@ on the real gesture, with no fixtures:
 |---|---------|--------------|-----------------|
 | 1 | Native MQTT pub/sub | Smart sample valve assembly — RFID badge scan opens a bioreactor sample valve | 2026-08-17 |
 | 2 | Sparkplug B edge node | **The same valve assembly**, other firmware — birth/death, RBE, self-describing metrics | 2026-08-17 |
-| 3 | OPC UA → MQTT | Cell analyzer (`cell-analyzer-01`); Ignition publishes on sample-complete. Sample id typed in on the instrument's own screen (:8087) | 2026-08-20 |
+| 3 | OPC UA → MQTT | Cell analyzer (`cell-analyzer-01`); Ignition publishes on sample-acq-completed. Sample id typed in on the instrument's own screen (:8087) | 2026-08-20 |
 | 4 | Webhook / Push API | LIMS opens the sample entry from the valve event, appends the analyzer result, POSTs the reviewed record to Ignition — `disposition` pass **and** fail | 2026-08-30 |
 | 5 | CDC / log tailing | Click a boolean in Tag Explorer → `bes.batch_event` → Debezium → MQTT. The writer holds no broker credentials | 2026-08-26 |
 | 6 | Poll / diff | The particle counter's own GraphQL API; a gateway timer walks the cursor → `em.reading` → Event Stream. Nothing pushes | 2026-08-29 |
@@ -306,19 +306,19 @@ icc26/{site}/{area}/{line-or-cell}/{device}/{message_type}
 Everything the seven patterns put on the wire, in full:
 
 ```
-icc26/site1/upstream/br-201/sample-valve-01/event/badge-scan       # 1  every badge, granted or denied
-icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete  # 1  only when a sample ran
-icc26/site1/upstream/br-201/sample-valve-01/status                 # 1  online/offline, retained; also the LWT
-icc26/site1/upstream/br-201/sample-valve-01/telemetry              # 1  air supply / enclosure temp, every 5 s
-icc26/site1/qc/analyzers/cell-analyzer-01/result                   # 3  analyzer result
-icc26/site1/qc/lims/sample-result                                  # 4  review: analyst + disposition
-icc26/site1/upstream/br-201/batch/event                            # 5  CDC of bes.batch_event — an INSERT
-icc26/site1/audit/bes/batch-event                                  # 5  an UPDATE/DELETE: somebody amended the record
-icc26/site1/env_monitoring/particle-counter-01/result              # 6  particle count analysis
-icc26/site1/qc/deviation                                           # 7  ONLY when something was violated
+icc26/site1/upstream/br-201/sample-valve-01/event/vlv-badge-scanned     # 1  every badge, granted or denied
+icc26/site1/upstream/br-201/sample-valve-01/event/sample-acq-completed  # 1  only when a sample ran
+icc26/site1/upstream/br-201/sample-valve-01/status                      # 1  online/offline, retained; also the LWT
+icc26/site1/upstream/br-201/sample-valve-01/telemetry                   # 1  air supply / enclosure temp, every 5 s
+icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed               # 3  analyzer result
+icc26/site1/qc/lims/sample-results-released                             # 4  review: analyst + disposition
+icc26/site1/upstream/br-201/batch/event                                 # 5  CDC of bes.batch_event — an INSERT
+icc26/site1/audit/bes/batch-event                                       # 5  an UPDATE/DELETE: somebody amended the record
+icc26/site1/env_monitoring/particle-counter-01/sample-analyzed          # 6  particle count analysis
+icc26/site1/qc/deviation                                                # 7  ONLY when something was violated
 
-spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|NDEATH}/SAMPLE-VALVE-02              # 2  spec-mandated
-spBv1.0/ICC26-Site1-UPSTREAM/{DBIRTH|DDATA|DDEATH}/SAMPLE-VALVE-02/SV-202 # 2  spec-mandated
+spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|NDEATH}/SAMPLE-VALVE-02               # 2  spec-mandated
+spBv1.0/ICC26-Site1-UPSTREAM/{DBIRTH|DDATA|DDEATH}/SAMPLE-VALVE-02/SV-202  # 2  spec-mandated
 ```
 
 Pattern 2's addresses are the argument: nine of the eleven lines above are names this project

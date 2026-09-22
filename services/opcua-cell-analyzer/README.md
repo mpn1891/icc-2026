@@ -92,7 +92,7 @@ nsu=http://icc26.demo/UA/CellAnalyzer/;s=OPCSystemObjects->HistoricalSampleResul
 ```
 
 Ignition: tag-change on `cell-analyzer-01/result/sample_time` → Event Stream `03_opcua/cell-analyzer-result`
-→ Transmission to `icc26/site1/qc/analyzers/cell-analyzer-01/result`.
+→ Transmission to `icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed`.
 
 The UDT type is `cell_analyzer`. The instance, the topic, `uns_path`, the Event Stream handler
 topic and `03-seed.sql`'s equipment id are all `cell-analyzer-01`, and this directory, the compose
@@ -242,7 +242,7 @@ this: 26 assertions, all green, 911 nodes across the three trees.
 3. **MQTT publish** — tag-change on `result/sample_time` (vendor `HistoricalSampleResults/SampleTime`)
    hands the result folder to Event Stream `03_opcua/cell-analyzer-result`. Transform
    `opcua_event.build_cell_analyzer_result` reads the historical UDT siblings and Transmission
-   publishes to `icc26/site1/qc/analyzers/cell-analyzer-01/result`, `meta.mechanism = "opcua-event"`.
+   publishes to `icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed`, `meta.mechanism = "opcua-event"`.
    Does not use `ICC26Extensions`.
 
 ### The UDT

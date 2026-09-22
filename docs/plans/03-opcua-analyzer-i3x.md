@@ -38,7 +38,7 @@ same work, done once.
 | | State |
 |---|---|
 | OPC UA ingest | 52 bound tags on `cell_analyzer`, `valueSource: "opc"`, bound through the `opc_server` / `namespace_uri` / `node_sep` parameters. Built and broker-verified 2026-08-20. |
-| Publish | Event Stream `03_opcua/cell-analyzer-result`, source `ignition.gatewayEvent`, transform one line into `opcua_event.build_cell_analyzer_result`, MQTT handler on `icc26/site1/qc/analyzers/cell-analyzer-01/result`, QoS 1, `failureStrategy: ABORT`. |
+| Publish | Event Stream `03_opcua/cell-analyzer-result`, source `ignition.gatewayEvent`, transform one line into `opcua_event.build_cell_analyzer_result`, MQTT handler on `icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed`, QoS 1, `failureStrategy: ABORT`. |
 | `POST /objects/value` | **Already correct.** Returns the nested live document straight off the OPC subscription — `result.chem.gluc`, `command.vessel_id`, `result_json` and all. Nothing on the value side needs changing. |
 | Declared relationship | `AnalyzesSamplesFrom` → `br-201`, `br-202` (reverse `SamplesAnalyzedBy`), on the instance, serving. Plan decision 9. |
 
@@ -262,7 +262,7 @@ The Event Stream config does **not** change — its transform line stays
 `return opcua_event.build_cell_analyzer_result(event.data)`. All of the work is inside the module:
 
 1. **Reach the instance, not just the result folder.** The tag script hands in
-   `…/cell-analyzer-01/result`; `command/*`, `analyzer_id`, `state`, `result_json` and `last_error`
+   `…/cell-analyzer-01/sample-analyzed`; `command/*`, `analyzer_id`, `state`, `result_json` and `last_error`
    are one level up. `uptime` is no longer among them — after step 0 it is `heartbeat/uptime`, its
    own object, and out of the stored document entirely. Derive the instance path inside the function rather than changing
    the tag script — that script lives in the UDT definition, and editing it means a type edit and an

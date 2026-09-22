@@ -112,7 +112,7 @@ was the condition of taking the envelope off this pattern.
                                                  ▼
                                             Transmission
                                                  ▼
-        icc26/site1/env_monitoring/particle-counter-01/result
+        icc26/site1/env_monitoring/particle-counter-01/sample-analyzed
 ```
 
 **The watermark is two memory tags**, `state/cursor` and `state/last_sequence`, surviving a
@@ -258,7 +258,7 @@ Watcher, in its own terminal:
 
 ```powershell
 docker run --rm -it --network icc26 eclipse-mosquitto:2 `
-  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/env_monitoring/particle-counter-01/result' -v
+  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/env_monitoring/particle-counter-01/sample-analyzed' -v
 ```
 
 | Beat | Trigger | What lands |

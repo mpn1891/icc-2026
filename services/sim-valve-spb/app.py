@@ -62,7 +62,7 @@ from valve import Sink, ValveAssembly, parse_roster
 #     dead leg or restating the vessel's own instruments. Same datatypes, same units, same
 #     deadbands -- only the thing being measured is now real.
 #   * Sample/LastCycleResult is NEW, mirroring cycle_result on pattern 1's
-#     event/sample-complete.
+#     event/sample-acq-completed.
 #
 # The rename buys this pattern something it did not have: Actuator/AirSupplyBar is the
 # physical CAUSE of Sample/LastCycleResult. A starved actuator is a valve that will not seat,

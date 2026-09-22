@@ -12,7 +12,7 @@
 | **Config page** | <http://localhost:8085> |
 | **Pairs with** | [`02-sparkplug-b.md`](02-sparkplug-b.md) — same assembly, different firmware |
 | **Depends on** | nothing (Wave 1) |
-| **Blocks** | pattern 7 (reads `event/sample-complete` for `sample_start`); Wave-1 sample-id correlation |
+| **Blocks** | pattern 7 (reads `event/sample-acq-completed` for `sample_start`); Wave-1 sample-id correlation |
 | **Signal contributed** | Sample actuation event — the badge scan and the valve stroke |
 
 ## Build constraints that are not negotiable
@@ -49,14 +49,14 @@ sampling window, and closes. **Every scan is published, granted or denied.**
             │
             ▼
    ┌──────────────────┐   on the roster, right role?
-   │  LOCKED          │──────────── no ──────────► event/badge-scan, result=denied
+   │  LOCKED          │──────────── no ──────────► event/vlv-badge-scanned, result=denied
    └────────┬─────────┘                            (nothing moves)
             │ yes
             ▼
       UNLOCKING ──► OPEN ──► CLOSING ──► LOCKED
       (1.5 s)      (12 s)    (1.5 s)        │
-            │                               └──► event/sample-complete
-            └──► event/badge-scan, result=granted, sample_id assigned
+            │                               └──► event/sample-acq-completed
+            └──► event/vlv-badge-scanned, result=granted, sample_id assigned
 
    on CONNECT ──► status: online   (retained, published by the device)
    on death   ──► status: offline  (retained, published by the broker — Last Will)
@@ -88,8 +88,8 @@ that.** The base topic is a factory default in a text box.
 
 | Topic | Dir | QoS | Retained | Purpose |
 |---|---|---|---|---|
-| `icc26/site1/upstream/br-201/sample-valve-01/event/badge-scan` | out | 1 | yes | One per badge presented, granted or denied |
-| `icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete` | out | 1 | yes | One per sample that actually ran |
+| `icc26/site1/upstream/br-201/sample-valve-01/event/vlv-badge-scanned` | out | 1 | yes | One per badge presented, granted or denied |
+| `icc26/site1/upstream/br-201/sample-valve-01/event/sample-acq-completed` | out | 1 | yes | One per sample that actually ran |
 | `icc26/site1/upstream/br-201/sample-valve-01/status` | out | 1 | yes | `online` \| `offline`; **also the Last Will** |
 | `icc26/site1/upstream/br-201/sample-valve-01/telemetry` | out | 1 | yes | Actuator air supply / enclosure temperature, every 5 s |
 
@@ -145,18 +145,18 @@ What that costs, said plainly rather than discovered on stage:
 
 The sample id travels as `values.sample_id`, as it has since 2026-08-23.
 
-### `event/badge-scan` — one per badge presented
+### `event/vlv-badge-scanned` — one per badge presented
 
 `values`: `badge_id`, `badge_holder`, `badge_role`, `result` (`granted` | `denied`),
 `deny_reason` (`null` on a grant), `scan_time`, `sample_id` (minted on a grant; **`null` on a
 denial** — a denial belongs to no sample).
 
 Published the instant the badge is read, before the valve has moved; `scan_time` is that
-instant, and `sample-complete` is the record of what followed. Unknown badges report
+instant, and `sample-acq-completed` is the record of what followed. Unknown badges report
 `badge_holder` and `badge_role` as `"unknown"` (the page says `not on roster` — same fact).
 
 
-### `event/sample-complete` — one per sample that ran
+### `event/sample-acq-completed` — one per sample that ran
 
 `values`: `sample_id`, `badge_id`, `badge_holder`, `sample_start`, `sample_completion`,
 `open_duration_s`, `cycle_result`, `cycle_count`.
@@ -301,14 +301,14 @@ MQTT Engine/icc26/site1/upstream/br-201/sample-valve-01/
 ```
 
 > **The envelope is gone as of 2026-08-25**, so three of those four lines no longer exist. The
-> tree Engine will build now is `{event/badge-scan, event/sample-complete, status,
+> tree Engine will build now is `{event/vlv-badge-scanned, event/sample-acq-completed, status,
 > telemetry}/ts` plus `…/values/…` and nothing else. Every complaint below about `meta` being
 > duplicated into every branch is resolved by deletion rather than by design.
 
 > **Measured 2026-08-17, against the single-`event` design and the old `state` topic.** Under
-> the current contract `event` becomes a folder with `badge-scan` and `sample-complete` beneath
-> it, and `state` is renamed `status` — the tree reads `{event/badge-scan,
-> event/sample-complete, status, telemetry}`. **The subscription needs no edit** (`#` covers the
+> the current contract `event` becomes a folder with `vlv-badge-scanned` and `sample-acq-completed` beneath
+> it, and `state` is renamed `status` — the tree reads `{event/vlv-badge-scanned,
+> event/sample-acq-completed, status, telemetry}`. **The subscription needs no edit** (`#` covers the
 > extra level). Re-measure when the build catches up.
 
 `meta.mechanism` was duplicated into every branch because the tree mirrors the document — four
@@ -347,9 +347,9 @@ function of which messages happened to arrive**, not of the payload contract. Pa
 declares `Badge/LastScanId` and `Sample/LastSampleId` as typed Strings in DBIRTH before
 anybody has badged in.
 
-Under the topic split this lands asymmetrically: `event/sample-complete` only publishes when a
+Under the topic split this lands asymmetrically: `event/sample-acq-completed` only publishes when a
 sample ran, so its `values/sample_id` exists from the first completed sample.
-`event/badge-scan` carries `null` on every denial, so **its** `values/sample_id` does not
+`event/vlv-badge-scanned` carries `null` on every denial, so **its** `values/sample_id` does not
 appear until the first grant.
 
 ### Death, measured both ways
@@ -400,14 +400,14 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 
 **1 — Both pages answer.** <http://localhost:8085> and <http://localhost:8086>.
 
-**2 — A granted scan.** Press `B-1042`. Expect: `event/badge-scan` granted + `sample_id`, then
-~15 s later `event/sample-complete` with the same `sample_id` and `cycle_result: normal`.
+**2 — A granted scan.** Press `B-1042`. Expect: `event/vlv-badge-scanned` granted + `sample_id`, then
+~15 s later `event/sample-acq-completed` with the same `sample_id` and `cycle_result: normal`.
 **Nothing lands in between** — the page walks `unlocking → open → closing → locked` while the
 wire stays silent, which is the point of cutting `state`.
 
 **3 — Every denial.** `B-2087` → `badge-not-authorized`. `B-9999` → `badge-unknown`. `B-1042`
-twice quickly → `valve-busy` on the second. Each: one `event/badge-scan`, **nothing on
-`event/sample-complete`**.
+twice quickly → `valve-busy` on the second. Each: one `event/vlv-badge-scanned`, **nothing on
+`event/sample-acq-completed`**.
 
 **4 — The birth/will pair.** On start, `status: "online"` retained. Start a second
 `mosquitto_sub` → it arrives immediately, before the valve does anything.
@@ -418,7 +418,7 @@ whoever is already subscribed, and a late subscriber gets nothing at all.
 **5 — The config page round trip.** Change topic to
 `icc26/site1/upstream/br-202/sample-valve-01`, save, scan → traffic on the new topic; page
 warns about the retained message left at the old one. Change to
-`icc26/site1/qc/lims/sample-result` → ACL refuses (needs `allowAnonymous: false`).
+`icc26/site1/qc/lims/sample-results-released` → ACL refuses (needs `allowAnonymous: false`).
 
 **Then change it back.** Engine's subscription names `br-201` explicitly, so while
 re-addressed the tag tree is frozen. Leave it and the rest of the demo is dead.
@@ -447,13 +447,13 @@ on one screen, in about fifteen seconds.
 
 | # | Item | Status |
 |---|---|---|
-| 1 | **The valve's `sample_id` must reach the analyzer.** | **closed 2026-08-26 — and not the way this row predicted.** No Ignition tag write. The analyzer got its own sample-login screen (`services/opcua-cell-analyzer/webui.py`, port 8087) and **a person types the valve's id into it**, which is what a plant does and what makes the id fallible. Nothing in this pattern changed: the valve still mints on the grant and still publishes `values.sample_id` on `event/sample-complete`. The transcription is now this pattern's sharpest risk beat — *no transcription, no intermediary*, said in front of the intermediary. See [`../00-architecture.md` § *The sample id, and pattern 1 mints it*](../00-architecture.md) |
+| 1 | **The valve's `sample_id` must reach the analyzer.** | **closed 2026-08-26 — and not the way this row predicted.** No Ignition tag write. The analyzer got its own sample-login screen (`services/opcua-cell-analyzer/webui.py`, port 8087) and **a person types the valve's id into it**, which is what a plant does and what makes the id fallible. Nothing in this pattern changed: the valve still mints on the grant and still publishes `values.sample_id` on `event/sample-acq-completed`. The transcription is now this pattern's sharpest risk beat — *no transcription, no intermediary*, said in front of the intermediary. See [`../00-architecture.md` § *The sample id, and pattern 1 mints it*](../00-architecture.md) |
 | 2 | **The contract above is ahead of the build** | **closed 2026-08-25 — landed.** All seven changes are in: the `event/<subtype>` split, `scan_time`, the `sample_start`/`sample_completion` renames, `cycle_result` with an air-supply fault path, telemetry re-pointed, `state` → `status` as a birth/will pair, and interlock + `training-expired` removed. `valve.py` and `webui.py` re-verified byte-for-byte identical across both containers. **Not re-measured against a gateway** — see item 8 |
 | 3 | **The Last Will is not the `state` document** | **closed 2026-08-25 by the `status` redesign.** The mismatch existed because `state` carried nine fields and the will carried four; `status` carries `state` + `note`, and the will carries exactly that. The dead-valve tag tree can no longer keep stale position/cycle-count next to `offline`, because that topic no longer has them. The frozen `ts` and the unparsed `note` stay — deliberate, demonstrated in verification 4 and 6 |
-| 4 | **Pattern 7 cannot look up a past valve event.** One message retained per topic, tag history off. Either 7 subscribes live and holds its own state, or history goes on for the two event branches | **narrowed 2026-08-26.** Pattern 4 now subscribes to `event/sample-complete`, stores it as a `lims.sample` row, and republishes `sample_start` / `cycle_result` / the badge holder on the released review message — so *this* pattern's contribution is persisted and reaches 07 without 07 storing anything. Still open for 5 and 6. Decide it once for those two before 07's spec — see [`../00-architecture.md`](../00-architecture.md) |
+| 4 | **Pattern 7 cannot look up a past valve event.** One message retained per topic, tag history off. Either 7 subscribes live and holds its own state, or history goes on for the two event branches | **narrowed 2026-08-26.** Pattern 4 now subscribes to `event/sample-acq-completed`, stores it as a `lims.sample` row, and republishes `sample_start` / `cycle_result` / the badge holder on the released review message — so *this* pattern's contribution is persisted and reaches 07 without 07 storing anything. Still open for 5 and 6. Decide it once for those two before 07's spec — see [`../00-architecture.md`](../00-architecture.md) |
 | 5 | `allowAnonymous` is still `true`, so the ACL talk point is not enforced and verification step 5's refusal cannot be shown | tracked in `compose/chariot/README.md`; must be `false` before the talk |
 | 6 | Perspective page for pattern 1 | **closed 2026-08-25 — cut.** Spec 08 is gone; there are no Perspective views. The pattern 1 / pattern 2 comparison is the two device config pages on 8085 and 8086 themselves, which is what §08 had reduced it to anyway |
-| 7 | **Nothing on the wire says where the valve is.** With `state` cut, `is_open` / `position_pct` exist only on the device's own page. Pattern 7 does not need them (it reads `event/sample-complete`), and no other consumer has asked — but it is a live gap against pattern 2, which declares `Valve/State` in DBIRTH | open — leave cut unless a consumer needs it; the asymmetry with pattern 2 is a talk point, not a defect |
+| 7 | **Nothing on the wire says where the valve is.** With `state` cut, `is_open` / `position_pct` exist only on the device's own page. Pattern 7 does not need them (it reads `event/sample-acq-completed`), and no other consumer has asked — but it is a live gap against pattern 2, which declares `Valve/State` in DBIRTH | open — leave cut unless a consumer needs it; the asymmetry with pattern 2 is a talk point, not a defect |
 | 8 | **The ingest section below is measured against the old payloads.** Engine built that tree on 2026-08-17 from a single `event` topic, a `state` topic and a line-pressure telemetry pair. The build has since changed all three. Nothing in the *rules* is expected to move — a JSON null still produces no tag, numbers are still Float8 — but the branch names and the tag list will | open — re-measure against a gateway seeded from an empty volume, then restate § *Ingest, as built* |
 
 Closed 2026-08-23: event-branch-vs-audit-table (Engine's auto-created tree settled it);

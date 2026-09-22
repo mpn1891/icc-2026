@@ -45,7 +45,7 @@
 |---|---|
 | **Mechanism** | `poll` |
 | **Signal contributed to the spine** | environmental excursion status at (or nearest to) the sample instant |
-| **Topic** | `icc26/site1/env_monitoring/particle-counter-01/result` — QoS 1, **retain false** |
+| **Topic** | `icc26/site1/env_monitoring/particle-counter-01/sample-analyzed` — QoS 1, **retain false** |
 | **Instrument** | `services/sim-particle-counter` — GraphQL over HTTPS `:8443`, JWT auth; operator touchscreen on `:8089` |
 | **Acquisition** | Ignition **gateway timer**, 30 s, → `particle_counter_poll.poll()` |
 | **Store** | `em.reading` in the `icc26` database, through the `ICC26` JDBC datasource as user `icc26` |
@@ -632,7 +632,7 @@ and the name. The `ignition.gatewayEvent` source and the Transmission handler ar
 ```json
   "handlers": [{ "type": "com.cirruslink.mqtt.transmission.gateway.mqtt.handler",
     "config": { "serverName": "chariot_broker",
-                "topic": "icc26/site1/env_monitoring/particle-counter-01/result",
+                "topic": "icc26/site1/env_monitoring/particle-counter-01/sample-analyzed",
                 "qos": 1, "retained": false } }],
   "filter":    { "enabled": true, "userCode": "\treturn bool(event.data)\n" },
   "transform": { "enabled": true, "userCode": "\treturn particle_counter_poll.build_document(event.data)\n" }
@@ -703,7 +703,7 @@ Watcher in its own terminal:
 
 ```powershell
 docker run --rm -it --network icc26 eclipse-mosquitto:2 `
-  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/env_monitoring/particle-counter-01/result' -v
+  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/env_monitoring/particle-counter-01/sample-analyzed' -v
 ```
 
 0. `python tasks.py health` — the `sim-particle-counter` line reports SAMPLING and a non-zero buffer.

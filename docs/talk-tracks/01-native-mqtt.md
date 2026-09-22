@@ -75,8 +75,8 @@ Four topics, all outbound, nothing subscribed:
 
 | Topic | QoS | Retained | Purpose |
 |---|---|---|---|
-| `…/sample-valve-01/event/badge-scan` | 1 | yes | One per badge presented, granted or denied |
-| `…/sample-valve-01/event/sample-complete` | 1 | yes | One per sample that actually ran |
+| `…/sample-valve-01/event/vlv-badge-scanned` | 1 | yes | One per badge presented, granted or denied |
+| `…/sample-valve-01/event/sample-acq-completed` | 1 | yes | One per sample that actually ran |
 | `…/sample-valve-01/status` | 1 | yes | `online` \| `offline`; **also the Last Will** |
 | `…/sample-valve-01/telemetry` | 1 | yes | Actuator air supply, enclosure temperature, every 5 s |
 
@@ -169,8 +169,8 @@ shape of the tag tree is a function of **which messages happened to arrive**, no
 contract.
 
 Say the sharp version: the *same field*, on the *same device*, appears at two different moments
-depending on which badge somebody pressed first. `event/sample-complete` only publishes when a
-sample ran, so its `sample_id` tag exists from the first completed sample. `event/badge-scan`
+depending on which badge somebody pressed first. `event/sample-acq-completed` only publishes when a
+sample ran, so its `sample_id` tag exists from the first completed sample. `event/vlv-badge-scanned`
 carries `null` on every denial, so its `sample_id` does not appear until the first grant. Open
 with denials and half the schema is missing. Pattern 2 declares both `Badge/LastScanId` and
 `Sample/LastSampleId` as typed Strings in DBIRTH before anybody has badged in.
@@ -187,13 +187,13 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 | Beat | Trigger | What lands |
 |---|---|---|
 | Both pages, side by side | 8085 and 8086 | The pattern, before any traffic exists |
-| A granted sample | Press `B-1042` | `event/badge-scan` granted + `sample_id`, then 15 s later `event/sample-complete` — **and nothing in between**, though the page shows the valve stroking |
-| Every denial | `B-2087`, `B-9999`, `B-1042` twice | One `event/badge-scan` each, **nothing on `sample-complete`** |
+| A granted sample | Press `B-1042` | `event/vlv-badge-scanned` granted + `sample_id`, then 15 s later `event/sample-acq-completed` — **and nothing in between**, though the page shows the valve stroking |
+| Every denial | `B-2087`, `B-9999`, `B-1042` twice | One `event/vlv-badge-scanned` each, **nothing on `sample-acq-completed`** |
 | The valve misbehaves | Sag the air supply, press `B-1042` | Granted — authorization knows nothing about air pressure — then `cycle_result: failed-to-seat`. **The telemetry had been saying so for minutes** |
 | Retain does the work | Second `mosquitto_sub` | Retained `status: online` arrives before anything happens |
 | The death certificate | `docker kill icc26-sim-valve-mqtt` | Retained `offline` will lands — read its `ts` out loud, then read the `note` field out loud |
 | …and turn Retain off | Uncheck on the page, repeat | The new subscriber gets **nothing** |
-| The ACL | Set topic to `icc26/site1/qc/lims/sample-result` | Refused (needs `allowAnonymous: false`) |
+| The ACL | Set topic to `icc26/site1/qc/lims/sample-results-released` | Refused (needs `allowAnonymous: false`) |
 
 **If you re-address the valve on stage, change it back.** Engine's subscription names `br-201`
 by hand, so a re-addressed valve publishes happily to the broker while Ignition's tag tree sits

@@ -22,7 +22,7 @@ slide and because the asymmetries are the interesting part:
 | `sample-valve-01` | Pattern 1 smart sample valve assembly, plain MQTT | Publish only, and only into `upstream` — see below |
 | `sample-valve-02` | Pattern 2 the same assembly, Sparkplug B | `spBv1.0/#` both ways since 2026-08-25 — the widest grant of any device account. See below |
 | `analyzer-bridge` | Pattern 3, reserved | Only if the cell analyzer demo ever publishes without routing through Ignition |
-| `lims-bridge` | Pattern 4 LIMS | Subscribe-only, `icc26/site1/qc/analyzers/+/result`. Empty publish grant is the cycle-hazard lock |
+| `lims-bridge` | Pattern 4 LIMS | Subscribe-only, `icc26/site1/qc/analyzers/+/sample-analyzed`. Empty publish grant is the cycle-hazard lock |
 | `i3x-client` | The external i3X consumer, pattern 7 read back from outside | Publish-only, exactly one topic. Added 2026-09-21 — see the first-run caveat |
 | `observer` | Read-only | Firehose view, `mosquitto_sub`, MQTT Explorer |
 
@@ -31,7 +31,7 @@ worth putting on the slide.**
 
 `sample-valve-01`'s configuration page has a free-text topic box (see
 [`services/sim-valve-mqtt/`](../../services/sim-valve-mqtt/)). Nothing in the device stops
-somebody typing `icc26/site1/qc/lims/sample-result` into it. What stops them is this ACL —
+somebody typing `icc26/site1/qc/lims/sample-results-released` into it. What stops them is this ACL —
 `icc26/site1/upstream/#`, deliberately the *area* rather than the exact topic, so the valve
 can legitimately be re-addressed to another cell on stage but cannot leave upstream. **In
 pattern 1 the namespace discipline is enforced by an ACL somebody remembered to write. In
@@ -73,7 +73,7 @@ talk.
 **`i3x-client` is the inverse of `lims-bridge`, and the pair is the slide.** The LIMS consumes
 the backbone and may not publish to it; the i3X consumer reads the *model* — over an API, with
 a gateway login, browsing for everything it needs — and may publish exactly one topic,
-`icc26/site1/qc/i3x_event_review`. Its subscribe grant is empty: its inbound side is the i3X
+`icc26/site1/qc/i3x-meta-review-completed`. Its subscribe grant is empty: its inbound side is the i3X
 subscription, and a broker subscription would give it a second way in and make its own page
 ambiguous about which one woke it. The point of the account existing at all is that the i3X
 login **did not** come with it. Browsing the whole address space is one authorization

@@ -13,7 +13,7 @@ does inside it:
 4. **Asks** `POST /objects/history` for the particle counter's readings around
    *that sample's* instant, takes the nearest either side, and reads `status`.
 5. **Says so**, if you let it — the finding goes back onto the backbone as
-   `icc26/site1/qc/i3x_event_review`. Off by default; there is a button.
+   `icc26/site1/qc/i3x-meta-review-completed`. Off by default; there is a button.
 
 Its page (<http://localhost:8092>) shows every one of those requests and
 responses verbatim, next to the verdict drawn from them.
@@ -43,7 +43,7 @@ is the sentence after it: **Start publishing** on the page turns the reader into
 a participant, and every finding from then on goes out as
 
 ```
-icc26/site1/qc/i3x_event_review        QoS 1, not retained
+icc26/site1/qc/i3x-meta-review-completed        QoS 1, not retained
 {"ts": "<the sample instant>", "values": {...}}
 ```
 
@@ -116,7 +116,7 @@ answer that.
 **The topic names a mechanism, which the namespace rule forbids.** Taken
 knowingly, and it is the second exception on this bus after
 `icc26/site1/audit/bes/batch-event`. The message is not a fact about a sample —
-`qc/deviation` and `qc/lims/sample-result` already carry those. It is the record
+`qc/deviation` and `qc/lims/sample-results-released` already carry those. It is the record
 that somebody *outside the gateway* reached the same verdict, and a subscriber
 who cannot see that in the address cannot see it at all. Nothing in the payload
 repeats it. Written up in docs/00-architecture.md § Topic namespace.
@@ -125,7 +125,7 @@ repeats it. Written up in docs/00-architecture.md § Topic namespace.
 than an omission. No Engine custom namespace matches it — checked against the
 committed config, which subscribes `icc26/site1/upstream/#`,
 `icc26/site1/qc/analyzers/#`, `icc26/site1/env_monitoring/#`,
-`icc26/site1/qc/deviation` and `icc26/site1/qc/lims/sample-result` — so this
+`icc26/site1/qc/deviation` and `icc26/site1/qc/lims/sample-results-released` — so this
 topic creates no tags and adds no second registrant to anybody's Event Stream
 source. Watch it with `observer`, or in MQTT Explorer.
 
@@ -156,7 +156,7 @@ went out is under the card, and on the wire:
 
 ```powershell
 docker compose exec chariot mosquitto_sub -u observer -P observer `
-  -t 'icc26/site1/qc/i3x_event_review' -v
+  -t 'icc26/site1/qc/i3x-meta-review-completed' -v
 ```
 
 ## What it depends on

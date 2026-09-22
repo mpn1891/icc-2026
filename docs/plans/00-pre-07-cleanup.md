@@ -146,7 +146,7 @@ rejected during an excursion* — cannot be staged at all.
 guard once it publishes; an outbox row for a row that was not actually transitioned is the
 failure mode to avoid.
 
-**Done when:** approve and reject each land one message on `icc26/site1/qc/lims/sample-result`
+**Done when:** approve and reject each land one message on `icc26/site1/qc/lims/sample-results-released`
 with `values.disposition` correct, the 409 replay path behaves for both, and a
 `docker restart icc26-lims` mid-flight still delivers. Those are 04's existing checkpoints —
 re-run them rather than inventing new ones.
@@ -160,7 +160,7 @@ re-run them rather than inventing new ones.
 Open the Designer, Event Streams, New, and read the **source** dropdown. Both existing streams
 (`03_opcua/cell-analyzer-result`, `06_poll/particle-counter-result`) use `ignition.gatewayEvent`, which fires
 from script. 07 needs the opposite: something that fires when a message *arrives* on
-`icc26/site1/qc/lims/sample-result`.
+`icc26/site1/qc/lims/sample-results-released`.
 
 **If MQTT Engine registers an Event Stream source type, take it and stop reading.** 07 becomes a
 copy of `06_poll/particle-counter-result` with the source swapped, a transform calling

@@ -107,7 +107,7 @@ pattern 1:
   roster and only the roster — and `valve.py` is shared, so the metric has nothing behind it.
   Nineteen metrics, not twenty.
 - **`Sample/LastCycleResult` is new** — `normal` | `failed-to-seat` | `stroke-timeout`,
-  mirroring `cycle_result` on pattern 1's `event/sample-complete`. `aborted-interlock` was
+  mirroring `cycle_result` on pattern 1's `event/sample-acq-completed`. `aborted-interlock` was
   dropped 2026-08-25 with the interlock itself.
 
 The rename earns pattern 2 something it did not have: **`Actuator/AirSupplyBar` is the physical

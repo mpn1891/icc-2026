@@ -270,7 +270,7 @@ An Event Stream, `07_chain/lims-review`, whose **source** is the MQTT Engine MQT
 subscribed to:
 
 ```
-icc26/site1/qc/lims/sample-result        qos 1
+icc26/site1/qc/lims/sample-results-released        qos 1
 ```
 
 **Structurally this is a copy of [`06_poll/particle-counter-result`](../../ignition/projects/icc-2026/com.inductiveautomation.eventstream/event-streams/06_poll/particle-counter-result/config.json)
@@ -452,7 +452,7 @@ Route 0 held. The dropdown was still never opened — the gateway settled it out
 
 ```
 [c.c.m.e.g.e.EventStreamMqttSource] The '07_chain/lims-review' stream subscribed
-    on topic: icc26/site1/qc/lims/sample-result with QoS: 1
+    on topic: icc26/site1/qc/lims/sample-results-released with QoS: 1
 ```
 
 Four facts worth keeping, all read off the 5.0.4 jars and then confirmed running:
@@ -499,7 +499,7 @@ reader does not have to re-derive them from the code.
 ### The two probes, and what they left behind
 
 CP4 and the null-with-reason path were closed with two **transient probe messages** published
-straight onto `icc26/site1/qc/lims/sample-result` as `ign-transmission`, ids `S-CP4-PROBE` and
+straight onto `icc26/site1/qc/lims/sample-results-released` as `ign-transmission`, ids `S-CP4-PROBE` and
 `S-NULLPATH-PROBE`. They exist because the reactor could not be advanced from a shell and because
 no real sample was ever drawn in the IDLE window. **They wrote nothing.** 07 has no table, the
 composites went out unretained, and neither id is in `lims.sample`, `bes.batch_event` or
@@ -509,7 +509,7 @@ composites went out unretained, and neither id is in `lims.sample`, `bes.batch_e
 
 | CP | Check | State |
 |---|---|---|
-| **1** | An MQTT source type exists in the Event Stream source dropdown | **closed** 08-30 — better than the dropdown: the gateway logged `The '07_chain/lims-review' stream subscribed on topic: icc26/site1/qc/lims/sample-result with QoS: 1`. Type id `com.cirruslink.mqtt.engine.gateway.mqtt.source`, config keys `topic` + `qos` |
+| **1** | An MQTT source type exists in the Event Stream source dropdown | **closed** 08-30 — better than the dropdown: the gateway logged `The '07_chain/lims-review' stream subscribed on topic: icc26/site1/qc/lims/sample-results-released with QoS: 1`. Type id `com.cirruslink.mqtt.engine.gateway.mqtt.source`, config keys `topic` + `qos` |
 | **2** | Approving a sample lands one message on `icc26/site1/qc/sample-chain` | **closed** 08-30 — `S-20260830-0085`, one message, watched live as `observer` |
 | **3** | `batch_context.operation` is `GROWTH` and `qualified_window` is `true` for a sample drawn now | **closed** 08-30 — same message, `B-20260830-02`, `as_of` 22:55:37.922Z |
 | **4** | Advance past HARVEST, draw again: operation reads `IDLE`, `qualified_window` false, and **nothing is empty** | **closed** 08-30, **by a different route** — the reactor was *not* advanced, because the stack is parked in GROWTH on purpose. Probed instead with a sample instant inside the real IDLE window rows 34→35 already hold: `operation: "IDLE"`, `qualified_window: false`, `event_type: "batch_end"`, `batch_id: "B-20260830-01"`, no empty value anywhere. That instant also lands after rows 33 and 34, which **share** `22:50:19.034Z` — so this closes the `id DESC` tie-break too |

@@ -3,7 +3,7 @@
   "source": {
     "type": "com.cirruslink.mqtt.engine.gateway.mqtt.source",
     "config": {
-      "topic": "icc26/site1/qc/lims/sample-result",
+      "topic": "icc26/site1/qc/lims/sample-results-released",
       "qos": 1
     }
   },

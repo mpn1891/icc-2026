@@ -91,8 +91,8 @@ Press badge **`B-1042`**, the authorized one. **Copy the `sample_id` off the pag
 it by hand in the next step, and that transcription is the point of the pattern rather than an
 inconvenience.
 
-The valve strokes for ~13.5 s. `event/badge-scan` publishes the instant the badge is read;
-`event/sample-complete` when it closes. The LIMS opens its entry from the second one, so within a few
+The valve strokes for ~13.5 s. `event/vlv-badge-scanned` publishes the instant the badge is read;
+`event/sample-acq-completed` when it closes. The LIMS opens its entry from the second one, so within a few
 seconds the sample exists at :8000 as **Awaiting analysis**, with no Approve button.
 
 ## 5. Run the analysis — <http://localhost:8087>

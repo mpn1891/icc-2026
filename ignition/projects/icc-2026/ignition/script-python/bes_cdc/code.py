@@ -347,7 +347,7 @@ def handle(request):
     topic = TOPIC_TEMPLATE % equipment_id
     # Retain false. A retained batch event replays a stale operation to every
     # reconnecting subscriber and presents it as current -- the same hazard
-    # docs/plans/04-lims-webhook.md documents for the valve's sample-complete.
+    # docs/plans/04-lims-webhook.md documents for the valve's sample-acq-completed.
     # The current operation is what the tag is for.
     system.cirruslink.transmission.publish(
         BROKER, topic, system.util.jsonEncode(envelope), 1, False)

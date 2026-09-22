@@ -65,33 +65,33 @@ the same day, which retired the field. See
    └──────────────────────────┬───────────────────────────────┘
                               │
    icc26/site1/upstream/br-201/sample-valve-01/
-       event/badge-scan        every badge, granted or denied
-       event/sample-complete   only when a sample actually ran
-       status                  online/offline, RETAINED — the will is the offline half
-       telemetry               air supply / enclosure temp, every 5 s
+       event/vlv-badge-scanned      every badge, granted or denied
+       event/sample-acq-completed   only when a sample actually ran
+       status                       online/offline, RETAINED — the will is the offline half
+       telemetry                    air supply / enclosure temp, every 5 s
                               │
-              ┌───────────────┴────────────────┐
-              ▼                                ▼
-   ┌─────────────────────────┐      ┌──────────────────────────────┐
-   │ MQTT Engine             │      │ lims :8000  (pattern 4)      │
-   │ custom namespace        │      │ event/sample-complete OPENS  │
-   │ `icc26-native`          │      │ the lims.sample entry        │
-   │ subscription            │      └──────────────────────────────┘
-   │   icc26/site1/upstream/#│
-   │                         │
-   │ jsonPayload, qos1,      │
-   │ writeableTags FALSE     │
-   │                         │
-   │ Tags auto-created from  │
-   │ whatever JSON arrives:  │
-   │   {event/badge-scan,    │
-   │    event/sample-complete│
-   │    status, telemetry}   │
-   │      /ts  /values/…     │
-   │                         │
-   │ No UDT. No Event Stream.│
-   │ No transform. No files. │
-   └─────────────────────────┘
+                   ┌──────────┴─────────────────────────────┐
+                   ▼                                        ▼
+   ┌───────────────────────────────┐      ┌───────────────────────────────────┐
+   │ MQTT Engine                   │      │ lims :8000  (pattern 4)           │
+   │ custom namespace              │      │ event/sample-acq-completed OPENS  │
+   │ `icc26-native`                │      │ the lims.sample entry             │
+   │ subscription                  │      └───────────────────────────────────┘
+   │   icc26/site1/upstream/#      │
+   │                               │
+   │ jsonPayload, qos1,            │
+   │ writeableTags FALSE           │
+   │                               │
+   │ Tags auto-created from        │
+   │ whatever JSON arrives:        │
+   │   {event/vlv-badge-scanned,   │
+   │    event/sample-acq-completed │
+   │    status, telemetry}         │
+   │      /ts  /values/…           │
+   │                               │
+   │ No UDT. No Event Stream.      │
+   │ No transform. No files.       │
+   └───────────────────────────────┘
 ```
 
 The two event **subtypes** are two topics because Engine's custom namespace mirrors whatever
@@ -183,7 +183,7 @@ argument, and it is why pattern 1's diagram has an ACL box in it and this one do
    │      ▼ handler: MQTT Transmission (ign-transmission)     │
    └──────────────────────────┬───────────────────────────────┘
                               ▼
-   icc26/site1/qc/analyzers/cell-analyzer-01/result
+   icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed
                               │
                               └─────────▶ lims :8000 appends the analytes (pattern 4)
 ```
@@ -196,9 +196,9 @@ The only pattern with a human in the middle of it, and the only one where the an
 ready when the question is asked.
 
 ```
-   pattern 1  …/sample-valve-01/event/sample-complete ──┐
-   pattern 3  icc26/site1/qc/analyzers/+/result ────────┤ subscribe QoS 1, as lims-bridge
-                                                        ▼
+   pattern 1  …/sample-valve-01/event/sample-acq-completed ────────┐
+   pattern 3  icc26/site1/qc/analyzers/+/sample-analyzed ──────────┤ subscribe QoS 1, as lims-bridge
+                                                                   ▼
    ┌──────────────────────────────────────────────────────────────────────┐
    │  lims :8000   FastAPI + paho on its own thread                       │
    │                                                                      │
@@ -229,7 +229,7 @@ ready when the question is asked.
    │      ▼ Transmission                                      │
    └──────────────────────────┬───────────────────────────────┘
                               ▼
-   icc26/site1/qc/lims/sample-result     analyst + disposition ∈ pass | fail
+   icc26/site1/qc/lims/sample-results-released     analyst + disposition ∈ pass | fail
                               │
                               └─────────▶ pattern 7's Event Stream
 ```
@@ -327,7 +327,7 @@ came out on 2026-09-13 along with the rest of the envelope.
    │      ▼ Transmission                                      │
    └──────────────────────────┬───────────────────────────────┘
                               ▼
-   icc26/site1/env_monitoring/particle-counter-01/result
+   icc26/site1/env_monitoring/particle-counter-01/sample-analyzed
                               │
                               └─────────▶ read back by pattern 7 — from the TABLE, not the topic
 ```
@@ -342,7 +342,7 @@ between polls is the honest cost, and it goes in the assessment.
 Not a new inbound transport. It subscribes, joins, and speaks only when something was violated.
 
 ```
-   icc26/site1/qc/lims/sample-result   (pattern 4's review)
+   icc26/site1/qc/lims/sample-results-released   (pattern 4's review)
                               │
                               ▼  MQTT Engine's own MQTT source, qos 1
                                  com.cirruslink.mqtt.engine.gateway.mqtt.source
@@ -408,10 +408,10 @@ operations of five, and a flag that fires most of the time is not a finding.
 |---|---|---|---|---|
 | 1 | `sim-valve-mqtt` :8085 | Engine custom namespace `icc26-native` (`icc26/site1/upstream/#`) | `…/sample-valve-01/{event/*,status,telemetry}` | `lims.sample` |
 | 2 | `sim-valve-spb` :8086 | Engine default namespace `Sparkplug B` | `spBv1.0/ICC26-Site1-UPSTREAM/…` | Edge Nodes tag tree |
-| 3 | `opcua-cell-analyzer` :4841 | OPC connection → `cell_analyzer` UDT | `…/cell-analyzer-01/result` | `lims.sample_result` |
-| 4 | a human on :8000 | WebDev `lims/sample-result` | `…/qc/lims/sample-result` | `lims.webhook_delivery` |
+| 3 | `opcua-cell-analyzer` :4841 | OPC connection → `cell_analyzer` UDT | `…/cell-analyzer-01/sample-analyzed` | `lims.sample_result` |
+| 4 | a human on :8000 | WebDev `lims/sample-result` | `…/qc/lims/sample-results-released` | `lims.webhook_delivery` |
 | 5 | `manual_advance` click | Debezium → WebDev `cdc-sink` | `…/br-201/batch/event` | `bes.batch_event` (first) |
-| 6 | `sim-particle-counter` :8443 | gateway timer `06-poll` | `…/particle-counter-01/result` | `em.reading` (first) |
+| 6 | `sim-particle-counter` :8443 | gateway timer `06-poll` | `…/particle-counter-01/sample-analyzed` | `em.reading` (first) |
 | 7 | pattern 4's topic | Engine MQTT source | `…/qc/deviation` | nothing — it stores no state |
 
 Patterns 5 and 6 are the two that hit the database **before** the broker; everything else

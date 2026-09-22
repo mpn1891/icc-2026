@@ -1143,7 +1143,7 @@
       },
       {
         "dataType": "String",
-        "documentation": "The whole pattern 4 review envelope, system.util.jsonEncode\u0027d, exactly as it arrived on icc26/site1/qc/lims/sample-result. The scalars below are a flattened index into this string, not a replacement for it: a consumer that reads this one tag has everything the MQTT subscriber had, which is what makes the i3X path equivalent to the broker path rather than merely similar to it.",
+        "documentation": "The whole pattern 4 review envelope, system.util.jsonEncode\u0027d, exactly as it arrived on icc26/site1/qc/lims/sample-results-released. The scalars below are a flattened index into this string, not a replacement for it: a consumer that reads this one tag has everything the MQTT subscriber had, which is what makes the i3X path equivalent to the broker path rather than merely similar to it.",
         "name": "document",
         "tagType": "AtomicTag",
         "valueSource": "memory"

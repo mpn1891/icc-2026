@@ -16,7 +16,7 @@
 | **Mechanism tag** | **none.** `ts` + `values`, like patterns 1-3 — the topic is the provenance |
 | **Container** | `lims` — [`services/lims/`](../../services/lims/) |
 | **Review screen** | <http://localhost:8000> — three panels, and the middle one is the pattern |
-| **Depends on** | pattern 1's `event/sample-complete` (opens the entry) and pattern 3's result (appends the analytes) |
+| **Depends on** | pattern 1's `event/sample-acq-completed` (opens the entry) and pattern 3's result (appends the analytes) |
 | **Blocks** | pattern 7. The review message is its trigger, on **both** outcomes |
 | **Signal contributed** | the analyst's disposition — the only fact in this stack a machine did not produce |
 | **GxP hook** | Authenticated inbound connection, and the result arrives out of sequence with the physical event it describes |
@@ -51,8 +51,8 @@ the reactor. Two subscriptions now, and the order they arrive in *is* the patter
 
 | | Topic | What it does |
 |---|---|---|
-| 1 | pattern 1's `…/sample-valve-01/event/sample-complete` | **Opens the entry** — badge holder, `sample_start`, `open_duration_s`, `cycle_result` |
-| 2 | pattern 3's `…/qc/analyzers/+/result` | **Appends the analytes**, minutes later |
+| 1 | pattern 1's `…/sample-valve-01/event/sample-acq-completed` | **Opens the entry** — badge holder, `sample_start`, `open_duration_s`, `cycle_result` |
+| 2 | pattern 3's `…/qc/analyzers/+/sample-analyzed` | **Appends the analytes**, minutes later |
 
 **3. The two ids match because a person makes them match.** The valve mints `S-YYYYMMDD-NNNN` on
 the badge grant. Somebody reads it off BR-201's page and types it into the analyzer's own
@@ -89,9 +89,9 @@ with half a trigger. **Nothing downstream should have to infer a rejection from 
 ## The chain
 
 ```
-      sim-valve-mqtt ──▶ icc26/…/sample-valve-01/event/sample-complete
+      sim-valve-mqtt ──▶ icc26/…/sample-valve-01/event/sample-acq-completed
                                       │  (retained, QoS 1)
-      opcua-cell-analyzer ──▶ icc26/site1/qc/analyzers/cell-analyzer-01/result
+      opcua-cell-analyzer ──▶ icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed
                                       │
                        subscribe as lims-bridge — publishTopics: []
                                       ▼
@@ -105,7 +105,7 @@ with half a trigger. **Nothing downstream should have to infer a rejection from 
                                      ▼
                     Ignition WebDev ──▶ Transmission
                                      ▼
-        icc26/site1/qc/lims/sample-result     (ts + values, no meta)
+        icc26/site1/qc/lims/sample-results-released     (ts + values, no meta)
                                      │
                                      └──▶ pattern 7 subscribes here
 ```
@@ -151,7 +151,7 @@ taken from the same `UPDATE` that flipped the status rather than re-read off the
 
 **This envelope is `ts` and `values`, the same as patterns 1, 2 and 3** (2026-09-13). There is no
 `seq`, no `source` and no `meta.mechanism`. If somebody asks how a subscriber knows this came
-from the LIMS: it arrived on `icc26/site1/qc/lims/sample-result`, and that is the only answer any
+from the LIMS: it arrived on `icc26/site1/qc/lims/sample-results-released`, and that is the only answer any
 other pattern gives either. The approval instant moved from `meta.ingest_ts` into `values` because
 it is a measured fact about this sample — the same test every other key in `values` has to pass.
 
@@ -185,7 +185,7 @@ stops 07 having to hardcode a reactor, and now it is also what identifies the ba
 The buttons are on the review screen itself: **Pause outbound** and **Resume outbound**, with a
 lamp beside them.
 
-1. **Normal.** Approve a sample. One message on `qc/lims/sample-result`.
+1. **Normal.** Approve a sample. One message on `qc/lims/sample-results-released`.
 2. **Naive delivery, broken.** Press **Pause outbound**, then approve. The result is verified
    *inside* the LIMS and the backbone never hears about it. Show the row, then show the silent
    topic. **This is the state a naive webhook leaves you in permanently.**
@@ -202,7 +202,7 @@ results**, and attaching it records who decided. Then show in Postgres that
 ## The risk beat — four things measured, not asserted
 
 **1. Retained plus clean session is a redelivery source people forget they signed up for.**
-Pattern 1 publishes `sample-complete` **retained**, and this client connects with
+Pattern 1 publishes `sample-acq-completed` **retained**, and this client connects with
 `clean_session=True`, so the broker replays the last one on every reconnect. Without
 `ON CONFLICT (sample_id) DO NOTHING`, a `docker restart icc26-lims` **resurrects the most recent
 sample — already approved, already released — back into the review queue.** Verified: the restart
@@ -228,7 +228,7 @@ rather than leaving somebody to notice it.
 
 ## The topic wart, kept on purpose
 
-`icc26/site1/qc/lims/sample-result` puts **a software system in the line-or-cell slot.** The
+`icc26/site1/qc/lims/sample-results-released` puts **a software system in the line-or-cell slot.** The
 better address is under `BR-201`. It was revisited when the spec was written and kept: three
 patterns key off this topic and the conference was four weeks out.
 
@@ -243,14 +243,14 @@ Watcher, in its own terminal — both halves of the chain:
 ```powershell
 docker run --rm -it --network icc26 eclipse-mosquitto:2 `
   mosquitto_sub -h chariot -u observer -P observer `
-  -t 'icc26/site1/qc/analyzers/+/result' -t 'icc26/site1/qc/lims/sample-result' -v
+  -t 'icc26/site1/qc/analyzers/+/sample-analyzed' -t 'icc26/site1/qc/lims/sample-results-released' -v
 ```
 
 | Beat | Trigger | What lands |
 |---|---|---|
 | The entry opens at collection | Badge `B-1042` at :8085 | ~15 s later the sample is on :8000 as **Awaiting analysis**, badge holder and open duration populated, **no Approve button** |
 | The transcription | Type that id into :8087, press Run | The **same** entry flips to ready with two analytes and a batch id. No second entry |
-| Nothing until a signature | Watch the topic | **Nothing** on `qc/lims/sample-result` until somebody clicks |
+| Nothing until a signature | Watch the topic | **Nothing** on `qc/lims/sample-results-released` until somebody clicks |
 | The signature | Approve | One message — `values.collection` beside the analytes. Read `ts` against `values.verified_at` out loud |
 | A rejection is a disposition | Reject a different sample | Same topic, same outbox path, `disposition: "fail"`. **Not silence** |
 | Do it wrong | Repeat with a transposed character | Entry stays awaiting; result parks under **Unmatched results**; attach it and the wrong id survives in Postgres |
@@ -276,7 +276,7 @@ exercises patterns 1, 3, 4 and 7 in one gesture, and it takes about two minutes:
 | `UNIQUE (reported_sample_id, analyte)` | A real LIMS repeats tests. This keeps ingest dedupe to one constraint, on what the instrument said |
 | Ignition-side dedupe is in-memory, lost on gateway restart | Risk beat 3. The durable queue is the one in Postgres |
 | The instrument operator is not a column | `analyst` is the approver; `collection.badge_holder` is who drew the sample. Nobody records who pressed Run |
-| `qc/lims/sample-result` names a system in the line-or-cell slot | Kept for schedule — see above |
+| `qc/lims/sample-results-released` names a system in the line-or-cell slot | Kept for schedule — see above |
 | Gateway certificate SAN is `localhost` only | The LIMS verifies the mounted public certificate and skips hostname matching. Ignition 302s `:8088` → `:8043`, so the URL is HTTPS. Pattern 5's Debezium makes the same trade for the same reason |
 | A released sample carries two analytes, not three | The osmometer is unfitted, deterministically. **Do not "fix" it** |
 

@@ -141,7 +141,7 @@ vendor product with 104 writable bits and zero methods, because a SCADA tag writ
 invoke a method.
 
 Done: `result/sample_time` → Event Stream `03_opcua/cell-analyzer-result` →
-`icc26/site1/qc/analyzers/cell-analyzer-01/result`, `mechanism=opcua-event`. Verify: one message
+`icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed`, `mechanism=opcua-event`. Verify: one message
 per completed sample, never per-value, nothing on abort/fail/QC. Talk point:
 event-on-completion, keyed off the field the vendor actually ships.
 
@@ -161,7 +161,7 @@ summary: subscribe to pattern 3, hold for a human, webhook into Ignition, no LIM
 publish rights, transactional outbox. Port 8000, approval screen served by the LIMS itself.
 
 **Remaining (2026-08-23):** both review outcomes publish. Approve and reject each write an
-outbox row and land on `icc26/site1/qc/lims/sample-result` with `analyst` and
+outbox row and land on `icc26/site1/qc/lims/sample-results-released` with `analyst` and
 `values.disposition` ∈ `pass | fail`. Reject is no longer silent — pattern 7 listens for the
 review, not only for a pass. The rest of the contract is unchanged.
 
@@ -235,7 +235,7 @@ key off it directly.
 
 An Ignition gateway timer polls that API. On a new analysis, the script submits the payload to
 an Event Stream (`06_poll/particle-counter-result`), which publishes through Transmission to
-`icc26/site1/env_monitoring/particle-counter-01/result` as `ts` + `values`. Same relay shape as
+`icc26/site1/env_monitoring/particle-counter-01/sample-analyzed` as `ts` + `values`. Same relay shape as
 pattern 3 and, since 2026-09-13, the same payload shape too; the acquisition is the poll.
 
 **GxP hook:** a characterized detection gap. Not fatal on its own, but it goes in the
@@ -248,7 +248,7 @@ the configured limit. Stall the poll and show a missed (or late) analysis.
 around the through line's payoff. **This is the designated cut** if the schedule bites: it is
 the join of 01, 03, 04, 05 and 06, and it cannot start until those four sources exist.
 
-A gateway script **listens for the pattern-4 LIMS review** on MQTT (`qc/lims/sample-result`,
+A gateway script **listens for the pattern-4 LIMS review** on MQTT (`qc/lims/sample-results-released`,
 pass or fail). On that message it assembles the sample's story from four sources and, **if any
 of it was violated**, publishes one document on `icc26/site1/qc/deviation`:
 
@@ -302,7 +302,7 @@ so it is last of the seven, and it is still **the designated cut** if the schedu
    person types the valve's id in.** No Ignition tag write, no `meta.correlation_id` on pattern 1
    — the id still travels as `values.sample_id`. The transcription is fallible on purpose and is
    now pattern 1's sharpest risk beat. The LIMS opens its sample entry from
-   `event/sample-complete` and appends the analyzer result to it, so the released review message
+   `event/sample-acq-completed` and appends the analyzer result to it, so the released review message
    carries the sample-open instant and **07's event store is no longer blocked on patterns 1 and
    3** — only on 5 and 6. See
    [`../00-architecture.md` § *The sample id, and pattern 1 mints it*](../00-architecture.md)

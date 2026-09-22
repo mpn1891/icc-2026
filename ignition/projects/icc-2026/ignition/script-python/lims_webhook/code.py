@@ -30,7 +30,7 @@ from collections import OrderedDict
 LOGGER_NAME = "lims_webhook"
 
 BROKER = "chariot_broker"
-TOPIC = "icc26/site1/qc/lims/sample-result"
+TOPIC = "icc26/site1/qc/lims/sample-results-released"
 SECRET = "icc26-webhook-secret"
 
 # Last ~500 idempotency keys. An outbox delivers at least once, so a redelivery

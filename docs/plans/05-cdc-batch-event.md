@@ -292,7 +292,7 @@ row. Tailing it would deliver a single analyst review twice, under two different
   with a different precision.
 - **Retain is false.** A retained batch event replays a stale operation to every reconnecting
   subscriber and presents it as current — the same hazard
-  [`04-lims-webhook.md`](04-lims-webhook.md) documents for the valve's `sample-complete`. The
+  [`04-lims-webhook.md`](04-lims-webhook.md) documents for the valve's `sample-acq-completed`. The
   current operation is what the tag is for.
 
 ### Sink behaviour

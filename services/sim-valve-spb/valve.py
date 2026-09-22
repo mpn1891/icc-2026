@@ -71,7 +71,7 @@ _DENY_FOR_STATUS = {
     STATUS_NOT_AUTHORIZED: DENY_ROLE,
 }
 
-# How a sample ended. Reported on pattern 1's event/sample-complete and mirrored by pattern
+# How a sample ended. Reported on pattern 1's event/sample-acq-completed and mirrored by
 # 2's Sample/LastCycleResult metric, which is the same fact in the two vocabularies.
 CYCLE_NORMAL = "normal"
 CYCLE_FAILED_TO_SEAT = "failed-to-seat"
@@ -338,7 +338,7 @@ class ValveAssembly:
                 "deny_reason": reason,
                 # The instant the badge was read, which is not the instant the document is
                 # published and is nowhere near the instant the sample finishes. The record
-                # of what followed is event/sample-complete, fifteen seconds later.
+                # of what followed is event/sample-acq-completed, fifteen seconds later.
                 "scan_time": iso(now),
                 # A denial belongs to no sample, so this is JSON null -- and a JSON null
                 # produces no tag at all on the Ignition side. See the ingest notes in

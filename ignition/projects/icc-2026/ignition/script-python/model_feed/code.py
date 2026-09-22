@@ -17,7 +17,7 @@ topic lands in the model on exactly the same path ours does. There the model is
 fed from the wire, and the wire stays the contract.
 
 The review was fed the same way until 2026-09-19, by a stream on
-`icc26/site1/qc/lims/sample-result`, and cannot be again. **MQTT Engine
+`icc26/site1/qc/lims/sample-results-released`, and cannot be again. **MQTT Engine
 registers one Event Stream source per topic string**, 07's `lims-review` stream
 already holds that one, and the second registrant is starved in silence -- no
 subscription, no log line, and which of the two wins reshuffles on every restart
@@ -331,7 +331,7 @@ def write_review(data):
     Called from `lims_webhook.handle`, immediately after the review is published
     and inside the same request. **Not from an Event Stream:** MQTT Engine
     registers one source per topic string, 07's `lims-review` stream holds
-    `icc26/site1/qc/lims/sample-result`, and a second stream on that topic gets
+    `icc26/site1/qc/lims/sample-results-released`, and a second stream on that topic gets
     nothing and says nothing about it -- measured 2026-09-18, with the winner
     changing across restarts. The namespace filters stay as they are: an Engine
     namespace whose string *differs* from a stream's source still delivers two
