@@ -198,7 +198,6 @@ Each of these was hit on the running stack. The reasoning and evidence for all o
   cursor points past the instrument's new sequence. Clear
   `[default]icc26/site1/env_monitoring/particle-counter-01/state/cursor` to recover; `health`
   warns when nothing has landed in `em.reading` for 180 s.
-- **Bind mounts are slow on Docker Desktop.** For a machine you present from, clone into WSL2.
 
 ## Topic namespace
 
