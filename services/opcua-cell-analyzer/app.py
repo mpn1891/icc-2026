@@ -121,7 +121,7 @@ class Config:
         self.serial_number = _env("SERIAL_NUMBER", "FX2-2026-0119")
 
         # Which measurement modules are fitted. The osmometer is absent by default: that keeps
-        # the absent-vs-zero case (model doc section 8) live on stage instead of hypothetical.
+        # the absent-vs-zero case (model doc section 8) live instead of hypothetical.
         # Osmo/Result then sits at Bad_NoData while the chemistry and gas analytes carry real
         # numbers, in the same result, at the same timestamp -- and the vendor's own
         # ModuleInformation/Modules/Osmo says False beside it, Good.
@@ -839,7 +839,7 @@ class CellAnalyzer:
             root, "ICC26Extensions/QcResultJson", "QcResultJson", V.String)
         self.ext["LastError"] = await self._add_var(
             root, "ICC26Extensions/LastError", "LastError", V.String)
-        # Demo-only, and the analyzer has no equivalent button. Say so on stage.
+        # Demo-only, and the analyzer has no equivalent button.
         self.ext["InjectFailure"] = await self._add_var(
             root, "ICC26Extensions/InjectFailure", "InjectFailure", V.Boolean,
             value=False, writable=True)
@@ -884,7 +884,7 @@ class CellAnalyzer:
         await self._seed_instrument_state()
 
         # Nothing has been analyzed yet, so the result trees are Bad_NoData rather than trees
-        # of zeros. A client that cannot tell those apart finds out here, not on stage.
+        # of zeros. A client that cannot tell those apart finds out here, not in production.
         ts = _now()
         await self.sample_branch.clear_all(ts)
         await self.historical_branch.clear_all(ts)
@@ -1161,7 +1161,7 @@ class CellAnalyzer:
         """A fed-batch CHO culture, sampled once per analysis.
 
         Not a kinetic model and not trying to be -- it exists so the trend charts move the way
-        an audience expects: glucose consumed while lactate and ammonia accumulate, viable
+        a viewer expects: glucose consumed while lactate and ammonia accumulate, viable
         density peaking then falling as viability declines. Deterministic given RANDOM_SEED.
         """
         cfg = self.cfg
@@ -1322,7 +1322,7 @@ class CellAnalyzer:
             values["CalculatedResults/HCO3"] = round(hco3, 1)
             values["CalculatedResults/HCO3Units"] = "mmol/L"
             # Temperature corrections. At the default 37 C these are identities, which makes
-            # them easy to sanity-check on stage: change VesselTemperature and watch them move.
+            # them easy to sanity-check: change VesselTemperature and watch them move.
             values["CalculatedResults/pHCorrected"] = round(ph - 0.0147 * (temperature - 37.0), 2)
             values["CalculatedResults/pCO2Corrected"] = round(
                 pco2 * (10 ** (0.019 * (temperature - 37.0))), 1)

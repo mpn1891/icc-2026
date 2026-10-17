@@ -415,7 +415,7 @@ class Store:
 
     # How many open entries the review screen renders. Nothing retires an entry
     # but a human signing it, so a week of rehearsal leaves hundreds -- and the
-    # sample just drawn on stage is the one that has to be visible without
+    # sample just drawn is the one that has to be visible without
     # scrolling. Hence newest first AND a cap; either alone is not enough.
     PAGE_SIZE = 25
 
@@ -478,7 +478,7 @@ class Store:
     def unmatched_results(self) -> list[dict]:
         """Results the instrument reported against an id no entry carries.
 
-        On stage this is a mistyped sample id, which is the point of showing it:
+        In the demo this is a mistyped sample id, which is the point of showing it:
         the valve's entry sits open with no results while the analysis sits here
         with no entry, and both facts are on one screen.
         """
@@ -792,7 +792,7 @@ def _build_envelope(entry: tuple, results: list, disposition: str) -> dict:
 
     `values.verified_at` is when a person clicked, taken from the UPDATE's own
     `now()` rather than re-read from the clock here. The gap between it and `ts`
-    is the whole pattern and is visible on stage, so it survives the envelope
+    is the whole pattern and is visible, so it survives the envelope
     going flat -- it just sits beside the analyst who caused it instead of in a
     metadata block. It is a measured fact about this sample, which is the test
     everything in `values` has to pass.
@@ -1498,7 +1498,7 @@ def _actions_html(sample: dict, analyst: str, reviewable: bool, span: int) -> st
 def _unmatched_html(unmatched: list[dict], pending: list[dict], analyst: str) -> str:
     """Results the analyzer reported against an id no entry carries.
 
-    On stage this is a mistyped sample id. The valve's entry is sitting in the
+    In the demo this is a mistyped sample id. The valve's entry is sitting in the
     queue above with no results; this analysis is sitting here with no entry, and
     both facts are visible at once. Attaching is an analyst decision, recorded as
     one -- what the instrument reported is never rewritten.

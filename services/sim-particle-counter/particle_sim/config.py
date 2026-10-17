@@ -6,11 +6,11 @@ overridden in `docker-compose.yml` rather than here, and the override is the
 point:
 
   * ``DURATION`` is 10 in compose, not the vendor's 60. Ten seconds is a
-    cadence an audience can watch; sixty is a coffee break.
+    cadence a person can watch; sixty is a coffee break.
   * ``SEED_SAMPLES`` is 0 in compose, not the vendor's 50. Nothing exists until
     somebody presses Start on the touchscreen -- see the panel's idle banner.
     Fifty pre-generated records would put readings on the backbone that nobody
-    in the room saw the instrument take.
+    saw the instrument take.
 
 Everything not in the vendor table (``PANEL_PORT``, ``BUFFER_MAX``,
 ``OOS_MULTIPLIER``, the JWT knobs) is ours and is named so in the table below.

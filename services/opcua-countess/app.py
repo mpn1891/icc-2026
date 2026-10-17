@@ -97,7 +97,7 @@ class Config:
         self.device_revision = _env("DEVICE_REVISION", "3.0")
 
         # Cube 2 is empty by default. That keeps the absent-vs-zero case (model doc section 8)
-        # live on stage instead of hypothetical -- Cube 2's result fields sit at Bad_NoData
+        # live instead of hypothetical -- Cube 2's result fields sit at Bad_NoData
         # while Cube 1's carry real numbers, in the same result, at the same timestamp.
         self.cube1_installed = _env_bool("CUBE1_INSTALLED", True)
         self.cube2_installed = _env_bool("CUBE2_INSTALLED", False)
@@ -602,7 +602,7 @@ class Countess:
             self._nid(f"{cfg.device_id}/AbortCount"), self._qname("AbortCount"),
             self._on_abort_count, [], [])
         # Not on the real instrument, and not in the model doc's method list either -- it
-        # exists so the failed-count contract can be demonstrated on cue. Say so on stage.
+        # exists so the failed-count contract can be demonstrated on cue.
         await device.add_method(
             self._nid(f"{cfg.device_id}/InjectFailure"), self._qname("InjectFailure"),
             self._on_inject_failure, [], [])
@@ -622,7 +622,7 @@ class Countess:
         self.event_fail = await server.get_event_generator(event_fail, self.unit)
 
         # Nothing has been counted yet, so LastResult is Bad_NoData rather than a tree of
-        # zeros. A client that cannot tell those apart finds out here, not on stage.
+        # zeros. A client that cannot tell those apart finds out here, not in production.
         await self.results.clear_all(_now())
 
     # ---- command variable

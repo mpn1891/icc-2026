@@ -30,7 +30,8 @@ production integration should use it.
 | Refusal on a bad request | `Bad_InvalidState` from the method | nothing. The write returns Good either way |
 
 The Countess is the model we wish vendors shipped. The analyzer is what they ship. Pattern 3 is
-more convincing with both on stage than with either alone.
+more convincing with both side by side than with either alone. (The Countess is no longer
+part of the demo chain; it stays as the worked example.)
 
 ## The sample-login screen, and the transcription it exists to perform
 
@@ -53,7 +54,7 @@ than a deletion. Default, not assertion: it can be typed wrong, exactly like the
 An Ignition tag write into `cell_analyzer/command/sample_id` would do the same job and could not
 be typed wrong. **That is why it is not what we built.** Pattern 1's GxP claim is *the record
 originates at the point of action; no transcription, no intermediary*, and this screen is the
-intermediary. Type it wrong on stage and the LIMS shows the cost on one screen: an entry sitting
+intermediary. Type it wrong and the LIMS shows the cost on one screen: an entry sitting
 open with no analysis, and an analysis parked with no entry.
 
 Run **writes tags and sets a bit** — `ESMScheduleAnalysis/SampleInformation/*`, then
@@ -123,7 +124,7 @@ OPCSystemCommands->ESMScheduleAnalysis->ESMScheduleAnalysis   := true   then thi
 different `SampleSource` on the result. `ESMTerminate` and friends abort a run in progress.
 `ChemistryQcLevel1/2` and `GasQcLevel1/2` run an onboard control.
 
-Three things about this that are the vendor's design, not ours, and are worth saying on stage:
+Three things about this that are the vendor's design, not ours:
 
 - **Nothing is atomic.** The metadata is a series of separate writes. Two clients racing produce
   a spliced sample and neither is told.
@@ -144,7 +145,7 @@ that is undocumented; set `COMMAND_AUTO_CLEAR=false` to find out the hard way.
 | `ANALYZER_ID` / `LOCATION` | `CELL-ANALYZER-01` / `Site 1 / QC Lab` | `Settings->AnalyzerID` and `->Location` |
 | `SOFTWARE_VERSION` / `SERIAL_NUMBER` | `4.3.1` / `FX2-2026-0119` | |
 | `GAS_INSTALLED` / `CHEM_INSTALLED` / `CDV_INSTALLED` | `true` | Absent module → its results stay `Bad_NoData` |
-| `OSMO_INSTALLED` | **`false`** | Deliberate. Keeps absent-vs-zero live on stage |
+| `OSMO_INSTALLED` | **`false`** | Deliberate. Keeps the absent-vs-zero case visible |
 | `ESM_INSTALLED` / `AUTOSAMPLER_INSTALLED` | `true` | |
 | `AUTOSAMPLER_BANK_B` | `false` | Ten RSM status tags at `Bad_NoData` |
 | `RETAIN_COLLECTOR_INSTALLED` | `false` | Gates the three retain fields |
@@ -242,7 +243,7 @@ this: 26 assertions, all green, 911 nodes across the three trees.
 3. **MQTT publish** — tag-change on `result/sample_time` (vendor `HistoricalSampleResults/SampleTime`)
    hands the result folder to Event Stream `03_opcua/cell-analyzer-result`. Transform
    `opcua_event.build_cell_analyzer_result` reads the historical UDT siblings and Transmission
-   publishes to `icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed`, `meta.mechanism = "opcua-event"`.
+   publishes `ts` + `values` to `icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed`.
    Does not use `ICC26Extensions`.
 
 ### The UDT

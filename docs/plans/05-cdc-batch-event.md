@@ -2,7 +2,7 @@
 
 > **Supersedes the pattern-5 entry in [`00-master-plan.md`](00-master-plan.md) entirely.**
 > Written 2026-08-26 alongside the build. Talk track:
-> [`../talk-tracks/05-cdc.md`](../talk-tracks/05-cdc.md), written 2026-09-06 — after 07 landed,
+> [`../patterns/05-cdc.md`](../patterns/05-cdc.md), written 2026-09-06 — after 07 landed,
 > which is why its close is *the MVP shape needed no change*.
 >
 > **Two things changed from the master-plan sketch and are settled here:** the batch engine is a
@@ -393,7 +393,7 @@ inside the qualified window. Advance to `HARVEST` and badge again → it is not.
 1. **Nothing is broker-verified yet.** Every CP above is `pending`. Until CP2 and CP5 are
    answered, treat the Gateway Scripting Project dependency and the Debezium type encodings as
    assumptions.
-2. ~~**`../talk-tracks/05-cdc.md` is not written.**~~ **Written 2026-09-06.** It carries the
+2. ~~**`../patterns/05-cdc.md` is not written.**~~ **Written 2026-09-06.** It carries the
    accidental failure demo out of the progress log below, on the grounds that it is the strongest
    evidence in this pattern and nobody staged it.
 3. **`pg_db` is still in the repo** beside `ICC26`, still selectable, still wrong. Decide whether

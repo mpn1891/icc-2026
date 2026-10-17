@@ -2,7 +2,7 @@
 
 An OPC UA information model for the cell-count result structure defined in **Appendix E, "CSV
 file format definition"** (columns A–BS, 71 fields) of
-[MAN0019567](MAN0019567-Countess-3FL-Automated-Cell-Counter-UG.pdf).
+[MAN0019567](https://documents.thermofisher.com/TFS-Assets/LSG/manuals/MAN0019567-Countess-3FL-Automated-Cell-Counter-UG.pdf).
 
 ## Provenance — read this first
 
@@ -500,7 +500,7 @@ Three distinct conditions that a naive mapping collapses into `0.0`:
 The difference between rows 2 and 3 is the difference between "we didn't look" and "we looked and
 there was nothing," and a viability trend built on the wrong one is wrong in a way nobody catches.
 OPC UA gives you `StatusCode` precisely so you don't have to encode this in the value; the CSV
-does not, which is why the CSV is the weaker interface and worth saying so on stage.
+does not, which is why the CSV is the weaker interface.
 
 ---
 
@@ -672,7 +672,7 @@ that server does:
 | Write order | All result nodes → `State = Completed` → **`CountCompletedCounter` last** |
 | Concentration walk | Random walk within 1×10⁴–1×10⁷, biased to ~1×10⁶ for a CHO culture |
 | Viability | Slow decline across a session, 96% → 88%, with noise — makes the trend chart worth looking at |
-| Cube 2 | Unpopulated by default, so §8's absent-vs-zero case is live on stage, not hypothetical |
+| Cube 2 | Unpopulated by default, so §8's absent-vs-zero case is live, not hypothetical |
 | Failure injection | `POST`-equivalent method or env flag to raise `CountFailedEventType` without incrementing the counter — proves the counter contract |
 
 The last row is the one worth rehearsing: a client that treats "counter changed" as the trigger

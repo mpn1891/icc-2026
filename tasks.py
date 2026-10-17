@@ -819,7 +819,7 @@ def _csv(value):
 
 
 def _ssl_subject_names(env):
-    """Stable local names plus optional conference-network names from .env."""
+    """Stable local names plus optional extra network names from .env."""
     dns_names = ["localhost", "ignition", "icc26-ignition"]
     for name in (socket.gethostname(), socket.getfqdn()):
         if name and name.lower() not in [item.lower() for item in dns_names]:
@@ -1198,7 +1198,7 @@ def task_trial():
             print("       GET /trial needs only basic auth, so this is a credential")
             print("       problem. Check IGNITION_ADMIN_* in .env.")
 
-    # Two independent clocks. Both must be alive when you walk on stage.
+    # Two independent clocks. Both must be alive for the stack to work.
     step("Chariot trial status")
     state = chariot_state()
     if state is None:

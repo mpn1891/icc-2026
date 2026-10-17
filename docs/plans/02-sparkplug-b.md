@@ -2,7 +2,7 @@
 
 > **Build spec.** What exists, what it publishes, and how it was measured. The talk material —
 > the pattern 1 vs 2 comparison table, segment beats, the risk narrative — lives in
-> [`../talk-tracks/02-sparkplug-b.md`](../talk-tracks/02-sparkplug-b.md). Progress log at the bottom.
+> [`../patterns/02-sparkplug-b.md`](../patterns/02-sparkplug-b.md). Progress log at the bottom.
 >
 > This file supersedes spec 02 in [`00-master-plan.md`](00-master-plan.md).
 
@@ -356,5 +356,5 @@ and the same for `webui.py`. Both must be empty. This is the pattern's real regr
 | 2026-08-17 | **Ran against a real gateway for the first time.** Engine built all 19 tags with units from DBIRTH with zero configuration; unprompted Rebirth observed and answered in 6 ms; both death paths measured. Encoder proven on the wire against Chariot. Open items 1 and 2 (tag-tree auto-build, 3.0.0 vs 2.2 acceptance by Cirrus 5.0.4) both resolved here. |
 | 2026-08-19 | Pattern 7's lost tag source resolved elsewhere — it was re-scoped twice and no longer needs this pattern's metrics. Nothing in this file changed as a result. |
 | 2026-08-25 | **`Interlock/Ok` dropped** and `aborted-interlock` removed from `Sample/LastCycleResult`, following pattern 1's decision to cut the interlock; `valve.py` is shared, so this is one edit in two containers. Nineteen declared metrics. **Pattern 1 also cut its `state` topic entirely**, so `Valve/State`, `Valve/IsOpen` and `Valve/PositionPct` are now metrics pattern 2 publishes and pattern 1 has no equivalent for — see pattern 1's open item 7. |
-| 2026-08-23 | **Split.** Talk material and the pattern 1 vs 2 comparison table moved to [`../talk-tracks/02-sparkplug-b.md`](../talk-tracks/02-sparkplug-b.md); this file is the build spec. Deviations table and the resolved *Known consequence* section dropped. Recorded that this pattern's through-line contribution is narrative, not a field in pattern 7's document. |
+| 2026-08-23 | **Split.** Talk material and the pattern 1 vs 2 comparison table moved to [`../patterns/02-sparkplug-b.md`](../patterns/02-sparkplug-b.md); this file is the build spec. Deviations table and the resolved *Known consequence* section dropped. Recorded that this pattern's through-line contribution is narrative, not a field in pattern 7's document. |
 | 2026-08-23 | **Metric set follows pattern 1's payload redesign**, because `valve.py` is shared. `Line/PressureBar` → `Actuator/AirSupplyBar` and `Line/TemperatureC` → `Device/EnclosureTempC`: nothing flows through a shut sample valve, so the old pair measured a dead leg or restated BR-201's own instruments. `Sample/LastCycleResult` added, mirroring `cycle_result` — nineteen metrics become twenty and nine typed nulls become ten. Datatypes, units and deadbands all unchanged. The rename buys a causal pair the old metrics never had: the deadbanded air supply is the physical cause of the fault string, so one DDATA predicts another. Measured sections left at nineteen and marked for re-measurement; open item 4 tracks the build. |

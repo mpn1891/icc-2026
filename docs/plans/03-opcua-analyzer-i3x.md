@@ -360,7 +360,7 @@ Not started, and deliberately not folded into this pass without a decision.
   subscription could be run. Different pattern, different object; the fix is the same shape as step 0
   but it is not this pass. Nothing else in the `default` types ticks on a clock.
 - **`docs/` and talk tracks.** Phase 5, after 0–4 land. `docs/plans/03-opcua-analyzer-playbook.md`
-  and `docs/talk-tracks/03-opcua-analyzer.md` gain the store then, not now.
+  and `docs/patterns/03-opcua-analyzer.md` gain the store then, not now.
 
 ## Scope guard for anyone executing this
 

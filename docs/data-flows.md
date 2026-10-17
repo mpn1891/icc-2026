@@ -2,8 +2,8 @@
 
 One diagram per pattern: what produces the data, every hop it crosses, and the topic it lands
 on. Nothing here is new — it is [`00-architecture.md`](00-architecture.md) and the seven
-[`plans/`](plans/) specs drawn instead of written, for the moment on stage when somebody asks
-"wait, how does that one get there?"
+[`plans/`](plans/) specs drawn instead of written, for when you want to know "wait, how does that
+one get there?"
 
 If a box or a label here disagrees with [`00-architecture.md`](00-architecture.md), that file
 wins and this one is stale.
@@ -392,13 +392,12 @@ Not a new inbound transport. It subscribes, joins, and speaks only when somethin
 `qualified_window` is reported but deliberately **not** a trigger: it is false for four
 operations of five, and a flag that fires most of the time is not a finding.
 
-> **Lookup 1 is drawn as it runs today, and it is scheduled to change.** The `batch_id` it
-> returns names the batch at the reactor's last *advance*, not at the sample instant — the same
-> thing only because nothing in this demo interleaves them. It moves to a tag-history query on
+> **Lookup 1 has a known limitation.** The `batch_id` it returns names the batch at the
+> reactor's last *advance*, not at the sample instant — the same thing only because nothing in
+> this demo interleaves them. The planned fix, never built, was a tag-history query on
 > `br-201/batch_data/batch_id` at the sample instant:
-> [`plans/07-sample-chain.md`](plans/07-sample-chain.md) § *2a*, tracked as
-> [`plans/00-post-07.md`](plans/00-post-07.md) § 7. `operation` and `qualified_window` may or may
-> not follow it off this row — that is one of the decisions 2a leaves open.
+> [`plans/07-sample-chain.md`](plans/07-sample-chain.md) § *2a* and
+> [`plans/00-post-07.md`](plans/00-post-07.md) § 7.
 
 ---
 
@@ -429,4 +428,3 @@ Patterns 3, 6 and 7 all end the same way:
 ```
 
 Only the trigger differs — an instrument finishing a run, a timer firing, a message arriving.
-Say that on stage **once**, in one of the three, rather than three times.

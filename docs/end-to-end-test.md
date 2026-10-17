@@ -4,10 +4,8 @@
 > Written 2026-08-31, the first time the whole path was walked in one sitting. Every number below
 > was measured on that walk rather than predicted.
 >
-> **This is not the demo runbook.** That was spec 08 and it was cut on 2026-08-25 — no Perspective
-> views, no mechanism-coloured firehose, no per-segment script. This file answers *does the stack
-> work*. What you **say** is [`talk-tracks/`](talk-tracks/); why the segments run in the order they
-> do is [`demo-through-line.md`](demo-through-line.md).
+> This file answers *does the stack work*. What each pattern is and how it fails is
+> [`patterns/`](patterns/).
 
 | | |
 |---|---|
@@ -146,7 +144,7 @@ One message lands on `icc26/site1/qc/deviation`. It passes if all of these hold:
 | `values.sample_id` | the id you drew | The chain held onto the right sample. **This replaced `meta.correlation_id` on 2026-09-13** — the correlation id was always a copy of it |
 | `values.batch_id` | today's, e.g. `B-20260831-01` | Not `null` — the `bes.batch_event` lookup hit |
 | `values.batch_context.operation` | `GROWTH` | Pattern 5's fact, read rather than recomputed |
-| `values.batch_context.qualified_window` | `true` | The GxP claim the whole talk builds to |
+| `values.batch_context.qualified_window` | `true` | The GxP claim the whole demo builds to |
 | `values.batch_context_reason` | `null` | Named sibling, `null` on the success path |
 | `values.environment.age_s` | single digits | Pattern 6 is live; nearest reading either side |
 | `values.environment.nearest_side` | `before` or `after` | A distance, not a signed number |
@@ -155,14 +153,14 @@ One message lands on `icc26/site1/qc/deviation`. It passes if all of these hold:
 | `values.collection.badge_holder` | `Jordan Reyes` | Pattern 1's provenance survived the whole chain |
 | `values.disposition` / `values.analyst` | `pass` / your user | Pattern 4 signs on both outcomes |
 | `values.equipment_identifier` | `br-201` | A tag read off the UDT — `null` if unreadable, never fatal |
-| `values.assessed_at` | a few seconds after `ts` | When 07 assembled the document. **Replaced the envelope's `meta` block on 2026-09-13** |
+| `values.assessed_at` | after `ts`, by however long the review took | When 07 assembled the document. **Replaced the envelope's `meta` block on 2026-09-13** |
 | `seq`, `source`, `meta` | **absent** | The envelope came off every pattern on 2026-09-13. A message carrying any of them is a stale gateway holding an old copy of the script |
 
 **Press In-spec again when you are done**, or every subsequent sample deviates.
 
-**Read the three gaps out loud, because they are the argument:** `values.assessed_at` against `ts`
-is the human in the loop, `batch_context.as_of` against `ts` is how far into the operation the
-sample was drawn, and `age_s` is how close the room reading was. No arithmetic on stage.
+**The three gaps are the argument:** `values.assessed_at` against `ts` is the human in the loop,
+`batch_context.as_of` against `ts` is how far into the operation the sample was drawn, and `age_s`
+is how close the room reading was. 07 computes none of them.
 
 > **All three moved one level shallower on 2026-09-13** and none of them changed value. They used
 > to be read off `meta`; every pattern now publishes `ts` + `values` and the instants live in
@@ -171,15 +169,14 @@ sample was drawn, and `age_s` is how close the room reading was. No arithmetic o
 
 ### Known good — the 2026-08-31 walk
 
-Trimmed from `S-20260831-0103`, which passed every row above. **Two things about it are now
-history rather than expectation.** It predates the 2026-09-06 deviation change, so it carries no
-`values.violations` and was published on the old `icc26/site1/qc/sample-chain`; and it predates
-the 2026-09-13 envelope removal, so its `meta`, `source` and `seq` are exactly the three things
-the table above now expects to be **absent**. Read it for the `values` block, which is unchanged:
+Trimmed from `S-20260831-0103`, which passed every row above. That walk predates two changes,
+so this shows only its `ts` and `values`: it was a clean sample, published before 07 became
+deviation-only (2026-09-06), and before the `meta`/`source`/`seq` envelope came off (2026-09-13).
+A message you get today has the same keys, plus `values.violations` first, and lands on
+`icc26/site1/qc/deviation`:
 
 ```json
-{"meta":{"ingest_ts":"2026-08-31T15:41:13.184Z","correlation_id":"S-20260831-0103",
- "mechanism":"aggregate"},
+{"ts":"2026-08-31T15:40:00.618Z",
  "values":{"disposition":"pass","analyst":"mmartin","sample_id":"S-20260831-0103",
   "batch_id":"B-20260831-01","equipment_id":"br-201","equipment_identifier":"br-201",
   "batch_context":{"operation":"GROWTH","event_type":"operation_start",
@@ -192,14 +189,12 @@ the table above now expects to be **absent**. Read it for the `values` block, wh
                 "sample_start":"2026-08-31T15:39:47.109Z","open_duration_s":13.51,
                 "cycle_result":"normal","sample_completion":"2026-08-31T15:40:00.618Z"},
   "results":[{"analyte":"glucose","value":5.92,"uom":"g/L"},
-             {"analyte":"lactate","value":0.14,"uom":"g/L"}]},
- "source":{"id":"sample-chain","type":"aggregate"},"seq":26,
- "ts":"2026-08-31T15:40:00.618Z"}
+             {"analyte":"lactate","value":0.14,"uom":"g/L"}]}}
 ```
 
-`ts` to `ingest_ts` was 72.6 s on that walk — the time it took a person to copy an id, type it into
-an instrument and sign. That gap is provenance, not lag. **The same number is `values.assessed_at`
-against `ts` now**; only the path changed.
+The release was signed 72.6 s after `ts` on that walk: the time it took a person to copy an id,
+type it into an instrument and sign. That gap is provenance, not lag, and today it is read as
+`values.assessed_at` against `ts`.
 
 ## When it does not work
 
@@ -221,10 +216,13 @@ against `ts` now**; only the path changed.
 - **The failure paths.** A sagged air supply at :8085 yields a `failed-to-seat` entry, reviewable
   immediately with no analytes; a transposed id parks under Unmatched results and reattaches with the
   wrong id preserved. Both are verified in [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md)
-  § *Verification*, and both are worth a lap before the talk.
+  § *Verification*, and both are worth trying once.
 - **The negative window.** Advancing past `HARVEST` and drawing again should give `IDLE`,
-  `qualified_window: false`, **and nothing empty**. That is pattern 7's sharpest beat, and it costs
+  `qualified_window: false`, **and nothing empty**. That is pattern 7's sharpest case, and it costs
   four clicks to walk the reactor back afterwards.
+- **The i3X reader.** <http://localhost:8092> reacts to the same approvals from outside the
+  gateway and reaches the same environmental verdict over the i3X API. See
+  [`services/i3x-client/README.md`](../services/i3x-client/README.md).
 - **Restart survival.** `docker restart icc26-lims` logs the retained redelivery as a no-op and the
   outbox survives. Covered in pattern 4's spec.
 
@@ -232,4 +230,4 @@ against `ts` now**; only the path changed.
 
 | Date | |
 |---|---|
-| 2026-08-31 | Written after the first end-to-end walk in one sitting, `S-20260831-0103`. Assembled from [`plans/00-post-07.md`](plans/00-post-07.md) § 1, which found the loop while diagnosing the review queue, and [`talk-tracks/07-sample-chain.md`](talk-tracks/07-sample-chain.md) § *On stage*, which had the beats but started at Approve. The *Known good* block and the 414-in-one-poll drain are from that walk |
+| 2026-08-31 | Written after the first end-to-end walk in one sitting, `S-20260831-0103`. Assembled from [`plans/00-post-07.md`](plans/00-post-07.md) § 1, which found the loop while diagnosing the review queue, and [`patterns/07-sample-chain.md`](patterns/07-sample-chain.md) § *On stage*, which had the beats but started at Approve. The *Known good* block and the 414-in-one-poll drain are from that walk |

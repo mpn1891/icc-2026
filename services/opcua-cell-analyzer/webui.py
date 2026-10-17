@@ -29,7 +29,7 @@ Two rules the page follows, and neither is negotiable:
     `run_coroutine_threadsafe`. Touching asyncua nodes from this thread directly
     would be a data race against the OPC UA services.
 
-One asymmetry worth noticing on stage: this page can say "an analysis is already
+One asymmetry worth noticing: this page can say "an analysis is already
 running" and refuse. An OPC UA client writing the same bit cannot -- a tag write
 has no return value, and the instrument documents no rejection path, so all a
 client gets is that nothing happened. The page knows because it is inside the

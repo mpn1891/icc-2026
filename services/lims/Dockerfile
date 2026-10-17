@@ -3,7 +3,7 @@
 # outbox. See docs/plans/04-lims-webhook.md.
 #
 # FastAPI + psycopg + paho-mqtt. All have manylinux wheels, so nothing compiles
-# here and nothing needs a toolchain on a conference network.
+# here and nothing needs a toolchain on an offline network.
 
 FROM python:3.12-slim
 

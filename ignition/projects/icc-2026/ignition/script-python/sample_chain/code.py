@@ -71,7 +71,7 @@ cannot race the way a memo between two stages could.
 **07 publishes nothing itself.** It returns a document; Event Stream
 `07_chain/lims-review` hands that to the Transmission handler. Same shape as
 patterns 3 and 6, and it is what keeps 07 a genuine backbone subscriber --
-docs/talk-tracks/04-lims-webhook.md says this pattern and 07 are the only two
+docs/patterns/04-lims-webhook.md says this pattern and 07 are the only two
 there are.
 
 **Every lookup has two implementations and `CONTEXT_SOURCE` picks one.** `sql`
@@ -367,7 +367,7 @@ def _environment_sql(instant):
                                   database=DATASOURCE)
     if not rows:
         # The particle counter simulator is stopped, or nobody pressed Start.
-        # This is the case that matters on stage: the block is null, the reason
+        # This is the case that matters most: the block is null, the reason
         # says why, and the composite publishes anyway.
         return None, "no em.reading row for device %s" % EM_DEVICE_ID
 
@@ -727,7 +727,7 @@ def _equipment_identifier_i3x(equipment_id):
 # alternatives rather than variations: each returns the same keys in the same
 # order under the same (block, reason) contract, so `_assess` and `build` are
 # written against the contract and never against a source. That is what makes
-# `CONTEXT_SOURCE` safe to flip between two reviews on stage.
+# `CONTEXT_SOURCE` safe to flip between two reviews.
 
 def _batch_context(equipment_id, instant):
     """What the reactor was doing when the sample was drawn. (block, reason)."""
@@ -913,7 +913,7 @@ def build(document):
 
     `ts` is the acquisition instant and `values.assessed_at` is when 07 built
     the record. The gap between them is the whole document's provenance, visible
-    on stage in one message -- the same rule docs/plans/04-lims-webhook.md
+    in one message -- the same rule docs/plans/04-lims-webhook.md
     states for the review itself, and the same relocation: the instant is a
     measured fact about this sample, so it sits in `values` beside the analyst
     and the disposition rather than in a metadata block.
@@ -967,7 +967,7 @@ def build(document):
             "analyst": values.get("analyst"),
 
             # When 07 assembled this. Read against `ts` -- the acquisition
-            # instant -- it is the provenance gap the talk track reads out.
+            # instant -- it is the provenance gap docs/patterns/07-sample-chain.md reads off it.
             # `sample_id` above is the thread across mechanisms now that no
             # document carries a `meta.correlation_id`; it was always the same
             # string the correlation id was copied from.
