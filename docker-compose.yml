@@ -674,6 +674,13 @@ services:
       # which is what the page is for. The nearest-either-side rule is the same.
       HISTORY_WINDOW_S: ${I3X_CLIENT_WINDOW_S:-300}
       MAX_EPISODES: ${I3X_CLIENT_MAX_EPISODES:-25}
+      # A second copy of the cleanroom rule, cited on `out of specification` so
+      # the verdict explains itself. The authoritative one is still
+      # `config/excursion_threshold` on the particle_counter UDT, and the
+      # instrument's own `status` is still what decides the verdict -- this
+      # number is quoted, never compared. Here rather than only in the image so
+      # correcting it is a restart, not a rebuild. Keep it equal to the tag.
+      EXCURSION_THRESHOLD: ${I3X_CLIENT_EXCURSION_THRESHOLD:-1660}
       # The publish side. Reading the model needs the Ignition login above;
       # putting a finding back needs a broker account, and those being two
       # grants from two systems is the point of the button on the page.

@@ -395,6 +395,21 @@ function renderEpisode(episode) {
         '<span class="aside">' + esc(env.nearest_side || "") + ' the sample</span></dd>' +
       '<dt>Room status</dt>' +
       '<dd>' + esc(env.status) + ' <span class="aside">read, never recomputed</span></dd>';
+
+    // What the status was decided against. Cited, not recomputed -- the count
+    // and the verdict both come off the instrument, and this only says which
+    // channel and which limit the instrument was working to.
+    var limit = env.excursion_threshold;
+    var gated = (env.channels || []).filter(function (channel) {
+      return channel.size_um === env.threshold_channel_um;
+    })[0];
+    if (limit != null && gated) {
+      rows +=
+        '<dt>Excursion limit</dt>' +
+        '<dd>' + esc(num(gated.count, 0)) + ' / ' + esc(num(limit, 0)) +
+          ' <span class="aside">' + esc(num(env.threshold_channel_um, 1)) +
+          ' µm channel, ' + esc(num(env.total_volume_l, 3)) + ' L draw</span></dd>';
+    }
   }
   rows +=
     '<dt>History window</dt>' +

@@ -127,7 +127,7 @@ python tasks.py down     # stops the stack, keeps volumes
 | Sample valve — Sparkplug B | <http://localhost:8086> — the same page, three controls disabled (pattern 2) |
 | Cell analyzer sample login | <http://localhost:8087> — the instrument's own screen, where the valve's sample id is typed in (pattern 3) |
 | LIMS review queue | <http://localhost:8000> — approve or reject a sample; the review is pattern 7's trigger (pattern 4) |
-| Particle counter touchscreen | <http://localhost:8089> — Start/Stop, sample point, clean/dirty room (pattern 6). Its API is GraphQL over HTTPS on `localhost:8443` |
+| Particle counter touchscreen | <http://localhost:8089> — Start/Stop, sample point, in-spec/OOS room (pattern 6). Its API is GraphQL over HTTPS on `localhost:8443` |
 
 > **Why the separate `seed` step?** Ignition 8.3 seeds `data/` from the image on first launch,
 > and bind-mounting host directories over `data/config` at that moment blocks the seeding and
@@ -159,9 +159,9 @@ chain; nothing downstream of the broker consumes it. Wiring it is a new decision
 
 **Silence is pattern 7 passing.** Since 2026-09-06 it publishes only when the sample violated
 something, on `icc26/site1/qc/deviation`, so a clean sample produces nothing and the gateway
-logs `... is clean; no deviation published`. To make 07 speak, press **Dirty** at :8089, wait
+logs `... is clean; no deviation published`. To make 07 speak, press **OOS** at :8089, wait
 ~30 s for the next poll, and walk the loop again — the message that lands names the excursion
-in `values.violations`. Press **Clean** afterwards.
+in `values.violations`. Press **In-spec** afterwards.
 
 ## Working on the gateway
 

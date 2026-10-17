@@ -133,8 +133,8 @@ If you rejected in step 6 instead of approving, you get a message now: `violatio
 
 ## 8. Make a deviation and read it
 
-Press **Dirty** on the particle counter panel (<http://localhost:8089>) and wait about 30 s for a fresh
-reading to land — dirty draws measure 3346–4350 counts against a threshold of 1660. Then repeat
+Press **OOS** on the particle counter panel (<http://localhost:8089>) and wait about 30 s for a fresh
+reading to land — OOS draws measure 3346–4350 counts against a threshold of 1660. Then repeat
 steps 4–6 with a new sample.
 
 One message lands on `icc26/site1/qc/deviation`. It passes if all of these hold:
@@ -158,7 +158,7 @@ One message lands on `icc26/site1/qc/deviation`. It passes if all of these hold:
 | `values.assessed_at` | a few seconds after `ts` | When 07 assembled the document. **Replaced the envelope's `meta` block on 2026-09-13** |
 | `seq`, `source`, `meta` | **absent** | The envelope came off every pattern on 2026-09-13. A message carrying any of them is a stale gateway holding an old copy of the script |
 
-**Press Clean again when you are done**, or every subsequent sample deviates.
+**Press In-spec again when you are done**, or every subsequent sample deviates.
 
 **Read the three gaps out loud, because they are the argument:** `values.assessed_at` against `ts`
 is the human in the loop, `batch_context.as_of` against `ts` is how far into the operation the

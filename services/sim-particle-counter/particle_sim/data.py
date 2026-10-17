@@ -1,4 +1,4 @@
-"""The instrument: a rolling sample buffer, a sampling run, and a dirty room.
+"""The instrument: a rolling sample buffer, a sampling run, and an out-of-specification room.
 
 Three things in here are load-bearing for pattern 6 and none of them is an
 accident.
@@ -26,8 +26,8 @@ valid; the buffer still does not, because records nobody saw the instrument take
 have no business appearing after a restart. Off is what the demo needs and off is
 what a fresh volume gives you -- see ``set_persist_sequence``.
 
-**The simulator does not know what a cleanroom limit is.** It has a clean
-distribution and a dirty one, and no notion of a threshold. The excursion rule
+**The simulator does not know what a cleanroom limit is.** It has an in-spec
+distribution and an OOS one, and no notion of a threshold. The excursion rule
 is Ignition's, lives once on the UDT, and is applied by ``particle_counter_poll`` at
 ingest. See docs/00-architecture.md § *Derived flags travel with the fact that
 produced them*.
@@ -119,7 +119,7 @@ class Instrument:
         self.samples = []            # oldest first; sequenceNumber ascending
         self._sequence = 0
         self.running = False
-        self.room = "clean"          # clean | dirty -- the operator's switch
+        self.room = "in_spec"        # in_spec | oos -- the operator's switch
         self.sample_point = cfg.device_name
         self.next_sample_at = None   # epoch seconds, or None when stopped
         self.started_run_at = None
@@ -146,7 +146,8 @@ class Instrument:
         except Exception:
             return
         self.sample_point = str(state.get("sample_point") or self.cfg.device_name)
-        self.room = "dirty" if state.get("room") == "dirty" else "clean"
+        # "dirty" is what a state file written before the rename says.
+        self.room = "oos" if state.get("room") in ("oos", "dirty") else "in_spec"
         self.persist_sequence = _truthy(state.get("persist_sequence"))
         if self.persist_sequence:
             # The counter, not the buffer. The records are gone; the numbers they
@@ -211,7 +212,8 @@ class Instrument:
         return self.sample_point
 
     def set_room(self, value: str) -> str:
-        self.room = "dirty" if str(value).lower().startswith("d") else "clean"
+        # "oos", and "dirty" from before the rename. Anything else is in spec.
+        self.room = "oos" if str(value).lower().startswith(("o", "d")) else "in_spec"
         self._save_state()
         LOG.info("room condition set to %s", self.room)
         return self.room
@@ -273,8 +275,8 @@ class Instrument:
         if base is None:
             base = CLEAN_PER_28L[0.5] * (size_um / 0.5) ** _FALLBACK_EXPONENT
         mean = base * (volume_l / 28.3)
-        if self.room == "dirty":
-            mean *= self.cfg.dirty_multiplier
+        if self.room == "oos":
+            mean *= self.cfg.oos_multiplier
         jitter = random.uniform(0.75, 1.25)
         return max(0, int(round(mean * jitter)))
 

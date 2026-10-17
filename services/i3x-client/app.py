@@ -164,6 +164,26 @@ class Config:
         # docstring for why this is smaller than 07's hour.
         self.history_window_s = _env_int("HISTORY_WINDOW_S", 300)
 
+        # The limit this client cites when it reports `out of specification`.
+        #
+        # THIS IS A SECOND COPY OF THE RULE, and the first one is authoritative:
+        # `config/excursion_threshold` on the particle_counter UDT, whose own
+        # documentation says it is the only copy. The verdict still comes off
+        # the instrument's `status` -- this number is cited, never compared --
+        # so the two can disagree without changing any verdict, and a stale copy
+        # shows up as a verdict whose quoted limit does not explain it.
+        #
+        # Held here for the talk, where the object read it would take is one
+        # more call on a page that is already showing the exchange. The client
+        # already has `Client.value()` and the counter's elementId, so replacing
+        # this with the real read is a few lines -- see the README.
+        #
+        # 1660 counts is bound to the 10 s / 4.717 L draw the UDT chose it for.
+        # Change DURATION on the simulator and this number silently means
+        # something else, which is why `total_volume_l` is cited beside it.
+        self.excursion_threshold = _env_int("EXCURSION_THRESHOLD", 1660)
+        self.threshold_channel_um = 0.5
+
         # How long to wait before rebuilding after the stream drops. A gateway
         # restart drops every subscription -- they live in gateway globals -- so
         # reconnecting means creating a new one, not resuming the old.
@@ -627,19 +647,30 @@ class Publisher:
         somebody else's measurement.
         """
         review = episode.get("review") or {}
-        return {
-            "ts": episode.get("sample_instant"),
-            "values": {
+        values: Dict[str, Any] = {
                 "verdict": episode.get("verdict"),
 
                 # Populated on `unverifiable`, and then always. A verdict this
                 # client declined to reach says why in the message rather than
                 # leaving a subscriber to infer it from a null.
+                #
+                # The one key in here that is ABSENT rather than null when it
+                # has nothing to say, unlike `environment` below. A reached
+                # verdict has no refusal to explain, and `"reason": null` beside
+                # `out of specification` reads as a missing explanation rather
+                # than as an inapplicable field. Present means read it; absent
+                # means the verdict stands on its own.
                 "reason": episode.get("reason"),
 
+                # Enough to correlate, and nothing more. `disposition` used to
+                # sit here and does not any longer: it is the analyst's
+                # decision, already on the bus as pattern 4's own document under
+                # this same `sample_id`, and a reader restating it is the third
+                # copy this file refuses to make of the analyzer's numbers. A
+                # subscriber that wants the release beside this verdict joins
+                # the two on `sample_id`, which is what that key is for.
                 "sample_id": review.get("sample_id"),
                 "equipment_id": review.get("equipment_id"),
-                "disposition": review.get("disposition"),
                 "analyst": review.get("analyst"),
                 "assessed_at": episode.get("received_at"),
 
@@ -658,8 +689,12 @@ class Publisher:
                 # either way and a gap is never a missing field. `age_s` inside
                 # it is what decides whether any of this is evidence at all.
                 "environment": episode.get("environment"),
-            },
         }
+
+        if values["reason"] is None:
+            del values["reason"]
+
+        return {"ts": episode.get("sample_instant"), "values": values}
 
     def announce(self, episode: Dict[str, Any]) -> None:
         """Publish the finding, or record why not. Sets `episode["publish"]`.
@@ -979,6 +1014,15 @@ def _assess(cfg: Config, client: Client, state: State, trigger: str,
         "sequence_number": current.get("sequence_number"),
         "total_volume_l": current.get("total_volume_l"),
         "channels": _channels(current),
+
+        # What `status` was decided against, so a verdict explains itself
+        # without a reader holding the cleanroom spec in their head. Cited
+        # beside the channel it applies to and the volume it was chosen for --
+        # one raw-count limit cannot threshold six channels, and the same
+        # number means something else at a different draw volume.
+        "excursion_threshold": cfg.excursion_threshold,
+        "threshold_channel_um": cfg.threshold_channel_um,
+
         "conditions": current.get("conditions"),
     }
 

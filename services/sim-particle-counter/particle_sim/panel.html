@@ -52,7 +52,7 @@
     --accent-2: #0a5f90;
     --run: #1f9d55;
     --stop: #b03636;
-    --dirty: #c9761b;
+    --oos: #c9761b;
     --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
@@ -208,8 +208,8 @@
   button.run { background: linear-gradient(180deg, #29b264, #1c8a4b); }
   button.halt { background: linear-gradient(180deg, #cc4444, #9e2f2f); }
   button.on { outline: 2px solid #ffd166; outline-offset: 1px; }
-  button.dirty.on { background: linear-gradient(180deg, #e0902c, #b06712); }
-  button.clean.on { background: linear-gradient(180deg, #2f9fd6, #17709e); }
+  button.oos.on { background: linear-gradient(180deg, #e0902c, #b06712); }
+  button.in-spec.on { background: linear-gradient(180deg, #2f9fd6, #17709e); }
   .block .keys button { flex: 1 1 0; text-align: center; }
 
   .field { display: flex; gap: .5rem; }
@@ -316,8 +316,8 @@
         <div class="block">
           <h2>Room condition</h2>
           <div class="keys" style="padding:0">
-            <button class="clean" id="btn-clean">In-spec</button>
-            <button class="dirty" id="btn-dirty">OOS</button>
+            <button class="in-spec" id="btn-in-spec">In-spec</button>
+            <button class="oos" id="btn-oos">OOS</button>
           </div>
         </div>
       </div>
@@ -403,8 +403,8 @@
 
   el("btn-start").addEventListener("click", function () { post("/api/start"); });
   el("btn-stop").addEventListener("click", function () { post("/api/stop"); });
-  el("btn-clean").addEventListener("click", function () { post("/api/room", { value: "clean" }); });
-  el("btn-dirty").addEventListener("click", function () { post("/api/room", { value: "dirty" }); });
+  el("btn-in-spec").addEventListener("click", function () { post("/api/room", { value: "in_spec" }); });
+  el("btn-oos").addEventListener("click", function () { post("/api/room", { value: "oos" }); });
   el("btn-persist").addEventListener("click", function () {
     post("/api/persist-sequence", { value: !persistOn });
   });
@@ -431,8 +431,8 @@
 
     if (!pointFocused) { el("sample-point").value = s.sample_point; }
 
-    el("btn-clean").className = "clean" + (s.room === "clean" ? " on" : "");
-    el("btn-dirty").className = "dirty" + (s.room === "dirty" ? " on" : "");
+    el("btn-in-spec").className = "in-spec" + (s.room === "in_spec" ? " on" : "");
+    el("btn-oos").className = "oos" + (s.room === "oos" ? " on" : "");
 
     var idle = (!s.running && s.buffer_count === 0);
     el("idle-banner").className = "idle-banner" + (idle ? " show" : "");

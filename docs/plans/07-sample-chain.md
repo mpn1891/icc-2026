@@ -425,7 +425,7 @@ cannot be evidenced is not one anybody can release.
 2. **The event stream**, per the config above.
 3. **Verify on the wire**, not in the database. Subscribe as `observer` on
    `icc26/site1/qc/deviation`, then approve a sample in the LIMS review screen: a clean one
-   publishes **nothing**. Press **Dirty** on the particle counter panel (<http://localhost:8089>), wait
+   publishes **nothing**. Press **OOS** on the particle counter panel (<http://localhost:8089>), wait
    for a fresh reading, draw and approve again — that one publishes.
 4. **The talk track**, `docs/talk-tracks/07-sample-chain.md`. The repo's two-document convention
    makes this the closing step, not an optional extra.

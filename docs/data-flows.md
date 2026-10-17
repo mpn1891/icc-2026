@@ -298,7 +298,7 @@ came out on 2026-09-13 along with the rest of the envelope.
    │  sim-particle-counter                                    │
    │    :8443  GraphQL over HTTPS, JWT bearer, cursor paging  │
    │    :8089  the operator's touchscreen — Start, location,  │
-   │           and the Dirty button that forces an excursion  │
+   │           and the OOS button that forces an excursion    │
    │                                                          │
    │  10 s sample duration. Nothing free-runs; the operator   │
    │  starts it and Ignition never mutates the instrument.    │

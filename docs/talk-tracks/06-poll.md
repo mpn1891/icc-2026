@@ -12,7 +12,7 @@
 | **Pattern** | 6 of 7 — poll and diff, on somebody else's HTTP API |
 | **Mechanism tag** | none — dropped 2026-09-13. The topic is the only thing that says how this arrived |
 | **Container** | `sim-particle-counter` — GraphQL over HTTPS on `:8443`, JWT auth |
-| **Operator touchscreen** | <http://localhost:8089> — Start/Stop, the sample point, clean/dirty room |
+| **Operator touchscreen** | <http://localhost:8089> — Start/Stop, the sample point, in-spec/OOS room |
 | **Acquisition** | An Ignition gateway timer, 30 s fixed delay. **Nothing pushes** |
 | **Depends on** | the `ICC26` datasource and the Gateway Scripting Project |
 | **Blocks** | pattern 7 reads `em.reading` for the room at the sample instant |
@@ -26,7 +26,7 @@ GraphQL, JWT, cursor pagination — and **it does not know Ignition exists.** Ig
 a timer.
 
 **Demo.** Press Start on the instrument's touchscreen. Within 30 seconds a burst of results
-appears on the backbone — three at a time, not one every ten seconds. Then press **Dirty** and
+appears on the backbone — three at a time, not one every ten seconds. Then press **OOS** and
 watch `status` flip.
 
 **Risk.** The detection gap, said as a number rather than as a worry. And then the failure that
@@ -38,7 +38,7 @@ matters: the poll working perfectly and publishing nothing.
 
 **1. The gap is characterized, and that is the whole GxP move.** Not *"we might miss
 something"* but: **we sample for 10 seconds, we look every 30, so a reading is on the backbone
-within 40 seconds of the air going dirty, worst case.** Measured, the steady state is tighter
+within 40 seconds of the air going out of specification, worst case.** Measured, the steady state is tighter
 than that — a **7.2 / 17.2 / 27.2 second sawtooth**, three analyses stacked under one poll,
 repeating exactly. Put the interval on screen, then ask the room what that number would have to
 be before it went into an assessment. **That question is the segment.**
@@ -60,7 +60,7 @@ because removing it would have meant editing somebody else's product.** `startSa
 **4. The excursion flag is Ignition's rule, in exactly one place.** The poll compares the ≥0.5 µm
 raw count against `config/excursion_threshold` and writes `status ∈ normal | excursion` at
 ingest. The number is **1660** — 352,000 per cubic metre at the 4.717 L a 10-second draw takes,
-which is ISO 14644-1 Class 7 / EU GMP Grade C at rest. Clean measures 113–137, dirty 3346–4350.
+which is ISO 14644-1 Class 7 / EU GMP Grade C at rest. In-spec measures 113–137, OOS 3346–4350.
 An order of magnitude of headroom either side, and a limit that is a **real grade** rather than a
 number picked to sit between two histograms. Pattern 7 reads that flag and never compares counts
 itself.
@@ -266,8 +266,8 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 | Nothing free-runs | `python tasks.py health` before the room arrives | The `sim-particle-counter` line must say SAMPLING. A forgotten **Start** looks exactly like the failure below |
 | The burst | Press **Start** at <http://localhost:8089> | Within 30 s, **three** messages ~270 ms apart — not one every 10 s |
 | The gap, on the wire | Read `ts` against `values.ingest_ts` | Tens of seconds, in every message, with nobody explaining it |
-| The room goes dirty | Press **Dirty** | The next analysis publishes `status: "excursion"` — 3346–4350 counts against 1660 |
-| …and clean again | Press **Clean** | `normal` on the one after. **Do this**, or every later sample deviates in pattern 7 |
+| The room goes out of spec | Press **OOS** | The next analysis publishes `status: "excursion"` — 3346–4350 counts against 1660 |
+| …and back in spec | Press **In-spec** | `normal` on the one after. **Do this**, or every later sample deviates in pattern 7 |
 | The stall | Uncheck `config/enabled`, wait, re-enable | Silence, then the backlog in one burst |
 | **Up, connected, and blind** | `docker restart icc26-sim-particle-counter` | Everything green, nothing on the wire. Clear `state/cursor` to recover |
 

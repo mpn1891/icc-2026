@@ -31,8 +31,8 @@ element id spelled out anywhere in the source. Four systems contributed to the
 answer it reaches — a valve, an analyzer, a LIMS and a particle counter — and
 this process has never heard of any of them.
 
-It also computes nothing. `clean` and `dirty` are the counter's own `status`
-member read back verbatim, set by `particle_counter_poll` against
+It also computes nothing. `in specification` and `out of specification` are the
+counter's own `status` member (`normal` / `excursion`) mapped one-to-one, set by `particle_counter_poll` against
 `config/excursion_threshold`, which is the only copy of the cleanroom limit in
 the stack. A threshold here would be a second copy, and two copies drift.
 
@@ -65,11 +65,11 @@ the other end: it consumes the backbone and may not publish at all. Both live in
 
 | | |
 |---|---|
-| `verdict` | `clean`, `dirty` or `unverifiable` — the counter's own `status`, or a refusal |
+| `verdict` | `in specification`, `out of specification` or `unverifiable` — the counter's own `status`, or a refusal |
 | `reason` | why, on `unverifiable`. Never a bare null for somebody to interpret |
 | `environment` | the reading the verdict came off, `age_s` included |
 | `sample_instant_from`, `history_window_s`, `rows_returned` | how the verdict was reached, so it can be audited without re-running the query |
-| `sample_id`, `equipment_id`, `disposition`, `analyst` | enough to correlate, and nothing more |
+| `sample_id`, `equipment_id`, `analyst` | enough to correlate, and nothing more. **Not `disposition`** — the analyst's decision is already on the bus as pattern 4, under this same `sample_id` |
 
 The analyzer's numbers are deliberately **not** in there. They are already on the
 bus as pattern 3 and again inside pattern 4's review; a third copy arriving from
@@ -107,10 +107,10 @@ container restart — a subscriber would watch the same finding announced as new
 each time the container was rebuilt. The loop this topic exists for starts at an
 analyst signing something off.
 
-**Every verdict publishes, `clean` included.** 07's `icc26/site1/qc/deviation` is
+**Every verdict publishes, `in specification` included.** 07's `icc26/site1/qc/deviation` is
 a gate — it fires only when something is wrong, which is right for a topic called
 deviation. This one is a review log, and a consumer of it wants to know a sample
-was looked at and found clean. A topic that only ever carries bad news cannot
+was looked at and found in specification. A topic that only ever carries bad news cannot
 answer that.
 
 **The topic names a mechanism, which the namespace rule forbids.** Taken
@@ -148,7 +148,7 @@ episodes are tagged `startup` rather than `push`, because the difference between
 this client asking and the server telling is most of what the page is for.
 
 To see a push: approve or reject a sample at <http://localhost:8000>. To see a
-`dirty` verdict, press **Dirty** on the particle counter panel at
+`out of specification` verdict, press **OOS** on the particle counter panel at
 <http://localhost:8089> first, wait for a reading, then draw and approve.
 
 To see it publish, press **Start publishing** and approve another sample. What
