@@ -1,7 +1,7 @@
 # 01 — Native MQTT: smart sample valve assembly
 
 > **Build spec.** What exists, what it publishes, and how it was measured. Talk material lives
-> in [`../talk-tracks/01-native-mqtt.md`](../talk-tracks/01-native-mqtt.md). Progress log at the
+> in [`../patterns/01-native-mqtt.md`](../patterns/01-native-mqtt.md). Progress log at the
 > bottom. Supersedes spec 01 in [`00-master-plan.md`](00-master-plan.md).
 
 | | |
@@ -475,4 +475,4 @@ spec-ahead-of-build backlog (item 2, landed).
 | 2026-08-25 | **Envelope cut.** Every document is now `ts` + `values` and nothing else — no `seq`, no `source`, no `meta`. Pattern 1 no longer stamps `meta.mechanism`, no longer names itself in `source`, and no longer carries even the appearance of loss detection. Verified on the wire across all four topics. The `meta.event`-is-not-a-discriminator finding and the `seq`-is-process-local finding are both **deleted rather than resolved** — the fields are gone. |
 | 2026-08-25 | **`state` → `status`.** Valve position dropped from the wire entirely; `status` is the birth/will pair only (`online` on CONNACK, `offline` by Last Will), retained, per [HiveMQ MQTT Essentials part 9](https://www.hivemq.com/blog/mqtt-essentials-part-9-last-will-and-testament/). Interlock and `training-expired` cut — authorization is the roster alone, so `aborted-interlock` leaves `cycle_result` and `interlock_ok` leaves telemetry. `scan_time` added to `event/badge-scan`. Items 3 and 6 closed; item 7 opened. |
 | 2026-08-25 | **Spec landed in both containers.** `event` split; `scan_time` added; `sample_start`/`sample_completion` renamed; `cycle_result` driven by a real air-supply fault path; telemetry re-pointed; `state` → `status` as a retained birth/will pair; interlock and `training-expired` removed. Knock-on in pattern 2: `Interlock/Ok` dropped, `Sample/LastCycleResult` added, `Line/*` renamed — nineteen metrics, ten typed nulls. Item 2 closed, item 8 opened (ingest needs re-measuring). |
-| 2026-08-23 | Vibration work deleted. Talk material split to [`../talk-tracks/01-native-mqtt.md`](../talk-tracks/01-native-mqtt.md). Payload/topic redesign: `event` splits into two subtypes; `meta.correlation_id` dropped; `valve_state` dropped; telemetry re-pointed to air/enclosure; `cycle_result` added. Four findings recorded (will ≠ state document; `meta.event` echoes message type; `seq` is process-local; auto-scanner undocumented). |
+| 2026-08-23 | Vibration work deleted. Talk material split to [`../patterns/01-native-mqtt.md`](../patterns/01-native-mqtt.md). Payload/topic redesign: `event` splits into two subtypes; `meta.correlation_id` dropped; `valve_state` dropped; telemetry re-pointed to air/enclosure; `cycle_result` added. Four findings recorded (will ≠ state document; `meta.event` echoes message type; `seq` is process-local; auto-scanner undocumented). |

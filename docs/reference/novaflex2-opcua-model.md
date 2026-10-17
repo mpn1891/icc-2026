@@ -2,7 +2,7 @@
 
 A transcription of the address space published by the **real vendor OPC UA server**, taken from
 Section 9 ("BioProfile FLEX2 OPC Tag List", pp. 9-1 – 9-40) of
-[LPN 60644B](LPN%2060644%20-BioProfile-FLEX2-IFU-EN-Manual-OPC.pdf), *BioProfile® FLEX2 OPC
+[LPN 60644B](https://novabiomedicaldocs.com/wp-content/uploads/filr/26729/LPN%2060644%20-BioProfile-FLEX2-IFU-EN-Manual-OPC.pdf), *BioProfile® FLEX2 OPC
 Server Instructions for Use Manual*, Nova Biomedical, 2024-03.
 
 ## Provenance — read this first, it is the opposite of the Countess
@@ -265,7 +265,7 @@ loudly-named object:
 | `State` | `FunctionalUnitStateEnum` | `0` Idle `1` Running `2` Completed `3` Aborted `4` Error `5` Calibrating `6` QualityControl `7` Maintenance |
 | `ResultJson` / `QcResultJson` | `String` | the whole result as one value — one read, one timestamp, cannot tear across 141 leaves |
 | `LastError` | `String` | |
-| `InjectFailure` | `Boolean` | demo-only. The real instrument has no such button — say so on stage |
+| `InjectFailure` | `Boolean` | demo-only. The real instrument has no such button |
 
 Events, likewise ours: `SampleCompletedEventType` (`ns=2;i=3000`), `SampleFailedEventType`
 (`i=3001`), `QcCompletedEventType` (`i=3002`), all emitted from the `OPCSystemObjects` node.
@@ -319,7 +319,7 @@ The FLEX2 gives this its own vocabulary, which the Countess had to invent:
 
 `Modules->Osmo = False` (Good) sitting beside `Osmo->Result = null` (`Bad_NoData`) at the same
 `SourceTimestamp` is the whole absent-vs-zero argument in two adjacent nodes, in the vendor's own
-vocabulary. The demo ships with the osmometer unfitted so it is live on stage rather than
+vocabulary. The demo ships with the osmometer unfitted so it is live rather than
 hypothetical, and autosampler bank B likewise (ten RSM tags at `Bad_NoData`).
 
 Verified at the wire — one result, 130 Good and 11 Bad leaves, one distinct `SourceTimestamp`.
@@ -447,7 +447,7 @@ Implemented in [`services/opcua-cell-analyzer/`](../../services/opcua-cell-analy
 | Write order | all result leaves → `State` → **`SampleCompleteCounter` last** |
 | QC | every 6th free-running cycle, or any `*QcLevel*` bit. Writes `QCResults`, increments `QcCompleteCounter` **only** |
 | Culture | fed-batch CHO: glucose 6.0 → 1.4 g/L, lactate 0.2 → 2.6 g/L, ammonia 0.9 → 5.8 mmol/L, viable density peaking ~12 ×10⁶/mL at 70 % of the run, viability 98 → 84 % |
-| Osmometer | unfitted by default, so §8 is live on stage |
+| Osmometer | unfitted by default, so §8 is live |
 | Autosampler bank B | absent by default, ditto |
 | Sensor errors | `SENSOR_ERROR_RATE` — one analyte goes `Bad` with `ErrorStatus` text and `Parameters-><a>->Alert` = `True`; **the sample still completes and still increments the counter**, because one bad sensor does not void a run |
 | Whole-analysis failure | `FAILURE_RATE` or `InjectFailure` — "Dispense Timeout", `State = Error`, `SampleFailedEventType`, **counter untouched** |

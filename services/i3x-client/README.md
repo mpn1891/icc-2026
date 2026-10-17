@@ -78,10 +78,9 @@ a reader would be this process putting its name on somebody else's measurement.
 ### Choices worth knowing about the publish
 
 **Off by default.** `PUBLISH_ENABLED=false` in compose and in `.env.example`, and
-it should stay that way. The closing argument is that this container reads the
-whole model on one API login, and a stack that comes up already publishing has
-spent that argument before anybody is watching. Turning it on live, on stage, is
-when it is worth seeing.
+it should stay that way. The point of this container is that it reads the whole
+model on one API login; publishing is a separate decision, made by a person
+pressing the button on the page, not something the stack does on startup.
 
 **The button stops the publish, not the connection.** The broker session is held
 from startup either way — the same shape as pattern 4's drainer, which keeps
@@ -131,10 +130,11 @@ source. Watch it with `observer`, or in MQTT Explorer.
 
 ⚠ **The `i3x-client` broker account was added on 2026-09-21 and
 `mqtt-users.json` seeds on first run only.** On an older Chariot volume it does
-not exist — and `allowAnonymous: true` is currently hiding that, because the
-client connects anonymously and publishes fine. It will start failing the moment
-anonymous goes back off before the talk. Add the account by hand in the Chariot
-UI at <http://localhost:8081>, or `python tasks.py nuke`.
+not exist, and `allowAnonymous: true` does not help: this client sends a
+username and password, and Chariot refuses a credential it does not recognise
+even with anonymous access on. The page shows a red `broker unreachable` light.
+Add the account by hand in the Chariot UI at <http://localhost:8081>, or
+`python tasks.py nuke`.
 
 ## Run it
 

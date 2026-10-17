@@ -61,7 +61,7 @@ python tasks.py hash-modules      # prints sha256 for each .modl present
 ```
 
 Paste them into `modules.manifest.json` and commit. From then on `verify-modules` fails on
-any mismatch instead of letting a subtly different build reach the stage.
+any mismatch instead of letting a subtly different build reach the gateway.
 
 ## How they reach the gateway
 

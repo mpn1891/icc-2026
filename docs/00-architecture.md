@@ -6,16 +6,15 @@ fact.** If something here is contradicted elsewhere, this file wins; if you lear
 add it here rather than in a status note.
 
 - Each pattern's path from device to topic, drawn: [`data-flows.md`](data-flows.md).
-- What is built and what is not: [`plans/00-status.md`](plans/00-status.md).
-- What is still to be built, and in what order: [`plans/00-master-plan.md`](plans/00-master-plan.md).
-- Talk tracks — **all seven exist as of 2026-09-06**:
-  [`01-native-mqtt`](talk-tracks/01-native-mqtt.md),
-  [`02-sparkplug-b`](talk-tracks/02-sparkplug-b.md),
-  [`03-opcua-analyzer`](talk-tracks/03-opcua-analyzer.md),
-  [`04-lims-webhook`](talk-tracks/04-lims-webhook.md),
-  [`05-cdc`](talk-tracks/05-cdc.md),
-  [`06-poll`](talk-tracks/06-poll.md),
-  [`07-sample-chain`](talk-tracks/07-sample-chain.md).
+- How it was built, pattern by pattern, as dated records: [`plans/`](plans/README.md).
+- What each pattern is, how it fails, and how to try it:
+  [`01-native-mqtt`](patterns/01-native-mqtt.md),
+  [`02-sparkplug-b`](patterns/02-sparkplug-b.md),
+  [`03-opcua-analyzer`](patterns/03-opcua-analyzer.md),
+  [`04-lims-webhook`](patterns/04-lims-webhook.md),
+  [`05-cdc`](patterns/05-cdc.md),
+  [`06-poll`](patterns/06-poll.md),
+  [`07-sample-chain`](patterns/07-sample-chain.md).
 
 ---
 
@@ -56,7 +55,7 @@ Everything else publishes through Ignition. Pattern 7 is not a new inbound trans
 | `sim-particle-counter` | 8443 (GraphQL API), 8089 (operator panel) | pattern 6 — built 2026-08-29 |
 
 `lims` is built: see [`plans/04-lims-webhook.md`](plans/04-lims-webhook.md) and
-[`talk-tracks/04-lims-webhook.md`](talk-tracks/04-lims-webhook.md). Odoo, the AMS stub, the DCS OPC server and a
+[`patterns/04-lims-webhook.md`](patterns/04-lims-webhook.md). Odoo, the AMS stub, the DCS OPC server and a
 Modbus particle counter were the 2026-08-19 plan and are not in this stack.
 
 **Patterns 1 and 2 are the same physical device in two firmwares** — a badge-operated smart
@@ -64,11 +63,11 @@ sample valve assembly, one on `BR-201` speaking plain MQTT and one on `BR-202` s
 Sparkplug B. `valve.py` and `webui.py` are byte-for-byte identical between the two build
 contexts, so everything that differs between the containers is a difference the protocol
 caused. Each serves its own device commissioning webpage (8085, 8086), and **the difference
-between those two pages is as much of the talk as the traffic is**: on one the topic, QoS and
+between those two pages is as much of the pattern as the traffic is**: on one the topic, QoS and
 retained flag are editable fields, on the other the same three controls are disabled with the
 specification clause that fixed them. Both valves are publish-only — nothing on the backbone
-can open either. Talk tracks: [`talk-tracks/01-native-mqtt.md`](talk-tracks/01-native-mqtt.md) and
-[`talk-tracks/02-sparkplug-b.md`](talk-tracks/02-sparkplug-b.md). Build specs:
+can open either. Pattern docs: [`patterns/01-native-mqtt.md`](patterns/01-native-mqtt.md) and
+[`patterns/02-sparkplug-b.md`](patterns/02-sparkplug-b.md). Build specs:
 [`plans/01-native-mqtt.md`](plans/01-native-mqtt.md) and
 [`plans/02-sparkplug-b.md`](plans/02-sparkplug-b.md).
 
@@ -101,11 +100,11 @@ waiting on them.
 The Engine Edge Node tag trees under `MQTT Engine/Edge Nodes/` are gitignored and regenerate
 from the broker, so they needed no cleanup.
 
-**Nothing may depend on the internet at runtime.** It is a conference network and a stage. Every
-image is pulled ahead of time, no page loads from a CDN, and the acceptance test is that the
-whole demo runs with networking disabled. (This rule was written with the Perspective firehose
-in mind — that piece is cut, see *Cut on 2026-08-25*, but the rule outlives it and applies to
-anything served on stage.)
+**Nothing may depend on the internet at runtime.** The demo was built to run on an unreliable
+conference network. Every image is pulled ahead of time, no page loads from a CDN, and the
+acceptance test is that the whole demo runs with networking disabled. (This rule was written
+with the Perspective firehose in mind — that piece is cut, see *Cut on 2026-08-25*, but the rule
+outlives it and applies to every page the services serve.)
 
 **One repo, not several.** Every meaningful change here is cross-cutting — changing the topic
 namespace touches Ignition config, the simulators, Chariot ACLs, Debezium config and the docs.
@@ -126,9 +125,9 @@ result, received off the backbone, reviewed by a human, pushed to Ignition over 
 patterns depended on this; for one webhook, a small FastAPI service is the right size.
 
 Pattern 7 **consumes the MQTT message** that webhook produces. That is not a second LIMS
-contract — it is a backbone subscriber, addressed like any other. With the firehose cut, pattern
-7 is now the *only* thing in the stack that subscribes to the backbone, which makes "one event
-backbone" a claim resting on one consumer. Say it that way rather than implying a crowd.
+contract — it is a backbone subscriber, addressed like any other. With the firehose cut, the LIMS
+(pattern 4) and pattern 7 are the only things in the stack that subscribe to the backbone, so
+"one event backbone" is a claim resting on two consumers, not a crowd.
 
 The three retired HTTP/SQL surfaces (`GET /results?since_id=N`, a Debezium-tailed insert into
 `lims.sample_result`, and a query against the LIMS for an aggregation script) are retired, not
@@ -196,7 +195,7 @@ vocabulary already draws this line everywhere else — the table is `em.reading`
 the finding an environmental excursion, and `sample_chain` notes the counter is *one instrument
 for the room, not one per vessel*. EM data is read as a programme, so it is addressed as one.
 The rule it breaks is the rule this document is otherwise built on; see the note on pattern 6's
-move below, and say so on stage rather than hoping nobody reads the namespace.
+move below. It is a known exception, not an oversight.
 
 Message types are a closed set: `telemetry`, `event`, `event/<subtype>`, `waveform`, `status`,
 `state`, `cmd/<verb>`, `response/<what>`, `ack`.
@@ -251,7 +250,7 @@ device id is the *last* segment, so `particle-counter-01` survived both moves un
 Two costs, both real. The "environmental reading taken beside the reactor" framing went at 08-25
 and has not come back; the reactor association lives in the payload's `location` and in pattern
 7's join, not in the address. And 09-13 bought the fix by breaking the *areas are places* rule
-— see the `env_monitoring` note above. Nothing on stage depends on either old address, and the
+— see the `env_monitoring` note above. Nothing depends on either old address, and the
 topic is device-addressed under all three.
 
 **The move also took the counter out of a wildcard it was never meant to be in.** `lims-bridge`
@@ -284,10 +283,10 @@ is `bes.batch_event`, and naming it after the writer is exactly what a schema is
 > **Known remaining wart:** `qc/lims/sample-results-released` still puts a software system in the
 > line-or-cell slot. Revisited in spec 04 (2026-08-19) and **kept**. The better address is
 > under BR-201, naming the LIMS in the payload — the same rule `bes.batch_event` already
-> follows. The topic is referenced by an ACL and by pattern 7's subscription, and the
-> conference is four weeks out. The reversal made this *less* defensible, not more:
-> `qc/lims/` was easier to justify when three patterns keyed off one topic. Now one does,
-> and the calendar is what holds the address. Say so on stage.
+> follows. The topic is referenced by an ACL and by pattern 7's subscription, and it was kept
+> for schedule. The reversal made this *less* defensible, not more: `qc/lims/` was easier to
+> justify when three patterns keyed off one topic. Now one does, and only the schedule held
+> the address.
 
 **Every operational topic is device-addressed. Two topics are deliberately not**, and both say
 so by being shaped differently: `qc/deviation` is pattern 7's verdict about a *sample*, not a
@@ -300,7 +299,7 @@ it.
 free-text topic box on its config page, so the only thing keeping sample data out of the `qc`
 area is `sample-valve-01`'s publish grant of `icc26/site1/upstream/#` in
 `compose/chariot/mqtt-users.json` — deliberately the *area* rather than the exact topic, so
-the valve can be re-addressed to another cell on stage but cannot leave upstream. Pattern 2
+the valve can be re-addressed to another cell but cannot leave upstream. Pattern 2
 needs no such grant to be well-behaved, because its topic is not its to choose.
 
 **That contrast was the point of running both, and as of 2026-08-25 the ACL no longer shows
@@ -326,7 +325,7 @@ strings that appear in topics. Keep it that way.
 
 The original design had all three carrying the same logical data — one LIMS sample result —
 acquired three different ways and landing identically, so that disabling the webhook and enabling
-CDC on stage changed nothing but `meta.mechanism`. **That is no longer the design**, and the
+CDC changed nothing but `meta.mechanism`. **That is no longer the design**, and the
 reasoning for the reversal matters more than the reversal:
 
 **Nobody webhooks, tails and polls the same table in production. You pick one.** The convergence
@@ -350,7 +349,7 @@ A second re-source, after 2026-08-19's Odoo / Modbus particle counter / vibratio
 | 6 | `poll` | Particle counter HTTP API in `env_monitoring`, Ignition poll → Event Stream | particle-count analysis |
 | 7 | `aggregate` | MQTT listener on the LIMS review | sample chain: valve, analyzer, batch, env |
 
-Pattern 5 is an application we own. Say that on stage: the textbook CDC case is an app you
+Pattern 5 is an application we own, and the docs say so: the textbook CDC case is an app you
 cannot modify; this engine is a stand-in for the **batch execution system** we would not patch,
 and the point is still that the writer never publishes MQTT. Pattern 6 is a pull API, not
 Modbus; vendor routes land when the docs are dropped in. Pattern 7 is a join of the others, not
@@ -361,9 +360,9 @@ batch execution specifically; MES is the wider L3 layer that also covers schedul
 and dispatch, none of which the timer does. This room runs DeltaV Batch, PAS-X or Syncade — say
 MES and they will expect work orders. **The schema follows the words: it is `bes.batch_event`,
 renamed from `mes.` on 2026-08-23 before anything was built on it.** An earlier revision of this
-section argued for keeping `mes.` to avoid churn; that argument lost, because pattern 5's verify
-step puts the table on screen immediately after the talk track says "BES", and a schema prefix
-that contradicts the sentence just spoken is the one place the churn would have been visible.
+section argued for keeping `mes.` to avoid churn; that argument lost, because the table is what
+anybody checking pattern 5 looks at, right after reading "BES", and a schema prefix that
+contradicts the docs is the one place the churn would have been visible.
 `02-schema.sql` and `04-cdc.sql` already carry the new name.
 
 Consequences that are easy to miss:
@@ -472,8 +471,7 @@ In ISA-88 a **phase** is the smallest element that does process action — "Add 
 `bes.batch_event` column, the `event_type` values (`operation_start` | `operation_end` |
 `batch_end`) and the wire field all say `operation`.
 
-Same rule that renamed `mes.` → `bes.`: **the schema follows the words spoken on stage.** Pattern
-5's verify step puts the table on screen moments after the talk track has used the word.
+Same rule that renamed `mes.` → `bes.`: **the schema follows the words the docs use.**
 
 ### The sample id, and pattern 1 mints it
 
@@ -550,15 +548,16 @@ not doing its job. The topic already says what a message is. Three of the four k
 the envelope was carrying, moved into `values` where they are measured facts about the sample
 rather than metadata: pattern 4's approval instant is `values.verified_at`, pattern 7's
 assembly instant is `values.assessed_at`, pattern 6's ingest instant is `values.ingest_ts`. The
-stage beat those numbers exist for — the gap against `ts` — is unchanged; it is just read one
-level shallower. **Pattern 6 is the one where that beat is the whole segment**, so moving the
-number rather than dropping it was the condition of the change, not a courtesy.
+gap against `ts` those numbers exist for is unchanged; it is just read one level shallower.
+**Pattern 6 is the one where that gap is the whole point** (it is the detection gap), so moving
+the number rather than dropping it was the condition of the change, not a courtesy.
 
 **Pattern 5 kept nothing, and that is the one place the narrowing cost something.** Its
 `ingest_ts` was a fact about the pipeline rather than about the batch — there is no
 `values.verified_at` equivalent to move it into — so the CDC latency is no longer on the wire.
-It is still in `bes_cdc`'s gateway log line and in Debezium's, which is where the talk track now
-sends you for the number. If that gap is wanted back on stage, `values.ingest_ts` is the
+It is still in `bes_cdc`'s gateway log line and in Debezium's, which is where
+[`patterns/05-cdc.md`](patterns/05-cdc.md) sends you for the number. If that gap is wanted back
+on the wire, `values.ingest_ts` is the
 one-field version and pattern 6 is the precedent for spelling it that way.
 
 **Pattern 6 also dropped a `seq` that had a reader.** Its top-level `seq` was the instrument's
@@ -577,7 +576,7 @@ to have a second job — the Perspective firehose coloured by it — and that vi
 2026-08-25**. Pattern 6's departure left it with one carrier, which already meant it told
 nothing apart: a field with a single possible value on a single topic is documentation, not
 data. **Pattern 5 gave it up the same day**, which retires the field rather than leaving it as
-a one-user relic to explain on stage. The verification that matters never depended on it: a
+a one-user relic to explain. The verification that matters never depended on it: a
 subscriber reading the topic list cannot tell which pattern used CDC, and now neither can a
 subscriber reading the payloads.
 
@@ -710,9 +709,9 @@ API key.
 
 ## Broker: why Chariot and not Distributor
 
-The talk's thesis is "seven mechanisms, one event backbone." If the broker lives inside
-Ignition, the architecture stops matching the slide — Ignition becomes both the backbone and
-half the clients, and you cannot restart it on stage without taking the demo down.
+The demo's thesis is "seven mechanisms, one event backbone." If the broker lives inside
+Ignition, the architecture stops matching it — Ignition becomes both the backbone and half the
+clients, and you cannot restart it without taking the whole demo down.
 
 Chariot is also better suited to a committed repo: fully env-var configured, `MQTT_USERS`
 reads a JSON file so ACLs are a diffable artifact, and port 8090 gives MQTT-over-WebSocket.
@@ -726,8 +725,7 @@ Distributor module in the gateway and repoint Engine/Transmission at `localhost:
 Distributor is a *module*, not a container, so there is nothing to switch in compose — which
 is also why this stack has no compose profiles at all.
 
-A Chariot demo key from Cirrus Link removes the whole problem. Worth requesting before the
-conference.
+A Chariot demo key from Cirrus Link removes the whole problem.
 
 ### Chariot will not open its MQTT listener without a trial
 
@@ -1022,7 +1020,7 @@ prompt for its password). Neither path exports the private key or requires machi
 `tasks.py enable-ssl` repeats the same process idempotently for an existing gateway.
 
 The generated certificate always covers `localhost`, `127.0.0.1`, and the host's current
-hostname/FQDN. Extra stable conference-network names and addresses can be set before seeding
+hostname/FQDN. Extra stable names and addresses (for another network the gateway will be reached on) can be set before seeding
 with `IGNITION_SSL_DNS_NAMES` and `IGNITION_SSL_IP_ADDRESSES`. Trusting it on the gateway host
 does not make it trusted on audience devices: those devices must import the exported public
 certificate too, and the URL they use must match one of its SANs.
@@ -1197,15 +1195,14 @@ It connects and it publishes, so it may block nothing at all — but it is the f
 re-read if a Transmission-side publish ever goes missing, and it is worth an hour before the
 pattern 5/6 event-stream work rather than during it.
 
-`allowAnonymous` is currently `true` for the initial rollout, deliberately and temporarily. The
-ACL'd accounts in `mqtt-users.json` are still seeded and still work. **Before the talk:** set it
-back to `false`, restart, and confirm every client still connects with its own credential —
-**start with MQTT Engine**, which is the one currently riding on anonymous: its server config
-(`com.cirruslink.mqtt.engine.gateway/server/Chariot SCADA/config.json`) has `"username": ""`,
-so turning `allowAnonymous` off without setting the `ign-engine` credential first breaks Engine,
-and with it both patterns 1 and 2. Chariot's client list shows it connected as `username: None`
-beside a properly authenticated `ign-transmission`. `compose/chariot/README.md` carries the
-reminder; this is the detail behind it.
+`allowAnonymous` is `true`, deliberately, and the repo ships that way. The ACL'd accounts in
+`mqtt-users.json` are still seeded and still work. **MQTT Engine is the client that relies on
+it**: its server config (`com.cirruslink.mqtt.engine.gateway/server/Chariot SCADA/config.json`)
+has `"username": ""`, so turning `allowAnonymous` off without setting the `ign-engine`
+credential first breaks Engine, and with it patterns 1, 2 and 7. Chariot's client list shows it
+connected as `username: None` beside a properly authenticated `ign-transmission`. The steps to
+enforce the ACLs are in [`compose/chariot/README.md`](../compose/chariot/README.md)
+§ *Anonymous access is on, deliberately*.
 
 ### Environment facts worth not rediscovering
 
@@ -1319,8 +1316,8 @@ one wrong costs a dirty commit or a confusing hour.
 - **`icc26_ign-data` is not precious.** It was once the only place a working 5.0.4 Engine and
   Transmission existed; the image carries them now, so the main checkout can be nuked and
   reseeded like any other. It still costs one commissioning wizard and one API key.
-- **Before the talk:** set `allowAnonymous` back to `false`, starting with MQTT Engine — see
-  *Things that look broken and are not*.
+- **`allowAnonymous` is on, and MQTT Engine depends on it.** To enforce the broker ACLs, give
+  Engine its credential first — see *Things that look broken and are not*.
 
 ---
 
@@ -1335,11 +1332,10 @@ writes them:
   `python tasks.py trial` reads it over verified HTTPS. The matching `POST` resets it but needs
   an 8.3 write-capable API key, and the reset **only succeeds once the trial has already
   expired** (an active trial returns 403). So the procedure is *let it expire, then reset* —
-  you cannot top it up before walking on stage, scripted or not.
+  you cannot top it up in advance, scripted or not.
 - **Chariot** — web UI at `:8081` → License → start trial. Does not auto-start at all; see
   the broker section above.
 
-Neither can be done on demand from the command line, so **both are a manual pre-show step** —
-start Chariot's trial and let Ignition's expire-then-reset cycle land before you walk on. There
-is no runbook document to hold that checklist (spec 08 is cut, see *Cut on 2026-08-25*); this
-section is its home. `python tasks.py trial` is the one command that tells you where you stand.
+Neither can be done on demand from the command line, so **both are a manual step** before any
+session where you need the stack for more than two hours. `python tasks.py trial` is the one
+command that tells you where you stand.

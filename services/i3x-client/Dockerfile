@@ -4,7 +4,7 @@
 # it found back onto the broker. See README.md.
 #
 # FastAPI + requests + paho, all manylinux wheels, so nothing compiles here and
-# nothing needs a toolchain on a conference network.
+# nothing needs a toolchain on an offline network.
 
 FROM python:3.12-slim
 

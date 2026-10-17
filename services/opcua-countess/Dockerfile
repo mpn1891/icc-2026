@@ -2,7 +2,7 @@
 #
 # asyncua is the only dependency. It pulls cryptography (for the security policies this
 # server does not enable) and a handful of small pure-Python packages; all have manylinux
-# wheels, so nothing compiles here and nothing needs a toolchain on a conference network.
+# wheels, so nothing compiles here and nothing needs a toolchain on an offline network.
 # See docs/reference/countess-3fl-opcua-model.md.
 
 FROM python:3.12-slim

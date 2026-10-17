@@ -10,7 +10,7 @@ rebuilt image would otherwise ship a fixed private key to everyone who ever
 pulled it. It is self-signed and Ignition trusts it by bypassing validation
 rather than by importing a CA into the gateway truststore -- the right call for a
 simulator on a private compose network, the wrong one in a plant, and the honest
-version of that sentence is more useful on stage than a truststore ceremony
+version of that sentence is more useful in a demo than a truststore ceremony
 nobody would repeat.
 
 **A missing or expired token is an HTTP 401 before the schema is ever reached.**

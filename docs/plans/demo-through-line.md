@@ -1,10 +1,10 @@
 # ICC Demo Through Line — "Becoming Event-Driven in Operational Technology with Ignition"
 
-> Merged into [`plans/00-master-plan.md`](plans/00-master-plan.md) on 2026-08-23, reconciled
+> Merged into [`plans/00-master-plan.md`](00-master-plan.md) on 2026-08-23, reconciled
 > against that day's pattern 5/6/7 re-source, and **reconciled again on 2026-08-25** against the
 > master-plan revision that cut spec 08, took the Countess out of the demo, moved pattern 6 into
 > `qc/analyzers` and gave pattern 7 a store requirement (see that file and
-> [`00-architecture.md`](00-architecture.md) § *Cut on 2026-08-25*). Pattern numbering and
+> [`00-architecture.md`](../00-architecture.md) § *Cut on 2026-08-25*). Pattern numbering and
 > ordering are fixed and referenced elsewhere — do not renumber, and note that **the numbering
 > stops at 7**; there is no pattern 8.
 

@@ -3,7 +3,7 @@
 GraphQL over HTTPS with JWT auth and cursor pagination, transcribed from
 `docs/reference/particle_counter_sim.md`, plus an operator touchscreen that the
 vendor document does not describe and this stack needs: somebody has to press
-Start, name the sample point, and take the room out of specification on stage.
+Start, name the sample point, and take the room out of specification.
 
 Build spec: `docs/plans/06-poll-particle-counter.md`.
 """

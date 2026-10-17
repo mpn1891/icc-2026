@@ -22,7 +22,7 @@ ISA-88 operation, stepped by hand through `manual_advance` (pattern 5, `bes_batc
 Each operation has a profile here: a target and a band for each of the three
 values. On every tick, `pv` settles toward the target with a first-order lag plus
 a little noise, and the limits are written to the band whenever they differ from
-it. The consequence on stage: click `manual_advance` from CIP to SIP and the
+it. The visible consequence: click `manual_advance` from CIP to SIP and the
 Explorer's history panel shows temperature ramping from 80 to 121 over the next
 few ticks with the band stepping around it, which is a structure-and-history beat
 in one gesture. The operation-to-profile rule lives only here; the tags carry

@@ -132,7 +132,7 @@ class Instrument:
     # ---- persistence ------------------------------------------------------
     #
     # The sample point is the operator's, and losing it on a container restart
-    # would mean re-typing the room on stage. The buffer is deliberately NOT
+    # would mean re-typing the room setting. The buffer is deliberately NOT
     # here: see the module docstring.
 
     @property
@@ -225,15 +225,15 @@ class Instrument:
         on a fresh volume: the counter restarts at 1, a poller's stored bookmark
         still says 45, the server answers "nothing after 45" correctly, and the
         poll runs perfectly while publishing nothing. That is the ending of the
-        pattern-6 segment (docs/talk-tracks/06-poll.md), and turning this on
+        pattern-6 segment (docs/patterns/06-poll.md), and turning this on
         deletes it.
 
         On, the counter comes back and the bookmark stays valid, so the poll
         picks up on its own -- which is how an instrument with a persistent
         record counter behaves, and what a rehearsal stack that keeps getting
         restarted actually wants. The buffer is *not* persisted either way:
-        analyses taken before the restart are gone, and records nobody in the
-        room saw the instrument take have no business coming back.
+        analyses taken before the restart are gone, and records nobody
+        saw the instrument take have no business coming back.
 
         This is a rig control, not an operator one -- no real counter has a
         button for whether its own numbering survives a power cycle. It lives on

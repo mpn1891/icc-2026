@@ -5,7 +5,7 @@
 > rather than a plan. The gotcha tables at the bottom are the point of this document — they
 > cost most of the build time and every one of them will repeat verbatim on the next analyzer.
 >
-> **Talk track: [`../talk-tracks/03-opcua-analyzer.md`](../talk-tracks/03-opcua-analyzer.md)**,
+> **Talk track: [`../patterns/03-opcua-analyzer.md`](../patterns/03-opcua-analyzer.md)**,
 > written 2026-09-06. This file is the build record; that one is what you say.
 >
 > **Pattern 3 is the analyzer alone as of 2026-08-25.** The Countess is out of the demo. This file

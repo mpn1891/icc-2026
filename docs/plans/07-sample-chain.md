@@ -427,7 +427,7 @@ cannot be evidenced is not one anybody can release.
    `icc26/site1/qc/deviation`, then approve a sample in the LIMS review screen: a clean one
    publishes **nothing**. Press **OOS** on the particle counter panel (<http://localhost:8089>), wait
    for a fresh reading, draw and approve again — that one publishes.
-4. **The talk track**, `docs/talk-tracks/07-sample-chain.md`. The repo's two-document convention
+4. **The talk track**, `docs/patterns/07-sample-chain.md`. The repo's two-document convention
    makes this the closing step, not an optional extra.
 
 ### The stack is staged for this
@@ -516,7 +516,7 @@ composites went out unretained, and neither id is in `lims.sample`, `bes.batch_e
 | **5** | `environment.age_s` is present and under 30 s with the counter sampling | **closed** 08-30 — **2.5 s** on both live approvals with the counter sampling (`S-20260830-0085`, `S-20260830-0084`), and 1.4 s on the CP4 probe |
 | **6** | Stop the particle counter sim, draw again: the block is `null` with a reason, and the message still publishes | **closed** 08-30, **and the wording was wrong** — see below |
 | **7** | A **rejected** sample produces a composite with `disposition: "fail"` | **closed** 08-30 — `S-20260830-0084`, rejected, composite published with `disposition: "fail"` |
-| **8** | `docs/talk-tracks/07-sample-chain.md` exists | **closed** 08-30 |
+| **8** | `docs/patterns/07-sample-chain.md` exists | **closed** 08-30 |
 
 CP4 and CP6 are the two that matter most on stage: **a gap is a finding, and 07 still speaks.**
 

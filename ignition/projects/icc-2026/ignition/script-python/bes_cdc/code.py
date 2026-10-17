@@ -332,7 +332,7 @@ def handle(request):
     envelope = {
         # The instant the operation changed, not the instant we heard about it.
         # `meta.ingest_ts` used to sit beside this, and the gap between the two
-        # was the CDC latency on stage. With the envelope gone that number is in
+        # was the CDC latency. With the envelope gone that number is in
         # the gateway log line below and in Debezium's, not on the wire.
         "ts": _timestamp(after.get("occurred_at")),
         "values": {

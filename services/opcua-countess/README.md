@@ -74,7 +74,7 @@ On `ns=2;s=Countess-01`:
 |---|---|---|
 | `StartCount` | `(SampleName: String, ProtocolName: String) → CountId: UInt32` | Empty `ProtocolName` keeps the active one. `Bad_InvalidState` while running, `Bad_NotFound` for an unknown protocol |
 | `AbortCount` | `() → ()` | `Bad_InvalidState` unless running. No counter increment |
-| `InjectFailure` | `() → ()` | Demo-only. The real instrument has no such button — say so on stage |
+| `InjectFailure` | `() → ()` | Demo-only. The real instrument has no such button |
 
 ## Configuration
 
@@ -163,11 +163,10 @@ What to look at, in order:
    no security, anonymous. Created in the UI, committed under
    `ignition/config/resources/core/ignition/opc-connection/cell_counter/`.
 2. **`cell_counter` UDT + `countess-01` instance** — done, see below.
-3. **Tag-change gateway event script** on `count_completed_counter` — not built yet. It reads
-   the `result` branch (or `result_json`) and publishes once, via Transmission, not Engine, per
-   the ACL split in the master plan:
-   `system.cirruslink.transmission.publish("chariot_broker", topic, payload, 0, False)` to
-   `icc26/site1/qc/analyzers/countess-01/result`, `meta.mechanism = "opcua-event"`.
+3. **Publish path — never built.** The Countess left the demo on 2026-08-25, before this step.
+   Built the way pattern 3's analyzer is, it would be a tag-change script on
+   `count_completed_counter` handing the `result` branch to an Event Stream, and Transmission
+   publishing `ts` + `values` to `icc26/site1/qc/analyzers/countess-01/sample-analyzed`.
 
 The payload projection — including which of the 71 fields to publish and why the 38 settings
 fields are not among them — is §10 of the model doc.

@@ -5,7 +5,7 @@
 # on 8089 is ours and is not part of that surface.
 #
 # ariadne + uvicorn + PyJWT + cryptography, all wheels, so nothing compiles here
-# — every wheel not built is one fewer thing to go wrong on a conference
+# — every wheel not built is one fewer thing to go wrong on an offline
 # network. See docs/plans/06-poll-particle-counter.md.
 
 FROM python:3.12-slim

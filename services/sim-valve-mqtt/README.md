@@ -59,17 +59,13 @@ anybody would install.
 
 ## Payloads
 
-The envelope from [`docs/00-architecture.md`](../../docs/00-architecture.md), with
-`meta.mechanism = "native-mqtt"` and `meta.event` naming what happened.
+`ts` and `values`, and nothing else. There is no `seq`, `source` or `meta`: the topic says
+what happened and which device sent it (see
+[`docs/00-architecture.md`](../../docs/00-architecture.md) § *Payload envelope*).
 
 ```json
 {
   "ts": "2026-08-17T18:22:04.512Z",
-  "seq": 41,
-  "source": { "id": "sample-valve-01", "type": "sample-valve" },
-  "meta": { "mechanism": "native-mqtt", "ingest_ts": "2026-08-17T18:22:04.512Z",
-            "event": "vlv-badge-scanned", "cell": "br-201",
-            "assembly_serial": "SV-2000-0417" },
   "values": {
     "badge_id": "B-2087", "badge_holder": "Sam Okafor", "badge_role": "maintenance",
     "result": "denied", "deny_reason": "badge-not-authorized",

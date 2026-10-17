@@ -30,7 +30,7 @@ stub for LIMS; demo-grade committed credentials are acceptable.
   unknown), MQTT user + topics, payload contracts, empirical checkpoints, copy-pasteable
   verification, open items, progress log. It states what the thing *is* and how it was measured;
   why it earns a slot in the talk belongs to the talk track.
-- `docs/talk-tracks/0N-*.md` — the **talk track**, written as the closing step: talk points, the
+- `docs/patterns/0N-*.md` — the **talk track**, written as the closing step: talk points, the
   segment's intro → demo → risk → close beats, **the signal it contributes to the spine**, **the
   GxP hook**, the wire shot, and the on-stage trigger list.
 
@@ -42,7 +42,7 @@ Neither should re-argue the other. Settled truth goes to
 **"Becoming Event-Driven in Operational Technology with Ignition."** All seven patterns draw
 from **a single fed-batch bioprocess run.** Each pattern contributes one signal from that batch;
 the audience watches events get assembled across seven demos, not seven unrelated vignettes.
-Full narrative in [`../demo-through-line.md`](../demo-through-line.md) (merged from the source
+Full narrative in [`../demo-through-line.md`](demo-through-line.md) (merged from the source
 doc — see that file for segment structure, presenter framing and the closing beat). Pattern
 numbering below is fixed and referenced from there; **do not renumber.**
 
@@ -97,8 +97,8 @@ is written (planned — not present yet).
 ### 01 and 02 Smart Sample Valve
 **01 and 02 are one device in two firmwares, and they must be read together.**
 Talk tracks —
-[`../talk-tracks/01-native-mqtt.md`](../talk-tracks/01-native-mqtt.md) and
-[`../talk-tracks/02-sparkplug-b.md`](../talk-tracks/02-sparkplug-b.md) — carry the talk points,
+[`../patterns/01-native-mqtt.md`](../patterns/01-native-mqtt.md) and
+[`../patterns/02-sparkplug-b.md`](../patterns/02-sparkplug-b.md) — carry the talk points,
 the pattern 1 vs 2 comparison table, the segment beats and the GxP risk material. Build specs —
 [`01-native-mqtt.md`](01-native-mqtt.md) and [`02-sparkplug-b.md`](02-sparkplug-b.md) — carry
 the contracts, the measured Ignition-side findings and verification. **All four supersede this

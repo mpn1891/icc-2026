@@ -57,7 +57,7 @@ being true.
 from startup either way, exactly as pattern 4's drainer keeps writing its outbox
 while delivery is paused: the toggle governs what this client *says*, not what
 it is holding, and doing it the other way would put a reconnect between the
-button and the first message in front of an audience. A withheld finding is
+button and the first message. A withheld finding is
 counted, and the document that was not sent is kept beside it on the page --
 "we chose not to say this" and "we had nothing to say" must not look the same.
 
@@ -173,7 +173,7 @@ class Config:
         # so the two can disagree without changing any verdict, and a stale copy
         # shows up as a verdict whose quoted limit does not explain it.
         #
-        # Held here for the talk, where the object read it would take is one
+        # Held here for the demo, where the object read it would take is one
         # more call on a page that is already showing the exchange. The client
         # already has `Client.value()` and the counter's elementId, so replacing
         # this with the real read is a few lines -- see the README.
@@ -527,7 +527,7 @@ class Publisher:
     Everything else in this file reads. This is the half that writes, and it is
     the reason the process holds a second credential -- a broker account, issued
     by a different system than the i3X login, granted exactly one topic and
-    nothing to subscribe to. Worth saying out loud on stage: an API login let
+    nothing to subscribe to. The point worth making: an API login let
     this client browse a model nobody had told it about, and it bought no right
     at all to put anything back. Those are separate grants because they are
     separate questions.
@@ -535,7 +535,7 @@ class Publisher:
     `enabled` gates the publish and nothing else -- the session is held from
     startup either way, the same way pattern 4's drainer keeps filling its
     outbox while delivery is paused. That makes Enable instant rather than a
-    reconnect in front of an audience, and it makes the honest statement the
+    reconnect, and it makes the honest statement the
     precise one: the credential is held, the toggle decides whether it is used.
     """
 
@@ -717,7 +717,7 @@ class Publisher:
             "qos": self.cfg.publish_qos,
             "at": _iso(datetime.now(timezone.utc)),
             # Built either way. What was withheld is as interesting as what was
-            # sent, and showing it is the difference between an audience taking
+            # sent, and showing it is the difference between a viewer taking
             # the shape of the message on trust and reading it.
             "document": self.document(episode),
             "error": None,
@@ -1051,7 +1051,7 @@ def _label_for(obj: Dict[str, Any], parents: Dict[str, str]) -> str:
 def _discover(cfg: Config, client: Client, state: State) -> Optional[Dict[str, Any]]:
     """`/info`, the type list, and the two object listings. Returns the plan.
 
-    Every one of these calls is kept on the page. A demo where the audience sees
+    Every one of these calls is kept on the page. A demo where the viewer sees
     the client *find* the objects is a different demo from one where the client
     already knew.
     """

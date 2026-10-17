@@ -24,7 +24,7 @@ and would behave identically with the gateway switched off. Ignition finds out o
 
 The honest consequence is a **detection gap**: 10 s of sampling plus up to 30 s of waiting, so a
 reading reaches the backbone within ~40 s of the air going out of spec, worst case. Every
-message on the wire shows it — `ts` is this instrument's clock, `meta.ingest_ts` is the
+message on the wire shows it — `ts` is this instrument's clock, `values.ingest_ts` is the
 gateway's.
 
 ## The API
@@ -66,8 +66,8 @@ correctly — and **the poll goes quiet forever with every health check green.**
 gateway is up, the timer fires, the HTTP call returns 200, `state/last_error` stays empty, and
 nothing reaches the backbone.
 
-Persisting the buffer would remove the best failure demo in pattern 6. Recovery on stage is
-clearing `state/cursor` in Ignition's Tag Explorer.
+Persisting the buffer would remove the best failure demo in pattern 6. Recovery is clearing
+`state/cursor` in Ignition's Tag Explorer.
 
 What *does* survive a restart, in the `/config` volume, is the operator's sample point, the room
 condition, and whether a run was going.
@@ -178,7 +178,7 @@ Ignition trusts it with `system.net.httpClient(bypass_cert_validation=True)` rat
 importing a CA into the gateway truststore, and the gateway logs a warning on every request,
 which is the right amount of noise for a trade this size. It is the right call for a simulator
 on a private compose network and the wrong one in a plant; the honest version of that sentence
-is more useful on stage than a truststore ceremony nobody would repeat.
+is more useful in a demo than a truststore ceremony nobody would repeat.
 
 ## Layout
 

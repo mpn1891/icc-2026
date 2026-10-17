@@ -19,7 +19,7 @@ stops working when the network does is not a sample port anyone would install.
 
 Authorization is that roster and nothing else (2026-08-25). The process interlock that used
 to sit beside it is gone, along with the lapsed-training badge -- two more ways to say no,
-neither of which the demo could show without the audience taking the device's word for it.
+neither of which the demo could show without the viewer taking the device's word for it.
 What is left is one question with one answer, and a fault path that is physical instead:
 starve the pneumatic actuator of air and the valve does not seat.
 """
@@ -134,7 +134,7 @@ def parse_roster(spec: str) -> dict:
     """`id:holder:role:status` entries, comma separated.
 
     The default roster ships two badges -- one authorized, one refused for its role -- so
-    both roster outcomes can be demonstrated without editing config on stage. The third
+    both roster outcomes can be demonstrated without editing config. The third
     denial, `badge-unknown`, needs no roster entry by definition; the config page offers a
     button for a badge that is on no roster at all.
     """

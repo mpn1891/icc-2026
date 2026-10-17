@@ -3,7 +3,7 @@
 > **Supersedes the pattern-6 entry in [`00-master-plan.md`](00-master-plan.md) entirely.**
 > Written 2026-08-29 from [`../reference/particle_counter_sim.md`](../reference/particle_counter_sim.md)
 > — the vendor API — plus the eight decisions taken that day, recorded in *Decisions* below.
-> Talk track: [`../talk-tracks/06-poll.md`](../talk-tracks/06-poll.md), written 2026-09-06.
+> Talk track: [`../patterns/06-poll.md`](../patterns/06-poll.md), written 2026-09-06.
 >
 > ## Built and verified 2026-08-29 — timer included, and it runs hands-off
 >
@@ -82,7 +82,7 @@ would have to be before it went in an assessment.
 
 **Same relay shape as pattern 3, different acquisition.** Both end in an Event Stream handing a
 document to Transmission. Pattern 3's trigger is the instrument completing a run; pattern 6's is
-a clock. Per [`../demo-through-line.md`](../demo-through-line.md) § *Still open*, name the Event
+a clock. Per [`../demo-through-line.md`](demo-through-line.md) § *Still open*, name the Event
 Stream → Transmission relay **once** on stage — patterns 3, 6 and 7 all use it and saying it
 three times spends the audience's attention on plumbing.
 
@@ -821,7 +821,7 @@ unspecified store left in its way.
    cannot pass. It needs rewriting into what it was always actually testing — seven topics
    carrying seven different signals — and that rewrite belongs in the master plan, not in this
    spec.
-6. ~~**Talk track.**~~ **Written 2026-09-06**, [`../talk-tracks/06-poll.md`](../talk-tracks/06-poll.md),
+6. ~~**Talk track.**~~ **Written 2026-09-06**, [`../patterns/06-poll.md`](../patterns/06-poll.md),
    and it ends where this item predicted: the stale cursor, recovered live by clearing one tag.
    It carries the 2026-08-31 numbers as well as this build's — the 414-record drain and the
    15.5-hour blackout are what turned a predicted failure demo into a measured one.

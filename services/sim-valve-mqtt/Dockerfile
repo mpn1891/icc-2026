@@ -2,8 +2,8 @@
 #
 # paho-mqtt is the only dependency on purpose. The valve is a state machine and the
 # configuration page is `http.server` from the standard library, so nothing else needs
-# fetching — and every wheel not fetched is one fewer thing to go wrong building this on a
-# conference network. See docs/plans/01-native-mqtt.md.
+# fetching — and every wheel not fetched is one fewer thing to go wrong building this on an
+# offline network. See docs/plans/01-native-mqtt.md.
 
 FROM python:3.12-slim
 

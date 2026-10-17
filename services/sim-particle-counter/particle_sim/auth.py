@@ -10,7 +10,7 @@ Two properties of this implementation are deliberate rather than incidental.
 **Tokens expire in five minutes.** The poller does not track expiry; it caches
 the token and re-authenticates when it is handed a 401. A token that lived for a
 day would make that branch dead code, and dead code in an auth path is code that
-fails on stage a year later. Five minutes means every rehearsal exercises it.
+fails a year later. Five minutes means every rehearsal exercises it.
 
 **An expired or missing token is an HTTP 401, not a GraphQL error.** GraphQL
 services conventionally answer 200 with an `errors` array, but a client cannot

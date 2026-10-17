@@ -4,9 +4,9 @@
 #   python tasks.py seed     first run only, see docs/00-architecture.md § Seeding
 #   python tasks.py up
 #
-# No compose profiles. The whole stack runs all the time — during the talk you
-# move between patterns live, and a forgotten --profile flag is a failure mode
-# nobody needs on stage. Iterate on one service with:
+# No compose profiles. The whole stack runs all the time — the patterns feed
+# each other, and a forgotten --profile flag is a failure mode nobody needs.
+# Iterate on one service with:
 #   docker compose up -d <service>  /  docker compose restart <service>
 #
 # The MQTT Distributor fallback is an Ignition *module*, not a container, so it
@@ -59,7 +59,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────────
   # Chariot MQTT Server — the event backbone
   #
-  # Standalone on purpose. The talk's thesis is "seven mechanisms, one backbone";
+  # Standalone on purpose. The demo's thesis is "seven mechanisms, one backbone";
   # if the broker lived inside Ignition then Ignition would be both the backbone
   # and half the clients, and restarting it would take the demo down with it.
   # ───────────────────────────────────────────────────────────────────────────
@@ -73,18 +73,14 @@ services:
       # Applied on first run only — Chariot persists users into its own store.
       # See compose/chariot/README.md.
       MQTT_USERS: /config/mqtt-users.json
-      # allowAnonymous is true *for now*, deliberately and temporarily. The six
-      # ACL'd accounts above still get seeded on first run and still work; this
-      # only means a client may also connect without credentials. It buys the
-      # team a rollout where nobody debugs a silent ACL rejection while writing
-      # their first pattern service.
-      #
-      # Turning it back off before the talk is this one boolean plus
-      # `python tasks.py restart chariot` -- SERVER_CONFIG is read at container
-      # start. Deleting the users instead would NOT have been reversible that
-      # cheaply: MQTT_USERS applies on first run only, so re-adding them later
-      # would mean a `nuke` or hand-building six ACLs in the Chariot UI.
-      # See compose/chariot/README.md.
+      # allowAnonymous is true, deliberately. The ACL'd accounts in
+      # mqtt-users.json are still seeded on first run and still authenticate;
+      # this only means a client may also connect without credentials. MQTT
+      # Engine is one that does (its server config has username ""), so turning
+      # this off without giving Engine the ign-engine credential first breaks
+      # patterns 1, 2 and 7. SERVER_CONFIG is read at container start:
+      # `python tasks.py restart chariot` after changing it.
+      # How to enforce the ACLs: compose/chariot/README.md.
       SERVER_CONFIG: >-
         {"port":1883,
          "securePort":8883,
@@ -174,8 +170,8 @@ services:
       # (compose/ignition/Dockerfile) because bind-mounting into a subpath of
       # the data volume stops Docker seeding data/config and data/projects.
     ports:
-      # Bootstrap/maintenance HTTP is host-local only. Conference-network
-      # clients must use HTTPS; seed installs its certificate automatically.
+      # Bootstrap/maintenance HTTP is host-local only. Clients on other
+      # machines must use HTTPS; seed installs its certificate automatically.
       - "127.0.0.1:${IGNITION_HTTP_PORT:-8088}:8088"
       - "${IGNITION_HTTPS_PORT:-8043}:8043"
     # CAVEAT: /StatusPing reports {"state":"RUNNING"} while the gateway is parked
@@ -255,7 +251,7 @@ services:
   #   * no methods at all — every action is a writable Boolean you set to 1
   # So ICC26Extensions/ is ours, is named so nobody mistakes it for the vendor's, and
   # is where SampleCompleteCounter lives. Countess = the model we wish vendors
-  # shipped; analyzer = what they actually ship. Both, side by side, is the talk.
+  # shipped; analyzer = what they actually ship. Both, side by side, is the argument.
   #
   # Model + provenance: docs/reference/novaflex2-opcua-model.md
   # Deviations:         services/opcua-cell-analyzer/README.md
@@ -603,13 +599,13 @@ services:
       # record has no location field, so this IS the location — see the spec.
       DEVICE_NAME: ${PARTICLE_COUNTER_DEVICE_NAME:-USP Suite A - BR-201 sample port}
       # The vendor default is 60. Ten seconds is ours, and visibly ours: it is
-      # a cadence an audience can watch. Every raw-count threshold in the system
+      # a cadence a person can watch. Every raw-count threshold in the system
       # means something only while this is 10 — 28.3 LPM for 10 s is 4.717 L.
       DURATION: ${PARTICLE_COUNTER_DURATION:-10}
       CHANNELS: ${PARTICLE_COUNTER_CHANNELS:-0.3,0.5,1,3,5,10}
       # Zero, not the vendor's 50. Nothing exists until somebody presses Start
       # on the touchscreen. Seeding history would put readings on the backbone
-      # that nobody in the room saw the instrument take; the cost is that "press
+      # that nobody saw the instrument take; the cost is that "press
       # Start" is a pre-show step that can be forgotten, which the panel's idle
       # banner and tasks.py health both guard.
       SEED_SAMPLES: ${PARTICLE_COUNTER_SEED_SAMPLES:-0}
@@ -655,7 +651,7 @@ services:
   #
   # No depends_on: ignition. The gateway can be down, restarting, or have the
   # `i3x` project disabled, and this keeps saying so on its own page — which is
-  # more useful on stage than a container that refuses to start.
+  # more useful than a container that refuses to start.
   # ───────────────────────────────────────────────────────────────────────────
   i3x-client:
     build:
@@ -688,7 +684,7 @@ services:
       # Off by default and meant to stay off in the file — this container's
       # claim is that it reads with one credential, and a stack that comes up
       # publishing makes that claim quietly weaker every time. Turn it on with
-      # the button, on stage, where the audience sees it happen.
+      # the button on the page, where you can see it happen.
       PUBLISH_ENABLED: ${I3X_CLIENT_PUBLISH:-false}
       BROKER_HOST: chariot
       MQTT_USERNAME: i3x-client
@@ -723,7 +719,7 @@ volumes:
   ign-data:
   chariot-config:
   # What each valve was commissioned with, so a restart does not silently revert
-  # the topic somebody set on stage -- plus the telemetry mute, stored alongside under
+  # the topic somebody set on the page -- plus the telemetry mute, stored alongside under
   # `stage` because it is a demo control rather than a commissioned field.
   # `tasks.py nuke` returns both to factory.
   valve-mqtt-config:

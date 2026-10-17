@@ -12,8 +12,8 @@ key risks an unknown-property rejection. The rationale lives here instead.
 ## Why one user per pattern
 
 Every pattern gets its own credential with an ACL scoped to its branch of the namespace.
-The demo would work fine with one shared account; the split exists because it makes a good
-slide and because the asymmetries are the interesting part:
+The demo would work fine with one shared account; the split exists because the asymmetries
+between the accounts are part of what the patterns show:
 
 | User | Role | Note |
 |---|---|---|
@@ -26,14 +26,14 @@ slide and because the asymmetries are the interesting part:
 | `i3x-client` | The external i3X consumer, pattern 7 read back from outside | Publish-only, exactly one topic. Added 2026-09-21 — see the first-run caveat |
 | `observer` | Read-only | Firehose view, `mosquitto_sub`, MQTT Explorer |
 
-**The two valve accounts are the ACL half of the pattern 1 / pattern 2 comparison, and it is
-worth putting on the slide.**
+**The two valve accounts were meant to be the ACL half of the pattern 1 / pattern 2
+comparison.**
 
 `sample-valve-01`'s configuration page has a free-text topic box (see
 [`services/sim-valve-mqtt/`](../../services/sim-valve-mqtt/)). Nothing in the device stops
 somebody typing `icc26/site1/qc/lims/sample-results-released` into it. What stops them is this ACL —
 `icc26/site1/upstream/#`, deliberately the *area* rather than the exact topic, so the valve
-can legitimately be re-addressed to another cell on stage but cannot leave upstream. **In
+can legitimately be re-addressed to another cell but cannot leave upstream. **In
 pattern 1 the namespace discipline is enforced by an ACL somebody remembered to write. In
 pattern 2 it is enforced by the protocol** — the Sparkplug topic is not the device's to
 choose, so a tight ACL costs it nothing.
@@ -47,7 +47,7 @@ lands outside the grant, and Chariot validates the will topic before it accepts 
 Widening the account is the fix that was chosen. What it costs, recorded rather than discovered
 later:
 
-- **The ACL half of the pattern 1 / pattern 2 slide is gone.** The two accounts no longer
+- **The ACL half of the pattern 1 / pattern 2 comparison is gone.** The two accounts no longer
   contrast; pattern 2's is now the *looser* of the two. `sample-valve-01` is still pinned to
   `icc26/site1/upstream/#`.
 - **`sample-valve-02` can now publish commands.** `spBv1.0/#` includes `spBv1.0/+/NCMD/#` and
@@ -67,10 +67,9 @@ network.
 No account other than `sample-valve-02` and `ign-transmission` may publish commands. A field
 device that can issue commands to its peers is a lateral-movement path, and the ACL is where
 you close it. This is also why `observer` has
-an empty `publishTopics` array: it is safe to hand out and safe to leave connected during the
-talk.
+an empty `publishTopics` array: it is safe to hand out and safe to leave connected.
 
-**`i3x-client` is the inverse of `lims-bridge`, and the pair is the slide.** The LIMS consumes
+**`i3x-client` is the inverse of `lims-bridge`.** The LIMS consumes
 the backbone and may not publish to it; the i3X consumer reads the *model* — over an API, with
 a gateway login, browsing for everything it needs — and may publish exactly one topic,
 `icc26/site1/qc/i3x-meta-review-completed`. Its subscribe grant is empty: its inbound side is the i3X
@@ -108,29 +107,42 @@ Broker listener configuration (ports, anonymous access, WebSocket) is set via th
 because those values need to agree with the published container ports and are easier to
 keep consistent when they live next to them.
 
-`allowAnonymous` is **true for the initial rollout**, and is meant to go back to `false`
-before the talk.
+### Anonymous access is on, deliberately
 
-The accounts in the table above are unaffected — they are still seeded on first run and
-still authenticate normally. Anonymous only means a client is *also* allowed to connect
-without credentials, so nobody writing their first pattern service loses an afternoon to a
-silent ACL rejection. The ACL story is still on the table; it is just not yet enforced.
+`allowAnonymous` is **`true`**, and this repo leaves it that way: it is a demo on a private
+compose network, and anonymous access keeps a fresh clone working without anybody debugging a
+silent ACL rejection. What that means in practice:
 
-Reverting is one boolean in `SERVER_CONFIG` plus `python tasks.py restart chariot`.
-Deleting the users instead would not have been reversible that cheaply — see the first-run
-caveat at the top of this file.
+- **Every account in the table is still seeded and still authenticates.** A client that sends
+  a username and password is checked against them, and a wrong one is refused
+  (`Bad user name or password`) even with anonymous on. Anonymous access is a grant for a
+  client that offers *no* credentials, not a fallback for one that offers wrong ones.
+- **A client that sends no credentials is also let in.** So the per-account ACLs describe how
+  each pattern *should* be scoped, but they are not a security boundary here: anything on the
+  network can connect without a username.
+- **MQTT Engine relies on it.** Its server config
+  (`ignition/config/resources/core/com.cirruslink.mqtt.engine.gateway/server/Chariot SCADA/config.json`)
+  has `"username": ""`, so Engine connects anonymously. Every other service in compose sends
+  its own credential.
 
-**Before the talk:** set it back to `false`, restart, and confirm each pattern service
-still connects with its own credential — `i3x-client` especially, since it is the one account
-newer than most volumes and the one whose absence is currently invisible. Do this early enough that a missing ACL is a
-Tuesday problem, not a stage problem.
+**To enforce the ACLs**, in this order:
+
+1. Give MQTT Engine the `ign-engine` credential in the Gateway UI (or in that `config.json`,
+   then `python tasks.py scan`). Turning anonymous off first breaks Engine, and with it
+   patterns 1, 2 and 7.
+2. Make sure every account exists on your Chariot volume. `mqtt-users.json` seeds on first run
+   only, so a volume older than an account (for example `i3x-client`, added 2026-09-21) does
+   not have it. Add it in the Chariot UI or `python tasks.py nuke`.
+3. Set `"allowAnonymous":false` in `SERVER_CONFIG` in `docker-compose.yml` and
+   `python tasks.py restart chariot`. `SERVER_CONFIG` is read at container start.
+4. Walk [`docs/end-to-end-test.md`](../../docs/end-to-end-test.md). A client with a missing
+   or wrong credential fails quietly, so check Chariot's client list as well.
 
 ## Trial timer
 
-Chariot runs a 2-hour trial that is **independent of Ignition's**. Two clocks to watch on
-stage — a dual-trial checklist will live in `docs/demo-runbook.md` when that file is written
-(planned with presentation spec 08). A Chariot demo license key from Cirrus Link removes
-this entirely and is worth requesting before the conference.
+Chariot runs a 2-hour trial that is **independent of Ignition's**, so there are two clocks
+to watch; `python tasks.py trial` reads both. A Chariot demo license key from Cirrus Link
+removes this one entirely.
 
 **The trial does not auto-start, and starting it is a manual step.** Until it is running,
 Chariot serves its web UI while port 1883 refuses every connection. Start it at

@@ -2,7 +2,7 @@
 
 **The invariant.** This module must never import or call
 `system.cirruslink.transmission.publish`, or anything else that reaches the
-broker. Pattern 5's entire claim on stage is that the writer does not know MQTT
+broker. Pattern 5's entire claim is that the writer does not know MQTT
 exists: it writes a row, Debezium tails the WAL out of band as user `cdc`, and a
 message appears that nobody here asked for. Stop Debezium and this keeps working
 with a silent topic -- that is the failure demo. One publish call from here and
@@ -13,8 +13,8 @@ the pattern is gone.
 Somebody clicks the boolean and the reactor steps IDLE -> CIP -> SIP -> INOC ->
 GROWTH -> HARVEST -> IDLE. The batch_id is minted on the first advance out of
 IDLE and cleared on batch_end, so nobody types one -- see `_mint_batch_id`. Auto-cycling on a
-dwell was the earlier design and was dropped 2026-08-26: manual is deterministic
-on stage, which is what parking the reactor in GROWTH before badging the valve
+dwell was the earlier design and was dropped 2026-08-26: manual is deterministic,
+which is what parking the reactor in GROWTH before badging the valve
 requires.
 
 **Two rows per click, one transaction, one timestamp.** An advance closes the

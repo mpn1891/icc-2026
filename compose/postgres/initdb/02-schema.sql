@@ -183,13 +183,12 @@ CREATE INDEX ix_review_event_lookup ON lims.review_event (equipment_id, ts DESC,
 -- if bes_batch ever grows a Transmission publish call, pattern 5 is gone.
 --
 -- Auto-cycling on a dwell was the 2026-08-23 design and was dropped 2026-08-26.
--- A manual advance is deterministic on stage — you park the reactor in GROWTH
--- before badging the valve, which is exactly what pattern 7's rehearsal needs.
+-- A manual advance is deterministic — you park the reactor in GROWTH before
+-- badging the valve, which is exactly what pattern 7 needs.
 --
 -- Named `bes`, not `mes` (renamed 2026-08-23, before anything was built on it):
--- the writer stands in for a batch execution system specifically, and pattern
--- 5's verify step puts this table on screen right after the talk track says
--- "BES".
+-- the writer stands in for a batch execution system specifically, and the
+-- schema should say what the docs say.
 --
 -- `operation`, not `phase` (renamed 2026-08-26, same rule, same reason). In
 -- ISA-88 a *phase* is the smallest element that does process action -- "Add
