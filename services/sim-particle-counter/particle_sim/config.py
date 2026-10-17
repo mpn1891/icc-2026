@@ -13,7 +13,7 @@ point:
     in the room saw the instrument take.
 
 Everything not in the vendor table (``PANEL_PORT``, ``BUFFER_MAX``,
-``DIRTY_MULTIPLIER``, the JWT knobs) is ours and is named so in the table below.
+``OOS_MULTIPLIER``, the JWT knobs) is ours and is named so in the table below.
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ class Config:
     cert_dir: str = "/tmp/particle-sim"   # self-signed cert, regenerated every start
     buffer_max: int = 500                 # rolling buffer cap; ~83 min at 10 s
     flow_rate_lpm: float = 28.3           # 1 CFM, the instrument's rated flow
-    dirty_multiplier: float = 25.0        # what the "dirty room" button multiplies by
+    oos_multiplier: float = 25.0          # what the "OOS" room button multiplies by
     username: str = "admin"
     password: str = "password"
     operator_name: str = "Admin User"
@@ -108,7 +108,7 @@ def from_env() -> Config:
         cert_dir=_env("CERT_DIR", "/tmp/particle-sim"),
         buffer_max=_env_int("BUFFER_MAX", 500),
         flow_rate_lpm=_env_float("FLOW_RATE_LPM", 28.3),
-        dirty_multiplier=_env_float("DIRTY_MULTIPLIER", 25.0),
+        oos_multiplier=_env_float("OOS_MULTIPLIER", 25.0),
         username=_env("API_USERNAME", "admin"),
         password=_env("API_PASSWORD", "password"),
         operator_name=_env("OPERATOR_NAME", "Admin User"),

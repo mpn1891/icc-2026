@@ -63,8 +63,8 @@ from valve import Sink, ValveAssembly, iso, parse_roster
 # sets: Engine's custom namespace mirrors whatever document arrives and writes only the keys
 # it contains, so one `event/values/` folder would hold the union of two schemas with half
 # the tags stale -- `deny_reason` still reading the last denial after a granted sample.
-EVENT_BADGE_SCAN = "event/badge-scan"
-EVENT_SAMPLE_COMPLETE = "event/sample-complete"
+EVENT_BADGE_SCAN = "event/vlv-badge-scanned"
+EVENT_SAMPLE_COMPLETE = "event/sample-acq-completed"
 STATUS = "status"
 TELEMETRY = "telemetry"
 

@@ -99,7 +99,7 @@ it carries exactly four things:
 |---|---|
 | **Start / Stop** | the operator starts the instrument. Nothing free-runs, for the same reason the analyzer stopped free-running on 2026-08-26 |
 | **Sample point** | free text, persisted. This is the location, and the operator owns it |
-| **Clean / dirty** | the excursion, as a physical gesture rather than a `curl` |
+| **In-spec / OOS** | the excursion, as a physical gesture rather than a `curl` |
 | **Live readout** | the last analysis, its counts, seconds to the next. Proof the instrument runs whether or not anybody is looking |
 
 **There is no excursion light on this screen, and there must not be.** The instrument reports
@@ -130,15 +130,15 @@ is empty, and `python tasks.py health` reports the buffer count.
 
 ## Counts, and what raw counts cost
 
-At 28.3 LPM for 10 s each analysis draws **~4.717 L**. The clean-room distribution is the vendor
-sample response's own numbers scaled to that volume; the dirty room multiplies them by 25.
+At 28.3 LPM for 10 s each analysis draws **~4.717 L**. The in-spec distribution is the vendor
+sample response's own numbers scaled to that volume; the OOS room multiplies them by 25.
 
 Measured 2026-08-29, at the 0.5 µm channel:
 
 | | counts per analysis |
 |---|---|
-| clean | 113 – 137 |
-| dirty | 3346 – 4350 |
+| in-spec | 113 – 137 |
+| OOS | 3346 – 4350 |
 | Ignition's threshold | **1660** ≡ 352,000 /m³ ≡ ISO 14644-1 Class 7 |
 
 **A raw count means something only while `DURATION` is 10.** Change the duration and every
@@ -165,7 +165,7 @@ transcription.
 | `CHANNELS` | 0.3,0.5,1,3,5,10 | same | ISO 21501 sizes |
 
 Ours, not the vendor's: `PANEL_PORT` (8089), `CONFIG_DIR`, `CERT_DIR`, `BUFFER_MAX` (500, ~83
-minutes at 10 s), `FLOW_RATE_LPM`, `DIRTY_MULTIPLIER`, `TOKEN_TTL_S`, `JWT_SECRET`,
+minutes at 10 s), `FLOW_RATE_LPM`, `OOS_MULTIPLIER`, `TOKEN_TTL_S`, `JWT_SECRET`,
 `API_USERNAME` / `API_PASSWORD`, `LOG_LEVEL`.
 
 ## TLS
@@ -187,7 +187,7 @@ particle_sim/
   __main__.py   CLI entry point
   config.py     env + flags
   auth.py       JWT mint/verify
-  data.py       the buffer, the cursor, the clean/dirty distributions
+  data.py       the buffer, the cursor, the in-spec/OOS distributions
   schema.py     the SDL, transcribed, and its resolvers
   server.py     TLS, the 401 gate, the GraphQL app, the panel, the sampling loop
   panel.html    the touchscreen

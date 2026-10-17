@@ -45,7 +45,7 @@
 |---|---|
 | **Mechanism** | `poll` |
 | **Signal contributed to the spine** | environmental excursion status at (or nearest to) the sample instant |
-| **Topic** | `icc26/site1/env_monitoring/particle-counter-01/result` — QoS 1, **retain false** |
+| **Topic** | `icc26/site1/env_monitoring/particle-counter-01/sample-analyzed` — QoS 1, **retain false** |
 | **Instrument** | `services/sim-particle-counter` — GraphQL over HTTPS `:8443`, JWT auth; operator touchscreen on `:8089` |
 | **Acquisition** | Ignition **gateway timer**, 30 s, → `particle_counter_poll.poll()` |
 | **Store** | `em.reading` in the `icc26` database, through the `ICC26` JDBC datasource as user `icc26` |
@@ -77,7 +77,7 @@ this one learns them when it next looks.
 
 The gap is **characterized**, which is the GxP hook: not "we might miss something" but "we
 sample for 10 seconds, we look every 30, so a reading is on the backbone within 40 seconds of
-the air being dirty, worst case." Put the interval on screen, then ask the room what the number
+the air going out of specification, worst case." Put the interval on screen, then ask the room what the number
 would have to be before it went in an assessment.
 
 **Same relay shape as pattern 3, different acquisition.** Both end in an Event Stream handing a
@@ -155,7 +155,7 @@ services/sim-particle-counter/
     server.py          # HTTPS + GraphQL (ariadne + uvicorn), and the :8089 panel
     schema.py          # SDL from particle_counter_sim.md, verbatim, + resolvers
     auth.py            # JWT mint/verify, admin role for clearSamples
-    data.py            # sample generation, the rolling buffer, the dirty-room mode
+    data.py            # sample generation, the rolling buffer, the OOS-room mode
     config.py          # env + CLI flags
     panel.html         # the operator touchscreen
   requirements.txt     # ariadne, uvicorn[standard], PyJWT, cryptography
@@ -214,7 +214,7 @@ exactly four things:
 |---|---|
 | **Start / Stop sampling** | The operator starts the instrument. Nothing free-runs, for the same reason the analyzer stopped free-running on 2026-08-26 |
 | **Sample point** | Free text, defaults from `DEVICE_NAME`, persisted to `/config`. This is the location, and the operator owns it |
-| **Room condition: clean / dirty** | The excursion. A physical gesture on stage rather than a `curl` |
+| **Room condition: in-spec / OOS** | The excursion. A physical gesture on stage rather than a `curl` |
 | **Live readout** | Last analysis, its counts, seconds to the next one. Proves the instrument is running independently of whether Ignition is looking |
 
 **A fifth control was added on 2026-09-10, and it is deliberately not one of the four.** The
@@ -266,9 +266,9 @@ sentence here arguing why two copies became defensible.
 
 | | ≥0.5 µm counts per analysis, ~4.717 L |
 |---|---|
-| clean room | 113 – 137 |
+| in-spec room | 113 – 137 |
 | **threshold** | **1660** ≡ 352,000 /m³ ≡ ISO 14644-1 Class 7 / EU GMP Grade C at rest |
-| dirty room | 3346 – 4350 |
+| OOS room | 3346 – 4350 |
 
 An order of magnitude of headroom on each side, so nothing flaps, and a limit that is a real
 grade rather than a number picked to sit between two histograms.
@@ -632,7 +632,7 @@ and the name. The `ignition.gatewayEvent` source and the Transmission handler ar
 ```json
   "handlers": [{ "type": "com.cirruslink.mqtt.transmission.gateway.mqtt.handler",
     "config": { "serverName": "chariot_broker",
-                "topic": "icc26/site1/env_monitoring/particle-counter-01/result",
+                "topic": "icc26/site1/env_monitoring/particle-counter-01/sample-analyzed",
                 "qos": 1, "retained": false } }],
   "filter":    { "enabled": true, "userCode": "\treturn bool(event.data)\n" },
   "transform": { "enabled": true, "userCode": "\treturn particle_counter_poll.build_document(event.data)\n" }
@@ -703,7 +703,7 @@ Watcher in its own terminal:
 
 ```powershell
 docker run --rm -it --network icc26 eclipse-mosquitto:2 `
-  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/env_monitoring/particle-counter-01/result' -v
+  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/env_monitoring/particle-counter-01/sample-analyzed' -v
 ```
 
 0. `python tasks.py health` — the `sim-particle-counter` line reports SAMPLING and a non-zero buffer.
@@ -716,7 +716,7 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
    2026-09-13; the envelope is gone and the topic is what says this arrived by poll.)
 3. `SELECT status, occurred_at, ingested_at FROM em.reading ORDER BY id DESC LIMIT 5;` — one row
    per message, `status` matching.
-4. Press **dirty**. The next analysis publishes `status: "excursion"`. Press clean; the one
+4. Press **OOS**. The next analysis publishes `status: "excursion"`. Press **In-spec**; the one
    after returns to `normal`.
 
 Verified in that order on 2026-08-29: 96 analyses, 96 rows, 96 messages, `status` correct on both
@@ -802,7 +802,7 @@ unspecified store left in its way.
    not in the repo.
 2. ~~**The excursion threshold has no number yet.**~~ **Closed 2026-08-29: 1660** raw counts at
    ≥0.5 µm, which is 352,000/m³ at the 4.717 L a 10 s sample draws — ISO 14644-1 Class 7 / EU
-   GMP Grade C at rest. Clean measured 113–137, dirty 3346–4350. The number, the volume it was
+   GMP Grade C at rest. In-spec measured 113–137, OOS 3346–4350. The number, the volume it was
    chosen for and the per-m³ equivalent are all in the tag's documentation string, which is the
    one place somebody will look. § *Excursion*.
 3. **`plant.equipment` has no `particle-counter-01` row.** Not needed by anything here — the

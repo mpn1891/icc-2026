@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<!--
+  The i3X consumer's screen.
+
+  Not the verdict -- `sample_chain` already reaches that inside the gateway.
+  What nobody can see from in there is HOW it was reached, so this page is built
+  around the exchanges: every request this client sent and every response the
+  server returned, verbatim, one click from the conclusion drawn from them.
+
+  Two things are deliberate. The exchange is never hidden -- a summary the
+  audience has to trust is the opposite of this demo's argument. And the age of
+  the reading is the largest number on the card, because a reading is evidence
+  only if it is near the sample in time; bury the age and a forty-minute-old
+  count reads as current. Everything else about a reading is in the JSON under
+  it rather than restated as a field.
+
+  The Publishing card is the same idea pointed the other way. It is the only
+  control on this page, it starts off, and whichever way it is set the document
+  is shown -- published or withheld, the audience reads the bytes rather than a
+  claim about them.
+
+  Skin: the same light panel screen as the other service pages (8085/8086/8087/
+  8089) so the set reads as one stack. No external assets of any kind -- the
+  demo has to run with networking disabled (docs/00-architecture.md).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pattern 7</title>
+<style>
+  :root {
+    --navy: #0a3d62;
+    --navy-2: #0d4a78;
+    --bg: #d5dce3;
+    --panel: #ffffff;
+    --ink: #1a2430;
+    --muted: #5c6d7c;
+    --line: #c3ced6;
+    --ok: #1f8f4a;
+    --ok-bg: #e5f6ea;
+    --warn: #8a5a00;
+    --warn-bg: #f8efd8;
+    --bad: #b42318;
+    --bad-bg: #fde8e8;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.45 "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .status-bar {
+    background: var(--navy);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    padding: .55rem 1rem;
+    flex-wrap: wrap;
+  }
+  .brand-mark {
+    font-weight: 800;
+    letter-spacing: .04em;
+    font-size: .95rem;
+    padding-right: .85rem;
+    border-right: 1px solid rgba(255,255,255,.25);
+  }
+  .brand-mark span {
+    display: block; font-size: .62rem; font-weight: 600; letter-spacing: .16em;
+    text-transform: uppercase; opacity: .7;
+  }
+  .product { font-weight: 700; letter-spacing: .06em; }
+  .status-bar .spacer { flex: 1; }
+  .mod {
+    font: 700 10px/1 var(--mono);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: .38rem .5rem;
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.2);
+  }
+  .mod.streaming { background: #1f8f4a; border-color: #1f8f4a; }
+  .mod.error { background: #8a2a2a; border-color: #8a2a2a; }
+
+  .subbar {
+    background: var(--navy-2);
+    color: #cfe3f0;
+    padding: .45rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    flex-wrap: wrap;
+    font-size: .82rem;
+  }
+  .subbar code { font-family: var(--mono); color: #fff; }
+  .subbar .spacer { flex: 1; }
+
+  .shell { flex: 1; padding: 1rem 1rem 2rem; max-width: 980px; width: 100%; margin: 0 auto; }
+
+  .screen-title {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 1rem; margin: .2rem 0 .85rem; flex-wrap: wrap;
+  }
+  .screen-title h1 { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--navy); }
+  .screen-title p { margin: 0; color: var(--muted); font-size: .82rem; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    margin-bottom: .85rem;
+    box-shadow: 0 1px 2px rgba(10,61,98,.06);
+  }
+  .card > h2 {
+    margin: 0;
+    padding: .55rem .9rem;
+    font-size: .72rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--navy);
+    background: #eef3f7;
+    border-bottom: 1px solid var(--line);
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    flex-wrap: wrap;
+  }
+  .card > h2 .hint {
+    margin-left: auto; font-weight: 400; letter-spacing: 0; text-transform: none;
+    color: var(--muted); font-size: .76rem;
+  }
+  .body { padding: .8rem .9rem .9rem; }
+
+  dl.readout { margin: 0; display: grid; grid-template-columns: 11rem 1fr; gap: .35rem 1rem; }
+  dl.readout dt { color: var(--muted); font-size: .8rem; }
+  dl.readout dd {
+    margin: 0; font-family: var(--mono); font-size: .86rem; color: var(--navy);
+    font-weight: 600; word-break: break-word;
+  }
+  dl.readout dd .aside { color: var(--muted); font-weight: 400; }
+  dl.readout dd.age { font-size: 1.35rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  @media (max-width: 560px) { dl.readout { grid-template-columns: 1fr; gap: .1rem; } }
+
+  .verdict {
+    font: 700 10px/1 var(--mono);
+    letter-spacing: .12em; text-transform: uppercase;
+    padding: .34rem .5rem; border: 1px solid;
+  }
+  .verdict.in-specification { background: var(--ok-bg); border-color: #b7e0c4; color: #145c2e; }
+  .verdict.out-of-specification { background: var(--bad-bg); border-color: #f0b4b4; color: #8a1f1f; }
+  .verdict.unverifiable { background: var(--warn-bg); border-color: #e6d19a; color: var(--warn); }
+  .sid {
+    font-family: var(--mono); font-size: .86rem; letter-spacing: 0;
+    text-transform: none; color: var(--ink);
+  }
+
+  .btn {
+    font: 600 .82rem/1 "Segoe UI", system-ui, sans-serif;
+    padding: .55rem .95rem; cursor: pointer;
+    color: #fff; background: var(--navy); border: 1px solid var(--navy);
+  }
+  .btn:hover { background: var(--navy-2); }
+  .btn.stop { background: #8a2a2a; border-color: #8a2a2a; }
+  .btn.stop:hover { background: #a03232; }
+  .btn:disabled { opacity: .45; cursor: default; }
+
+  .led {
+    font: 700 10px/1 var(--mono);
+    letter-spacing: .1em; text-transform: uppercase;
+    padding: .34rem .5rem; border: 1px solid;
+  }
+  .led.on { background: var(--ok-bg); border-color: #b7e0c4; color: #145c2e; }
+  .led.off { background: var(--warn-bg); border-color: #e6d19a; color: var(--warn); }
+  .led.bad { background: var(--bad-bg); border-color: #f0b4b4; color: #8a1f1f; }
+
+  .controls {
+    display: flex; align-items: center; gap: .75rem;
+    flex-wrap: wrap; margin-bottom: .8rem;
+  }
+
+  .msg {
+    margin: .8rem 0 0; padding: .55rem .75rem; font-size: .82rem;
+    background: var(--warn-bg); border: 1px solid #e6d19a; color: var(--warn);
+  }
+
+  details { border-top: 1px solid var(--line); }
+  details > summary {
+    cursor: pointer; user-select: none;
+    padding: .55rem .9rem; color: var(--muted); font-size: .8rem;
+    background: #f4f7fa;
+  }
+  details > summary:hover { color: var(--navy); }
+  details[open] > summary { color: var(--navy); border-bottom: 1px solid var(--line); }
+
+  .call { padding: .6rem .9rem; border-top: 1px solid #e4eaef; }
+  .call:first-child { border-top: none; }
+  .callhead {
+    display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap;
+    font-family: var(--mono); font-size: .78rem;
+  }
+  .method { color: var(--navy); font-weight: 700; }
+  .status-ok { color: var(--ok); font-weight: 600; }
+  .status-bad { color: var(--bad); font-weight: 600; }
+  .ms { color: var(--muted); margin-left: auto; }
+  pre {
+    margin: .35rem 0 0; padding: .5rem .6rem;
+    background: #f7f9fb; border: 1px solid var(--line);
+    overflow: auto; max-height: 300px;
+    font-family: var(--mono); font-size: .74rem; line-height: 1.45; color: #23303c;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  pre .lbl { color: var(--muted); }
+  .trunc { color: var(--warn); font-size: .74rem; margin-top: .3rem; }
+  .empty { margin: 0; padding: .9rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="status-bar">
+  <div class="brand-mark">ICC26<span>i3X consumer</span></div>
+  <div class="product">External reader</div>
+  <div class="spacer"></div>
+  <span class="mod" id="conn">starting</span>
+</div>
+
+<div class="subbar">
+  Server <code id="base">&hellip;</code>
+  · window <code id="window">&hellip;</code>
+  · pushes <code id="c-push">0</code>
+  · reviews <code id="c-ep">0</code>
+  · published <code id="c-pub">0</code>
+  <span class="spacer"></span>
+  <span id="conn-detail"></span>
+</div>
+
+<div class="shell">
+  <div class="screen-title">
+    <h1>Reviews over i3X</h1>
+    <p>One credential, no tag paths. Open an exchange to see what was asked and answered.</p>
+  </div>
+
+  <div class="card">
+    <h2>Session</h2>
+    <div class="body">
+      <dl class="readout" id="session-facts"></dl>
+    </div>
+    <div id="session"></div>
+  </div>
+
+  <div class="card">
+    <h2>Publishing <span class="hint" id="pub-topic">&hellip;</span></h2>
+    <div class="body">
+      <div class="controls">
+        <button class="btn" id="pub-toggle" type="button">&hellip;</button>
+        <span class="led" id="pub-state">&hellip;</span>
+        <span class="led" id="pub-broker">&hellip;</span>
+      </div>
+      <dl class="readout" id="pub-facts"></dl>
+    </div>
+  </div>
+
+  <div id="episodes"></div>
+</div>
+
+<script>
+"use strict";
+
+// Open <details> survive a re-render. The page rebuilds the list whenever a new
+// review arrives, and an audience mid-read of one exchange must not have it
+// shut in their face.
+var openKeys = new Set();
+var lastSignature = "";
+
+function esc(text) {
+  return String(text === null || text === undefined ? "" : text)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function pretty(value) {
+  if (value === null || value === undefined) { return ""; }
+  if (typeof value === "string") {
+    var trimmed = value.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try { return JSON.stringify(JSON.parse(trimmed), null, 2); } catch (e) { return value; }
+    }
+    return value;
+  }
+  try { return JSON.stringify(value, null, 2); } catch (e) { return String(value); }
+}
+
+function clock(iso) {
+  if (!iso) { return "-"; }
+  return String(iso).replace("T", " ").replace("Z", "");
+}
+
+function num(value, digits) {
+  if (value === null || value === undefined || value === "") { return "-"; }
+  var asNumber = Number(value);
+  return isNaN(asNumber) ? String(value) : asNumber.toFixed(digits === undefined ? 1 : digits);
+}
+
+function detailsBlock(key, summary, inner) {
+  var open = openKeys.has(key) ? " open" : "";
+  return '<details data-key="' + esc(key) + '"' + open + '>' +
+           '<summary>' + esc(summary) + '</summary>' + inner +
+         '</details>';
+}
+
+function renderCall(call) {
+  var statusClass = (call.status && call.status >= 200 && call.status < 300) ? "status-ok" : "status-bad";
+  var head = '<div class="callhead">' +
+      '<span class="method">' + esc(call.method) + '</span>' +
+      '<span>' + esc(call.path) + '</span>' +
+      '<span class="' + statusClass + '">' + esc(call.error ? "no answer" : call.status) + '</span>' +
+      '<span class="ms">' + esc(num(call.elapsed_ms, 1)) + ' ms</span>' +
+    '</div>';
+  var body = "";
+  if (call.request) {
+    body += '<pre><span class="lbl">request</span>\n' + esc(pretty(call.request)) + '</pre>';
+  }
+  if (call.error) {
+    body += '<pre><span class="lbl">error</span>\n' + esc(call.error) + '</pre>';
+  } else {
+    body += '<pre><span class="lbl">response</span>\n' + esc(pretty(call.response)) + '</pre>';
+    if (call.truncated) {
+      body += '<div class="trunc">response truncated for display: the client read all of it</div>';
+    }
+  }
+  return '<div class="call">' + head + body + '</div>';
+}
+
+// published / withheld / failed, as a chip and as a sentence. `skipped` draws
+// nothing: a startup read was never a candidate, and a grey badge saying so on
+// every card at boot would bury the two states that mean something.
+var PUBLISH_LED = { published: "on", withheld: "off", failed: "bad" };
+var PUBLISH_SUMMARY = {
+  published: "Published to ",
+  withheld: "Withheld \u2014 the document that was not sent to ",
+  failed: "Failed to publish to "
+};
+
+function renderAnnouncement(episode) {
+  var pub = episode.publish || {};
+  if (!pub.document || !PUBLISH_LED[pub.state]) { return ""; }
+  var inner = '<div class="call">';
+  if (pub.detail) {
+    inner += '<div class="callhead"><span>' + esc(pub.detail) + '</span></div>';
+  }
+  if (pub.error) {
+    inner += '<pre><span class="lbl">error</span>\n' + esc(pub.error) + '</pre>';
+  }
+  inner += '<pre><span class="lbl">QoS ' + esc(pub.qos) + ' payload</span>\n' +
+             esc(pretty(pub.document)) + '</pre></div>';
+  return detailsBlock("pub-" + episode.id,
+                      PUBLISH_SUMMARY[pub.state] + pub.topic, inner);
+}
+
+function verdictClass(verdict) {
+  if (verdict === "in specification") { return "in-specification"; }
+  if (verdict === "out of specification") { return "out-of-specification"; }
+  if (verdict === "unverifiable") { return "unverifiable"; }
+  return "";
+}
+
+function renderEpisode(episode) {
+  var review = episode.review || {};
+  var env = episode.environment || {};
+  var pub = episode.publish || {};
+
+  var pubChip = PUBLISH_LED[pub.state]
+    ? ' <span class="led ' + PUBLISH_LED[pub.state] + '">' + esc(pub.state) + '</span>'
+    : "";
+
+  var head = '<h2>' +
+      '<span class="verdict ' + verdictClass(episode.verdict) + '">' + esc(episode.verdict) + '</span>' +
+      pubChip +
+      '<span class="sid">' + esc(review.sample_id || "no sample") + '</span>' +
+      '<span class="hint">' + esc(episode.object) + ' · ' + esc(review.disposition || "-") +
+        ' · ' + esc(episode.trigger) + ' ' + esc(clock(episode.received_at)) + '</span>' +
+    '</h2>';
+
+  var rows = '<dt>Sample drawn</dt><dd>' + esc(clock(episode.sample_instant)) + '</dd>';
+  if (episode.environment) {
+    rows +=
+      '<dt>Nearest reading</dt>' +
+      '<dd class="age">' + esc(num(env.age_s, 1)) + ' s ' +
+        '<span class="aside">' + esc(env.nearest_side || "") + ' the sample</span></dd>' +
+      '<dt>Room status</dt>' +
+      '<dd>' + esc(env.status) + ' <span class="aside">read, never recomputed</span></dd>';
+
+    // What the status was decided against. Cited, not recomputed -- the count
+    // and the verdict both come off the instrument, and this only says which
+    // channel and which limit the instrument was working to.
+    var limit = env.excursion_threshold;
+    var gated = (env.channels || []).filter(function (channel) {
+      return channel.size_um === env.threshold_channel_um;
+    })[0];
+    if (limit != null && gated) {
+      rows +=
+        '<dt>Excursion limit</dt>' +
+        '<dd>' + esc(num(gated.count, 0)) + ' / ' + esc(num(limit, 0)) +
+          ' <span class="aside">' + esc(num(env.threshold_channel_um, 1)) +
+          ' µm channel, ' + esc(num(env.total_volume_l, 3)) + ' L draw</span></dd>';
+    }
+  }
+  rows +=
+    '<dt>History window</dt>' +
+    '<dd>± ' + esc(episode.window_s) + ' s ' +
+      '<span class="aside">' + esc(episode.rows_returned) + ' readings returned</span></dd>';
+
+  var reason = episode.reason ? '<p class="msg">' + esc(episode.reason) + '</p>' : "";
+
+  var calls = (episode.calls || []).map(renderCall).join("");
+  var exchange = calls
+    ? detailsBlock("ex-" + episode.id,
+        "The exchange: " + episode.calls.length + " i3X call" +
+        (episode.calls.length === 1 ? "" : "s"), calls)
+    : "";
+
+  var envelope = review.document
+    ? detailsBlock("env-" + episode.id, "The review envelope, as it went onto the backbone",
+        '<div class="call"><pre>' + esc(pretty(review.document)) + '</pre></div>')
+    : "";
+
+  return '<div class="card">' + head +
+         '<div class="body"><dl class="readout">' + rows + '</dl>' + reason + '</div>' +
+         exchange + envelope + renderAnnouncement(episode) + '</div>';
+}
+
+function renderPublish(pub) {
+  if (!pub) { return; }
+  document.getElementById("pub-topic").textContent = pub.topic + "  \u00b7  QoS " + pub.qos;
+
+  // `data-next` rather than reading the label back, so the button says what it
+  // will do and the click handler does not have to parse English to find out.
+  var button = document.getElementById("pub-toggle");
+  button.textContent = pub.enabled ? "Stop publishing" : "Start publishing";
+  button.className = "btn" + (pub.enabled ? " stop" : "");
+  button.setAttribute("data-next", pub.enabled ? "disable" : "enable");
+
+  var stateChip = document.getElementById("pub-state");
+  stateChip.textContent = pub.enabled ? "publishing" : "withholding";
+  stateChip.className = "led " + (pub.enabled ? "on" : "off");
+
+  // Separate from the toggle on purpose: the session is held whether or not
+  // this client is allowed to speak, so "off" and "unreachable" are two
+  // different lights and a failed publish has to be attributable to one.
+  var broker = document.getElementById("pub-broker");
+  broker.textContent = pub.connected ? "broker connected" : "broker unreachable";
+  broker.className = "led " + (pub.connected ? "on" : "bad");
+
+  var last = pub.last || {};
+  var counts = pub.counts || {};
+  document.getElementById("pub-facts").innerHTML =
+    '<dt>Sent as</dt><dd>' + esc(pub.username) +
+      ' <span class="aside">at ' + esc(pub.broker) +
+      ' \u2014 a broker account, not the i3X login</span></dd>' +
+    '<dt>Findings</dt><dd>' + esc(counts.published || 0) + ' published' +
+      ' <span class="aside">\u00b7 ' + esc(counts.withheld || 0) + ' withheld \u00b7 ' +
+      esc(counts.failed || 0) + ' failed</span></dd>' +
+    '<dt>Last</dt><dd>' + (last.state
+      ? esc(last.state) + ' <span class="aside">' + esc(clock(last.at)) +
+        (last.error ? ' \u2014 ' + esc(last.error) : "") + '</span>'
+      : "\u2014") + '</dd>';
+}
+
+function renderSession(state) {
+  var server = state.server || {};
+  // Element ids ride in `title` rather than on the page: the client finding
+  // them by browsing is the point, the strings themselves are not.
+  var watching = (state.watching || []).map(function (target) {
+    return '<span title="' + esc(target.elementId) + '">' + esc(target.label) + '</span>';
+  }).join(", ");
+
+  document.getElementById("session-facts").innerHTML =
+    '<dt>Subscribed</dt><dd>' + (watching || "-") + '</dd>' +
+    '<dt>Asks about</dt><dd>' + (state.counter
+      ? '<span title="' + esc(state.counter.elementId) + '">' + esc(state.counter.label) + '</span>'
+      : "-") + '</dd>' +
+    '<dt>Server</dt><dd>' + esc(server.serverName || server.name || "-") +
+      ' <span class="aside">spec ' + esc(server.specVersion || server.version || "-") +
+      '</span></dd>';
+
+  var session = (state.session_calls || []).map(renderCall).join("");
+  document.getElementById("session").innerHTML = session
+    ? detailsBlock("session", "How this client found everything: " +
+                   state.session_calls.length + " calls", session)
+    : "";
+}
+
+function apply(state) {
+  document.getElementById("base").textContent = state.base_url;
+  document.getElementById("window").textContent = "± " + state.window_s + " s";
+  var conn = state.connection || {};
+  var chip = document.getElementById("conn");
+  chip.textContent = conn.state;
+  chip.className = "mod " + conn.state;
+  document.getElementById("conn-detail").textContent = conn.detail || "";
+  document.getElementById("c-push").textContent = state.counts.pushes;
+  document.getElementById("c-ep").textContent = state.counts.episodes;
+  document.getElementById("c-pub").textContent =
+    (state.publish && state.publish.counts) ? state.publish.counts.published : 0;
+
+  // Above the signature guard, because the toggle and the broker light change
+  // without a new review arriving and the control must never show a stale
+  // position -- the one thing on this page somebody acts on.
+  renderPublish(state.publish);
+
+  // Rebuild only when the set of reviews or the discovery log actually changed.
+  // A poll that redrew the DOM every second would fight the reader.
+  var signature = (state.episodes || []).map(function (e) { return e.id; }).join(",") +
+                  "|" + (state.session_calls || []).length + "|" + conn.state;
+  if (signature === lastSignature) { return; }
+  lastSignature = signature;
+
+  renderSession(state);
+  var host = document.getElementById("episodes");
+  host.innerHTML = (state.episodes || []).length
+    ? state.episodes.map(renderEpisode).join("")
+    : '<div class="card"><h2>Reviews</h2>' +
+      '<p class="empty">Waiting for a review. Approve or reject a sample in the LIMS ' +
+      'and it lands here.</p></div>';
+}
+
+document.addEventListener("toggle", function (event) {
+  var node = event.target;
+  if (node.tagName !== "DETAILS") { return; }
+  var key = node.getAttribute("data-key");
+  if (!key) { return; }
+  if (node.open) { openKeys.add(key); } else { openKeys.delete(key); }
+}, true);
+
+document.getElementById("pub-toggle").addEventListener("click", function () {
+  var button = this;
+  var next = button.getAttribute("data-next") || "enable";
+  // Disabled across the round trip so a double click cannot enable and disable
+  // in the same second and leave the page arguing with itself.
+  button.disabled = true;
+  fetch("/api/publish/" + next, { method: "POST" })
+    .then(function (response) { return response.json(); })
+    .then(renderPublish)
+    .catch(function () { /* the next poll corrects the button */ })
+    .then(function () { button.disabled = false; });
+});
+
+function poll() {
+  fetch("/api/state")
+    .then(function (response) { return response.json(); })
+    .then(apply)
+    .catch(function () {
+      var chip = document.getElementById("conn");
+      chip.textContent = "no client";
+      chip.className = "mod error";
+    });
+}
+
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>

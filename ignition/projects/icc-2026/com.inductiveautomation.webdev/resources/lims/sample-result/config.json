@@ -8,18 +8,66 @@
   "contentType": "application/json",
   "doGet": {
     "enabled": true,
-    "require-https": false,
+    "max-retry-attempts": 3,
     "require-auth": false,
-    "user-source": "",
+    "require-https": false,
     "required-roles": "",
-    "max-retry-attempts": 3
+    "user-source": ""
   },
   "doPost": {
     "enabled": true,
-    "require-https": false,
+    "max-retry-attempts": 3,
     "require-auth": false,
-    "user-source": "",
+    "require-https": false,
     "required-roles": "",
-    "max-retry-attempts": 3
+    "user-source": ""
+  },
+  "doPut": {
+    "enabled": false,
+    "max-retry-attempts": 3,
+    "require-auth": false,
+    "require-https": false,
+    "required-roles": "",
+    "user-source": ""
+  },
+  "doDelete": {
+    "enabled": false,
+    "max-retry-attempts": 3,
+    "require-auth": false,
+    "require-https": false,
+    "required-roles": "",
+    "user-source": ""
+  },
+  "doHead": {
+    "enabled": false,
+    "max-retry-attempts": 3,
+    "require-auth": false,
+    "require-https": false,
+    "required-roles": "",
+    "user-source": ""
+  },
+  "doOptions": {
+    "enabled": false,
+    "max-retry-attempts": 3,
+    "require-auth": false,
+    "require-https": false,
+    "required-roles": "",
+    "user-source": ""
+  },
+  "doTrace": {
+    "enabled": false,
+    "max-retry-attempts": 3,
+    "require-auth": false,
+    "require-https": false,
+    "required-roles": "",
+    "user-source": ""
+  },
+  "doPatch": {
+    "enabled": false,
+    "max-retry-attempts": 3,
+    "require-auth": false,
+    "require-https": false,
+    "required-roles": "",
+    "user-source": ""
   }
 }

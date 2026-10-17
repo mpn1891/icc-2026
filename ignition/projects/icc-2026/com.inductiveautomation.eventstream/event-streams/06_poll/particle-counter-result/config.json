@@ -16,7 +16,7 @@
       "type": "com.cirruslink.mqtt.transmission.gateway.mqtt.handler",
       "config": {
         "serverName": "chariot_broker",
-        "topic": "icc26/site1/env_monitoring/particle-counter-01/result",
+        "topic": "icc26/site1/env_monitoring/particle-counter-01/sample-analyzed",
         "qos": 1,
         "retained": false
       },

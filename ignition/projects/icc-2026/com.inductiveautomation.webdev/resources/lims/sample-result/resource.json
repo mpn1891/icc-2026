@@ -3,15 +3,22 @@
   "version": 1,
   "restricted": false,
   "overridable": true,
-    "files": [
+  "files": [
     "config.json",
+    "doPut.py",
+    "doTrace.py",
+    "doHead.py",
+    "doPatch.py",
+    "doPost.py",
+    "doOptions.py",
     "doGet.py",
-    "doPost.py"
+    "doDelete.py"
   ],
   "attributes": {
+    "lastModificationSignature": "a0b2e8892149630c80f0510ff942fc12c0bdf1d5447f3d7cf6ced4aef3b3d1e9",
     "lastModification": {
       "actor": "admin",
-      "timestamp": "2026-08-20T14:00:00Z"
+      "timestamp": "2026-09-19T03:33:56Z"
     }
   }
 }

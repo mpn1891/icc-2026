@@ -60,7 +60,7 @@ is a claim pattern 1 cannot make.
 | **Engineering units** | agreed out of band, or not at all | a metric property, on the wire |
 | **Discovery** | none — someone hand-writes an Ignition tag config and maintains it | DBIRTH builds the tag tree by itself |
 | **Consumer subscription** | `icc26/site1/upstream/br-201/sample-valve-01/#` — one device, by name. A wildcard wide enough for two valves also swallows patterns 5 and 7, so a second valve means editing Engine's config | `spBv1.0/#` — every edge node that will ever exist, already covered |
-| **Message taxonomy** | invented per device — this valve split its events into `badge-scan` and `sample-complete` on topics it chose, and every consumer has to be told | one metric list, declared once in DBIRTH |
+| **Message taxonomy** | invented per device — this valve split its events into `vlv-badge-scanned` and `sample-acq-completed` on topics it chose, and every consumer has to be told | one metric list, declared once in DBIRTH |
 | **Loss detection** | none, and no longer even the appearance of one — the `seq` that used to look like it did this job was cut with the envelope on 2026-08-25 | `seq`, 0–255 rolling, per edge node; a gap is visible |
 | **A null value** | no tag is created at all | a typed null: the tag exists, correctly typed, empty |
 | **Death, what it says** | retained JSON on a topic we chose, timestamp frozen at connect, meaning agreed nowhere | NDEATH — spec-mandated topic and payload, never retained, and `bdSeq` says *which session* died |

@@ -227,7 +227,7 @@ and spin the loop hot. QC rode on free-running cycles, so it moved to a button o
 3. Event Stream transform `opcua_event.build_cell_analyzer_result` reads the historical UDT siblings
    (Bad → JSON `null`) and returns `ts` plus `values` — no `seq`, `source` or `meta`. The
    instrument's document, not the site's; provenance is the topic it arrived on.
-4. MQTT Transmission handler publishes to `icc26/site1/qc/analyzers/cell-analyzer-01/result`.
+4. MQTT Transmission handler publishes to `icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed`.
 
 The simulator writes `SampleTime` **last** on the historical tree so the script cannot fire
 before the rest of the result is on the wire. `ICC26Extensions` is still in the address space
@@ -244,7 +244,7 @@ Verify the analyzer: trigger `ESMScheduleAnalysis`, then
 
 ```
 docker run --rm -it --network icc26 eclipse-mosquitto:2 `
-  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/qc/analyzers/cell-analyzer-01/result' -v
+  mosquitto_sub -h chariot -u observer -P observer -t 'icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed' -v
 ```
 
 One message per completed sample, never per-value, carrying `ts` and `values` only. A failed or
@@ -302,7 +302,7 @@ than the Countess's rather than shorter.
 | Host port | 4840 | **4841** | ✓ |
 | Namespace URI | `…/UA/Countess3FL/` | `…/UA/CellAnalyzer/` | ✓ |
 | Cycle | 5 s run, 180 s | 8 s run, 120 s | ✓ |
-| Topic | `…/countess-01/result` | `…/cell-analyzer-01/result` | ✓ |
+| Topic | `…/countess-01/result` | `…/cell-analyzer-01/sample-analyzed` | ✓ |
 | **Data model source** | vendor Appendix E, 71 columns | **vendor OPC manual §9, ~400 tags** | ✗ "none — the analyte list *is* the spec" |
 | **Address space** | ours, DI + LADS | **the vendor's**, flat `OPCSystemObjects` / `OPCSystemCommands` | ✗ assumed same shape |
 | **Trigger node** | `CountCompletedCounter` | `ICC26Extensions->SampleCompleteCounter` | ✗ vendor has **no counter at all** |

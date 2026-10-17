@@ -148,19 +148,20 @@ icc26/{site}/{area}/{line-or-cell}/{device}/{message_type}
 ```
 
 ```
-icc26/site1/upstream/br-201/sample-valve-01/event/badge-scan       # 1  every badge, granted or denied
-icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete  # 1  only when a sample ran
-icc26/site1/upstream/br-201/sample-valve-01/status     # 1  online/offline, retained; also the LWT
-icc26/site1/upstream/br-201/sample-valve-01/telemetry  # 1  air supply / enclosure temp, every 5 s
-icc26/site1/qc/analyzers/cell-analyzer-01/result            # 3  analyzer result
-icc26/site1/qc/lims/sample-result                      # 4  review: analyst + pass/fail
-icc26/site1/upstream/br-201/batch/event                # 5  CDC of bes.batch_event — an INSERT
-icc26/site1/audit/bes/batch-event                      # 5  an UPDATE/DELETE: somebody amended the record
-icc26/site1/env_monitoring/particle-counter-01/result  # 6  particle count analysis
-icc26/site1/qc/deviation                               # 7  aggregate; ONLY when something was violated
+icc26/site1/upstream/br-201/sample-valve-01/event/vlv-badge-scanned     # 1  every badge, granted or denied
+icc26/site1/upstream/br-201/sample-valve-01/event/sample-acq-completed  # 1  only when a sample ran
+icc26/site1/upstream/br-201/sample-valve-01/status                      # 1  online/offline, retained; also the LWT
+icc26/site1/upstream/br-201/sample-valve-01/telemetry                   # 1  air supply / enclosure temp, every 5 s
+icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed               # 3  analyzer result
+icc26/site1/qc/lims/sample-results-released                             # 4  review: analyst + pass/fail
+icc26/site1/upstream/br-201/batch/event                                 # 5  CDC of bes.batch_event — an INSERT
+icc26/site1/audit/bes/batch-event                                       # 5  an UPDATE/DELETE: somebody amended the record
+icc26/site1/env_monitoring/particle-counter-01/sample-analyzed          # 6  particle count analysis
+icc26/site1/qc/deviation                                                # 7  aggregate; ONLY when something was violated
+icc26/site1/qc/i3x-meta-review-completed                                # 7  the external i3X reader's finding, every verdict
 
-spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|NDEATH}/SAMPLE-VALVE-02             # 2 — spec-mandated
-spBv1.0/ICC26-Site1-UPSTREAM/{DBIRTH|DDATA|DDEATH}/SAMPLE-VALVE-02/SV-202 # 2 — spec-mandated
+spBv1.0/ICC26-Site1-UPSTREAM/{NBIRTH|NDEATH}/SAMPLE-VALVE-02               # 2 — spec-mandated
+spBv1.0/ICC26-Site1-UPSTREAM/{DBIRTH|DDATA|DDEATH}/SAMPLE-VALVE-02/SV-202  # 2 — spec-mandated
 ```
 
 Areas: `upstream`, `downstream`, `qc`, `utilities`, `env_monitoring`, `audit`. The first four
@@ -168,6 +169,24 @@ are **places** — in a biologics facility upstream and downstream really are se
 their own cleanroom grades, HVAC and personnel flow, so the process name and the physical area
 coincide. The industry would write these `usp`/`dsp`; spelled out they cost four characters and
 stop `dsp` colliding with *digital signal processing* in a talk that plots bearing spectra.
+
+**`i3x-meta-review-completed` is the second exception, added 2026-09-21, and it is the worse one.**
+It names a *mechanism* in its last segment, which is the one thing the rule at the top of this
+section forbids. It is taken knowingly and for the same reason `audit/bes/batch-event` is
+allowed to name a database operation: on this topic the mechanism is the subject. The message
+is not a fact about a sample — `qc/deviation` and `qc/lims/sample-results-released` already carry those.
+It is the record that a consumer **outside the gateway, holding nothing but an i3X login,**
+reached the same verdict, and a subscriber who cannot tell that from the address cannot tell it
+at all. Nothing inside the payload repeats it: the envelope is `ts` and `values` like every
+other, and the topic remains the provenance.
+
+Two consequences worth having written down. It is published by
+[`services/i3x-client/`](../services/i3x-client/) directly, under its own broker account with a
+grant of this one topic — the i3X login buys no publish right, and the split is the point. And
+**no Engine custom namespace matches it**, so it lands on the backbone creating no tags and
+adding no second registrant to anybody's Event Stream source. If it ever should become tags,
+that is a new custom namespace and not a widened existing one — see the subscription-overlap
+table below.
 
 **`env_monitoring` is the exception to *places*, added 2026-09-13**, and it is named as one here
 rather than hidden. Environmental monitoring is a *programme* that runs across the suites, not a
@@ -236,7 +255,7 @@ and has not come back; the reactor association lives in the payload's `location`
 topic is device-addressed under all three.
 
 **The move also took the counter out of a wildcard it was never meant to be in.** `lims-bridge`
-subscribes to `icc26/site1/qc/analyzers/+/result`, and the `+` matched `particle-counter-01`:
+subscribes to `icc26/site1/qc/analyzers/+/sample-analyzed`, and the `+` matched `particle-counter-01`:
 every particle count reached the LIMS, was found to carry no `values.sample_id`, and was dropped
 at ingest — three warnings per 30 s poll, for a reader that never wanted them. Nothing was lost
 when that stopped, because nothing was being used.
@@ -262,7 +281,7 @@ produced it (`upstream/br-201/batch/event`) and names its source system in the p
 Postgres schema **is** a system-of-record namespace, so it is named after the system: the table
 is `bes.batch_event`, and naming it after the writer is exactly what a schema is for.
 
-> **Known remaining wart:** `qc/lims/sample-result` still puts a software system in the
+> **Known remaining wart:** `qc/lims/sample-results-released` still puts a software system in the
 > line-or-cell slot. Revisited in spec 04 (2026-08-19) and **kept**. The better address is
 > under BR-201, naming the LIMS in the payload — the same rule `bes.batch_event` already
 > follows. The topic is referenced by an ACL and by pattern 7's subscription, and the
@@ -496,7 +515,7 @@ analysis was nearest. Without a shared id there is no sample-open instant to eva
 against, and the composite event cannot be built at all.
 
 **Since 2026-08-26 pattern 7 is handed that instant rather than having to reconstruct it.** The
-LIMS opens its sample entry from pattern 1's `event/sample-complete` and appends the analyzer
+LIMS opens its sample entry from pattern 1's `event/sample-acq-completed` and appends the analyzer
 result to it, so the released review message carries `values.collection.sample_start` beside the
 analytes. Two of the four sources pattern 7's unspecified event store was going to have to
 persist are therefore no longer its problem — the cost being that pattern 4 now performs the
@@ -639,11 +658,11 @@ connection is 3.1.1-shaped.
 
 Measured, one variable, everything else held:
 
-| `icc26-native` subscription | matches `qc/lims/sample-result`? | identical to the stream's filter? | deviations per review |
+| `icc26-native` subscription | matches `qc/lims/sample-results-released`? | identical to the stream's filter? | deviations per review |
 |---|---|---|---|
 | `icc26/#` | yes | no | **2** |
 | `icc26/site1/qc/#` | yes | no | **2** |
-| `icc26/site1/qc/lims/sample-result` | yes | **yes** | 1 |
+| `icc26/site1/qc/lims/sample-results-released` | yes | **yes** | 1 |
 | `icc26/site1/upstream/#` | no | — | 1 |
 
 Identical filters collapse because a SUBSCRIBE carrying a filter a client already holds
@@ -659,7 +678,8 @@ operator, so "everything except one topic" is necessarily more than one subscrip
 | `icc26-analyzers` | `icc26/site1/qc/analyzers/#` | pattern 3 |
 | `icc26-env-monitoring` | `icc26/site1/env_monitoring/#` | pattern 6 |
 | `icc26-deviation` | `icc26/site1/qc/deviation` | pattern 7's own output, read back as tags |
-| — | *(deliberately uncovered)* | `icc26/site1/qc/lims/sample-result` — pattern 7's Event Stream source, and nothing else |
+| — | *(deliberately uncovered)* | `icc26/site1/qc/lims/sample-results-released` — pattern 7's Event Stream source, and nothing else |
+| — | *(deliberately uncovered)* | `icc26/site1/qc/i3x-meta-review-completed` — the external reader's finding. Nothing in the gateway consumes it, which is the correct asymmetry: the gateway is not the audience for a message whose whole content is that somebody outside it could reach the same answer |
 
 `icc26-env-monitoring` was split off `icc26-analyzers` on 2026-09-13 rather than widening that
 one's subscription, because the namespace list is read as documentation of who consumes what —
@@ -1048,11 +1068,20 @@ Pattern 5's `bes_batch` writes `bes.batch_event` through an Ignition datasource 
 → `jdbc:postgresql://postgres:5432/icc26`, user `icc26`. Created UI-first, then committed from
 what `git status` reveals under `ignition/database-connection/`.
 
-**There is already a `database-connection/pg_db` in the repo, and it is not that.** It points at
-the **`postgres` database as user `ignition`** — wrong database, wrong user. It will pass a
-glance in the datasource dropdown and then write nowhere useful, and nothing about the failure
-says "you picked the wrong connection". `pg_db` is still there and still selectable; deleting it
-is an open item on [`plans/05-cdc-batch-event.md`](plans/05-cdc-batch-event.md).
+**There is already a `database-connection/pg_db` in the repo, and it is not that.** It is the
+historian's own store — the **`ignition` database as user `ignition`**, holding `sqlth_*` and
+`sqlt_data_*` and nothing this project writes. It will pass a glance in the datasource dropdown
+and then write nowhere useful, and nothing about the failure says "you picked the wrong
+connection". `pg_db` is load-bearing and must **not** be deleted: `pg-historian` and
+`System/Gateway/StoreAndForward/pg_db/Pipelines/TagHistory` are both bound to it.
+
+**It pointed at the `postgres` database until 2026-09-18, and stored nothing the whole time.**
+The connection validated (`SELECT 1` passes, CONNECT is granted) so it read green in the gateway,
+but PostgreSQL 15+ no longer grants CREATE on `public` to PUBLIC, so the SqlHistorian could never
+create its `sqlth_*` tables and every tag's history went to store-and-forward instead. Repointing
+it at `ignition` — a database the `ignition` role owns, so CREATE is its by ownership — drained the
+backlog with its original timestamps. A historian that stores nothing looks exactly like a tag
+that is not historised; check for `sqlth_te` rows before touching UDT history config.
 
 **`bes.batch_event` is the only table in the `icc26_cdc` publication**, as of 2026-08-26.
 `lims.sample_result` used to be in it too, from the abandoned design where patterns 4, 5 and 6

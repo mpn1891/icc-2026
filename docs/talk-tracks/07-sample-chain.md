@@ -24,7 +24,7 @@ fact onto the wire, and every one of them was somebody else's problem to solve. 
 the first thing in this stack that reads.**
 
 **Demo.** Approve one clean sample. **Nothing is published** — and that is the point. Press
-**Dirty** on the particle counter panel, draw and approve again: one message lands on
+**OOS** on the particle counter panel, draw and approve again: one message lands on
 `icc26/site1/qc/deviation`, and `values.violations` says what was wrong. Read it out loud.
 
 **Risk.** Every number in that document was computed by the pattern that produced it, and 07
@@ -95,7 +95,7 @@ genuine backbone subscriber, not a database job wearing a hat.
 ```
                             a person clicks Approve (or Reject)
                                           │
-                     icc26/site1/qc/lims/sample-result   (ts + values)
+                     icc26/site1/qc/lims/sample-results-released   (ts + values)
                                           │
                         MQTT Engine Event Stream source, QoS 1
                                           ▼
@@ -267,8 +267,8 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
 
 | Beat | Trigger | What lands |
 |---|---|---|
-| Silence is the pass | Approve a clean sample at <http://localhost:8000> | The review lands on `lims/sample-result`. **Nothing** on `deviation` — the compliant case is quiet |
-| The deviation | Press **Dirty** at <http://localhost:8089>, wait for a reading, draw and approve | One message on `deviation`, `values.violations[0].code` = `environmental_excursion` |
+| Silence is the pass | Approve a clean sample at <http://localhost:8000> | The review lands on `lims/sample-results-released`. **Nothing** on `deviation` — the compliant case is quiet |
+| The deviation | Press **OOS** at <http://localhost:8089>, wait for a reading, draw and approve | One message on `deviation`, `values.violations[0].code` = `environmental_excursion` |
 | Read it out loud | — | `ts` vs `assessed_at`, `as_of` vs `ts`, `age_s`. Three gaps, no arithmetic |
 | A rejection is a disposition | Reject instead | Publishes on its own, `violations[0].code` = `failed_review`. Nothing downstream infers a rejection from silence |
 | Outside the window | Advance past HARVEST in Tag Explorer, badge again, approve | `operation: "IDLE"`, `qualified_window: false`, **and nothing empty** |

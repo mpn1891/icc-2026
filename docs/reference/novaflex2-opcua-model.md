@@ -348,7 +348,7 @@ them separate from their uncorrected twins.
 
 ## 10. MQTT projection (ICC-2026 pattern 03)
 
-Topic `icc26/site1/qc/analyzers/cell-analyzer-01/result` — `ts` + `values`, the shape every
+Topic `icc26/site1/qc/analyzers/cell-analyzer-01/sample-analyzed` — `ts` + `values`, the shape every
 pattern publishes since 2026-09-13. The device id is `cell-analyzer-01`. This document keeps its `novaflex2-opcua-model.md` filename
 because it names the manual it transcribes; the demo's own naming dropped the vendor's name on
 2026-09-05.

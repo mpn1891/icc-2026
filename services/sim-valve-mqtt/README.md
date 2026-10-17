@@ -34,8 +34,8 @@ Derived from whatever is in the Topic field. Shipped default:
 
 | Topic | Dir | Default QoS | Default retained |
 |---|---|---|---|
-| `icc26/site1/upstream/br-201/sample-valve-01/event/badge-scan` | pub | 1 | yes |
-| `icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete` | pub | 1 | yes |
+| `icc26/site1/upstream/br-201/sample-valve-01/event/vlv-badge-scanned` | pub | 1 | yes |
+| `icc26/site1/upstream/br-201/sample-valve-01/event/sample-acq-completed` | pub | 1 | yes |
 | `icc26/site1/upstream/br-201/sample-valve-01/status` | pub | 1 | yes |
 | `icc26/site1/upstream/br-201/sample-valve-01/telemetry` | pub | 1 | yes |
 
@@ -68,7 +68,7 @@ The envelope from [`docs/00-architecture.md`](../../docs/00-architecture.md), wi
   "seq": 41,
   "source": { "id": "sample-valve-01", "type": "sample-valve" },
   "meta": { "mechanism": "native-mqtt", "ingest_ts": "2026-08-17T18:22:04.512Z",
-            "event": "badge-scan", "cell": "br-201",
+            "event": "vlv-badge-scanned", "cell": "br-201",
             "assembly_serial": "SV-2000-0417" },
   "values": {
     "badge_id": "B-2087", "badge_holder": "Sam Okafor", "badge_role": "maintenance",
@@ -78,9 +78,9 @@ The envelope from [`docs/00-architecture.md`](../../docs/00-architecture.md), wi
 }
 ```
 
-`event/badge-scan` carries `badge_id`, `badge_holder`, `badge_role`, `result`, `deny_reason`,
+`event/vlv-badge-scanned` carries `badge_id`, `badge_holder`, `badge_role`, `result`, `deny_reason`,
 `scan_time` and `sample_id` — the last one `null` on a denial, because a denial belongs to no
-sample. `event/sample-complete` carries `sample_id`, `badge_id`, `badge_holder`,
+sample. `event/sample-acq-completed` carries `sample_id`, `badge_id`, `badge_holder`,
 `sample_start`, `sample_completion`, `open_duration_s`, `cycle_result` and `cycle_count`.
 
 Deny reasons: `badge-unknown`, `badge-not-authorized`, `valve-busy` — checked in that order,
@@ -144,8 +144,8 @@ docker run --rm -it --network icc26 eclipse-mosquitto:2 `
   mosquitto_sub -h chariot -u observer -P observer -t 'icc26/#' -v
 ```
 
-Press a badge button on the page. One `event/badge-scan` per scan; on a granted scan an
-`event/sample-complete` follows about fifteen seconds later, and **nothing lands in between** —
+Press a badge button on the page. One `event/vlv-badge-scanned` per scan; on a granted scan an
+`event/sample-acq-completed` follows about fifteen seconds later, and **nothing lands in between** —
 the page walks `unlocking → open → closing → locked` while the wire stays silent.
 
 Sag the air supply, then press `B-1042`: the scan is granted and the sample completes

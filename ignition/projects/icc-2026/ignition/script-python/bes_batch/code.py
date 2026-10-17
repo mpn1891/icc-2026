@@ -32,9 +32,10 @@ from java.util import Date
 
 LOGGER_NAME = "bes_batch"
 
-# NOT `pg_db`. That one points at the `postgres` database as user `ignition` --
-# wrong database, wrong user -- and it will pass a glance in the dropdown and
-# then write nowhere useful. docs/00-architecture.md is emphatic about this.
+# NOT `pg_db`. That one is the historian's own store -- the `ignition` database
+# as user `ignition`, holding sqlth_*/sqlt_data_* and nothing this project
+# writes -- so it will pass a glance in the dropdown and then write nowhere useful.
+# docs/00-architecture.md is emphatic about this.
 DATASOURCE = "ICC26"
 
 # ISA-88 operations, in the order the protocol runs them. These are *operations*,
@@ -131,12 +132,24 @@ def advance(base):
     operation the database does not have. Resets manual_advance on every exit
     path, including the refusals -- a button that stays stuck down is worse than
     one that did nothing.
+
+    `operation`, `event_type`, `qualified_window` and `batch_id` are all taken
+    from the incoming row, in one write, so the four tags are one consistent
+    view of it rather than four that can disagree.
     """
     logger = system.util.getLogger(LOGGER_NAME)
 
     batch_tag = base + "/batch_id"
     operation_tag = base + "/operation"
     flag_tag = base + "/manual_advance"
+
+    # Added 2026-09-18. These two exist only in bes.batch_event -- event_type as
+    # a column, qualified_window inside the payload jsonb -- and pattern 7 could
+    # only ever see them by querying that table. Over i3X it reads batch context
+    # from tag history instead, and a fact that is not in the tag model is a
+    # null column in every history row the server returns.
+    event_type_tag = base + "/event_type"
+    qualified_tag = base + "/qualified_window"
 
     values = system.tag.readBlocking([batch_tag, operation_tag])
     batch_id = values[0].value
@@ -151,7 +164,6 @@ def advance(base):
 
     current = str(current) if current is not None else IDLE
 
-    minted = False
     if batch_id is None or not str(batch_id).strip():
         if current in SEQUENCE:
             # Mid-batch with no id is not something to paper over. The rows
@@ -163,7 +175,6 @@ def advance(base):
             system.tag.writeBlocking([flag_tag], [False])
             return
         batch_id = _mint_batch_id(equipment_id)
-        minted = True
     else:
         batch_id = str(batch_id).strip()
 
@@ -226,16 +237,36 @@ def advance(base):
 
     # Only now. The record exists; the tags may follow it.
     new_operation = next_operation if next_operation is not None else IDLE
-    if next_operation is None:
-        # Batch over: clear the id so the next advance mints a fresh one rather
-        # than silently reusing this batch's.
-        system.tag.writeBlocking([operation_tag, flag_tag, batch_tag],
-                                 [new_operation, False, ""])
-    elif minted:
-        system.tag.writeBlocking([operation_tag, flag_tag, batch_tag],
-                                 [new_operation, False, batch_id])
-    else:
-        system.tag.writeBlocking([operation_tag, flag_tag], [new_operation, False])
+
+    # The INCOMING row, which `rows` always ends with: an operation_start, or
+    # the batch_end that closes the batch. The outgoing operation_end is not
+    # mirrored into tags -- both rows carry the same occurred_at and only this
+    # one is still true a second later. qualified_window comes from the same
+    # tuple that fed `_payload`, so the tag and the WAL cannot disagree, and
+    # QUALIFIED above stays the only copy of the rule.
+    new_event_type, _, new_qualified = rows[-1]
+
+    # Batch over: clear the id so the next advance mints a fresh one rather than
+    # silently reusing this batch's.
+    new_batch_id = "" if next_operation is None else batch_id
+
+    # All five in one write, every advance -- including `batch_id` when it has
+    # not changed, which it usually has not. Changed 2026-09-20. The historian
+    # keeps no point for a tag nobody wrote, and i3X's `/objects/history`
+    # returns null for any member whose last stored point predates the requested
+    # window: the same HARVEST row read over ten minutes came back
+    # `batch_id: null` and over two days came back `B-20260918-03`. A consumer
+    # cannot tell that null from "no batch", so pattern 7 asking for batch
+    # context around a sample instant was being answered wrongly rather than
+    # narrowly. Writing it every time is what makes a short window answerable.
+    #
+    # This only helps if the members also have `historicalDeadbandMode` Off on
+    # the instance, or the historian discards the unchanged write before it is
+    # stored -- the write side and the historian setting are one fix in two
+    # places, and neither half does anything alone.
+    system.tag.writeBlocking(
+        [operation_tag, event_type_tag, qualified_tag, flag_tag, batch_tag],
+        [new_operation, new_event_type, new_qualified, False, new_batch_id])
 
     logger.infof("%s %s: %s -> %s (%d rows)",
                  equipment_id, batch_id, current, new_operation, len(rows))

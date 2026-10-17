@@ -138,7 +138,7 @@ plainly and hand it to the risk speaker.
 ## Pattern 6 — API Poll and Diff
 
 **Demo asset:** Environmental monitoring system (particle counter, simulated), with
-an HTTP API. It lives in its own area — `icc26/site1/env_monitoring/particle-counter-01/result`
+an HTTP API. It lives in its own area — `icc26/site1/env_monitoring/particle-counter-01/sample-analyzed`
 as of 2026-09-13, having spent 08-25 to 09-13 in `qc/analyzers` beside the analyzer, and before
 that beside the reactor. It watches a room rather than running analyses on samples, which is
 what moved it out of the analyzer path

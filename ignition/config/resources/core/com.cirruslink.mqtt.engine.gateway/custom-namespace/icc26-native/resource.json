@@ -11,7 +11,7 @@
       "actor": "admin",
       "timestamp": "2026-09-12T14:17:08Z"
     },
-    "description": "Patterns 1 and 5: everything under site1/upstream -> auto-created tags in the MQTT Engine provider. Deliberately does NOT cover qc/lims/sample-result, which pattern 7's Event Stream subscribes to directly.",
+    "description": "Patterns 1 and 5: everything under site1/upstream -> auto-created tags in the MQTT Engine provider. Deliberately does NOT cover qc/lims/sample-results-released, which pattern 7's Event Stream subscribes to directly.",
     "lastModificationSignature": "8852e33ae1a3301d320a3902fff3a1087ca53f6b779254be8b4b8c5c5483068a",
     "enabled": true
   }

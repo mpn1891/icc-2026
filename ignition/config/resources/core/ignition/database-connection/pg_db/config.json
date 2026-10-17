@@ -1,5 +1,5 @@
 {
-  "connectURL": "jdbc:postgresql://postgres:5432/postgres",
+  "connectURL": "jdbc:postgresql://postgres:5432/ignition",
   "connectionProps": "",
   "connectionResetParams": "",
   "defaultTransactionLevel": "DEFAULT",

@@ -1,0 +1,7 @@
+{
+  "title": "I3X API",
+  "description": "Industrial Information Interface eXchange API",
+  "enabled": true,
+  "inheritable": false,
+  "parent": ""
+}

@@ -91,8 +91,8 @@ Press badge **`B-1042`**, the authorized one. **Copy the `sample_id` off the pag
 it by hand in the next step, and that transcription is the point of the pattern rather than an
 inconvenience.
 
-The valve strokes for ~13.5 s. `event/badge-scan` publishes the instant the badge is read;
-`event/sample-complete` when it closes. The LIMS opens its entry from the second one, so within a few
+The valve strokes for ~13.5 s. `event/vlv-badge-scanned` publishes the instant the badge is read;
+`event/sample-acq-completed` when it closes. The LIMS opens its entry from the second one, so within a few
 seconds the sample exists at :8000 as **Awaiting analysis**, with no Approve button.
 
 ## 5. Run the analysis — <http://localhost:8087>
@@ -133,8 +133,8 @@ If you rejected in step 6 instead of approving, you get a message now: `violatio
 
 ## 8. Make a deviation and read it
 
-Press **Dirty** on the particle counter panel (<http://localhost:8089>) and wait about 30 s for a fresh
-reading to land — dirty draws measure 3346–4350 counts against a threshold of 1660. Then repeat
+Press **OOS** on the particle counter panel (<http://localhost:8089>) and wait about 30 s for a fresh
+reading to land — OOS draws measure 3346–4350 counts against a threshold of 1660. Then repeat
 steps 4–6 with a new sample.
 
 One message lands on `icc26/site1/qc/deviation`. It passes if all of these hold:
@@ -158,7 +158,7 @@ One message lands on `icc26/site1/qc/deviation`. It passes if all of these hold:
 | `values.assessed_at` | a few seconds after `ts` | When 07 assembled the document. **Replaced the envelope's `meta` block on 2026-09-13** |
 | `seq`, `source`, `meta` | **absent** | The envelope came off every pattern on 2026-09-13. A message carrying any of them is a stale gateway holding an old copy of the script |
 
-**Press Clean again when you are done**, or every subsequent sample deviates.
+**Press In-spec again when you are done**, or every subsequent sample deviates.
 
 **Read the three gaps out loud, because they are the argument:** `values.assessed_at` against `ts`
 is the human in the loop, `batch_context.as_of` against `ts` is how far into the operation the
@@ -180,7 +180,7 @@ the table above now expects to be **absent**. Read it for the `values` block, wh
 ```json
 {"meta":{"ingest_ts":"2026-08-31T15:41:13.184Z","correlation_id":"S-20260831-0103",
  "mechanism":"aggregate"},
- "values":{"disposition":"pass","analyst":"mnorris","sample_id":"S-20260831-0103",
+ "values":{"disposition":"pass","analyst":"mmartin","sample_id":"S-20260831-0103",
   "batch_id":"B-20260831-01","equipment_id":"br-201","equipment_identifier":"br-201",
   "batch_context":{"operation":"GROWTH","event_type":"operation_start",
                    "qualified_window":true,"as_of":"2026-08-31T15:39:24.600Z"},

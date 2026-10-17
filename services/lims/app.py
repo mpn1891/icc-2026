@@ -3,11 +3,11 @@
 
 Two subscriptions, and the order they arrive in is the pattern:
 
-  1. `icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete` (pattern 1)
+  1. `icc26/site1/upstream/br-201/sample-valve-01/event/sample-acq-completed` (pattern 1)
      opens the entry. The sample begins when material leaves the reactor, so that
      is when the record exists -- carrying who badged it, when the valve opened,
      how long it was open, and how the cycle ended.
-  2. `icc26/site1/qc/analyzers/+/result` (pattern 3) appends the analytes to that
+  2. `icc26/site1/qc/analyzers/+/sample-analyzed` (pattern 3) appends the analytes to that
      entry, minutes later.
 
 The analyst reviews one record holding both halves, and only on Approve does this
@@ -35,7 +35,7 @@ Six things here are load-bearing, and easy to flatten into "a webhook demo":
     simplification -- a real LIMS repeats tests -- and it is why that constraint
     exists.
 
-  * `sample-complete` is RETAINED and this client connects `clean_session=True`,
+  * `sample-acq-completed` is RETAINED and this client connects `clean_session=True`,
     so the broker replays the last one on every single reconnect. The entry
     insert is ON CONFLICT DO NOTHING for that reason: without it, restarting this
     container resurrects the last sample -- already approved, already released --
@@ -126,14 +126,14 @@ class Config:
         self.mqtt_password = _env("MQTT_PASSWORD", "lims-bridge")
         # Wildcard is the subscribe grant in mqtt-users.json. QoS 1, so a
         # redelivery must not create a second row -- see ingest().
-        self.result_topic = _env("RESULT_TOPIC", "icc26/site1/qc/analyzers/+/result")
+        self.result_topic = _env("RESULT_TOPIC", "icc26/site1/qc/analyzers/+/sample-analyzed")
         # Pattern 1, and the only topic outside qc/ this service is granted.
-        # Named to one device on purpose: `+/event/sample-complete` would also
+        # Named to one device on purpose: `+/event/sample-acq-completed` would also
         # match a second valve, and BR-202's valve is Sparkplug and not on this
         # namespace at all. One subscription per device is what pattern 1 costs.
         self.valve_event_topic = _env(
             "VALVE_EVENT_TOPIC",
-            "icc26/site1/upstream/br-201/sample-valve-01/event/sample-complete",
+            "icc26/site1/upstream/br-201/sample-valve-01/event/sample-acq-completed",
         )
 
         self.pghost = _env("PGHOST", "postgres")
@@ -158,7 +158,7 @@ class Config:
         # unattended fallback, which this pattern is not supposed to need.
         self.generator_interval_s = _env_float("GENERATOR_INTERVAL_S", 0.0)
         self.http_port = _env_int("HTTP_PORT", 8000)
-        self.default_analyst = _env("DEFAULT_ANALYST", "mnorris")
+        self.default_analyst = _env("DEFAULT_ANALYST", "mmartin")
 
 
 def _now() -> datetime:
@@ -243,9 +243,9 @@ class Store:
         return parts[3] or None
 
     def create_sample(self, topic: str, document: dict) -> dict:
-        """Open the entry from pattern 1's `event/sample-complete`.
+        """Open the entry from pattern 1's `event/sample-acq-completed`.
 
-        ON CONFLICT DO NOTHING is not defensive tidiness. `sample-complete` is
+        ON CONFLICT DO NOTHING is not defensive tidiness. `sample-acq-completed` is
         published retained and this client connects with a clean session, so the
         broker hands us the last one again on every reconnect -- restart the
         container and the most recent sample arrives a second time. Without the
@@ -890,7 +890,7 @@ class MqttIngest:
         self.connected = True
         # Subscribed here, not once at connect, because a reconnect after a
         # broker restart brings back a session that remembers nothing -- clean
-        # session, by choice. The retained sample-complete arrives again with it.
+        # session, by choice. The retained sample-acq-completed arrives again with it.
         client.subscribe(self.cfg.valve_event_topic, qos=1)
         client.subscribe(self.cfg.result_topic, qos=1)
         LOG.info("mqtt connected; subscribed QoS 1 to %s and %s",
@@ -1072,7 +1072,7 @@ def _read_page() -> str:
 
 def _fmt_display_ts(value) -> str:
     if value is None:
-        return "—"
+        return "-"
     if isinstance(value, datetime):
         dt = value
     else:
@@ -1307,13 +1307,13 @@ def _spec_for(analyte: str, value) -> dict:
         if catalog["hi"] is not None and number > catalog["hi"]:
             in_spec = False
     if catalog["lo"] is None and catalog["hi"] is None:
-        spec_text = "—"
+        spec_text = "-"
     elif catalog["lo"] is None:
         spec_text = "≤ %s" % _fmt_result(catalog["hi"])
     elif catalog["hi"] is None:
         spec_text = "≥ %s" % _fmt_result(catalog["lo"])
     else:
-        spec_text = "%s – %s" % (_fmt_result(catalog["lo"]), _fmt_result(catalog["hi"]))
+        spec_text = "%s to %s" % (_fmt_result(catalog["lo"]), _fmt_result(catalog["hi"]))
     return {
         "code": catalog["code"],
         "name": catalog["name"],
@@ -1370,12 +1370,12 @@ def _no_results_html(sample: dict) -> str:
     if sample.get("reviewable"):
         return (
             '<td class="await-cell" colspan="6">'
-            "No analysis — the cycle did not complete normally, so no material "
+            "No analysis: the cycle did not complete normally, so no material "
             "reached the analyser. The record still requires a disposition.</td>"
         )
     return (
         '<td class="await-cell" colspan="6">'
-        "Sample drawn and logged. Awaiting analyser result — the sample id has to "
+        "Sample drawn and logged. Awaiting analyser result. The sample id has to "
         "be entered on the analyzer before it runs.</td>"
     )
 
@@ -1542,7 +1542,7 @@ def _unmatched_html(unmatched: list[dict], pending: list[dict], analyst: str) ->
             "</tr>" % (
                 _esc(item["reported_sample_id"]),
                 _esc(_fmt_display_ts(item["collected_at"])),
-                _esc(summary or "—"),
+                _esc(summary or "-"),
                 action,
             )
         )
@@ -1551,7 +1551,7 @@ def _unmatched_html(unmatched: list[dict], pending: list[dict], analyst: str) ->
         "<th>Reported as</th><th>Acquired</th><th>Results</th><th></th>"
         "</tr></thead><tbody>%s</tbody></table>"
         '<p class="meaning">The id the instrument reported is kept exactly as received. '
-        "Attaching records which sample the analysis belongs to and who decided that — "
+        "Attaching records which sample the analysis belongs to and who decided that. "
         "it does not overwrite what the analyzer said.</p>" % "".join(rows)
     )
 
@@ -1579,7 +1579,7 @@ def _outbox_html(outbox: list[dict]) -> str:
                 _esc(state),
                 _esc(labels.get(state, state)),
                 item["attempts"],
-                _esc(item["last_error"] or "—"),
+                _esc(item["last_error"] or "-"),
                 _esc(_fmt_display_ts(item["updated_at"])),
             )
         )

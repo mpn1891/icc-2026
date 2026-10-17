@@ -84,8 +84,9 @@ CREATE INDEX IF NOT EXISTS ix_em_reading_lookup
 
 -- ── 3. grants ────────────────────────────────────────────────────────────────
 -- `icc26` is the role the Ignition ICC26 datasource logs in as. NOT `pg_db`,
--- which points at the `postgres` database as user `ignition` and will pass a
--- glance in the dropdown before writing nowhere useful.
+-- which is the historian's own store (the `ignition` database as user
+-- `ignition`) and will pass a glance in the dropdown before writing nowhere
+-- useful.
 GRANT USAGE ON SCHEMA em TO icc26;
 GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA em TO icc26;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA em TO icc26;
